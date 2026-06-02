@@ -3,6 +3,7 @@ package com.focusecho.ai
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageStatsManager
 import android.app.usage.UsageEvents
@@ -24,6 +25,7 @@ class FocusDetectionService : Service() {
     private lateinit var runnable: Runnable
     private var lastForegroundPackage: String? = null
     private var lastSwitchTimeMs: Long = 0
+    private var lastDistractionNotifMs: Long = 0
     private var screenReceiver: BroadcastReceiver? = null
 
     // Cached values — refreshed every CACHE_TTL_MS to avoid disk reads every tick
@@ -81,6 +83,16 @@ class FocusDetectionService : Service() {
         lastForegroundPackage = packageName
 
         val label = getAppLabel(packageName)
+
+        // Check if this is a known distracting app and fire a heads-up notification
+        val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+        val distractingRaw = prefs.getString("flutter.distracting_apps", "[]") ?: "[]"
+        val isDistraction = distractingRaw.contains(packageName) ||
+            ALWAYS_DISTRACTION_PACKAGES.contains(packageName)
+        if (isDistraction) {
+            sendDistractionNotification(label, packageName)
+        }
+
         val payload = JSONObject()
             .put("eventType", "app_switch")
             .put("packageName", packageName)
@@ -89,6 +101,36 @@ class FocusDetectionService : Service() {
             .put("source", "usage_stats")
             .toString()
         sendOrBuffer(payload)
+    }
+
+    /**
+     * Fires a high-priority heads-up notification when a distracting app
+     * is detected. Visible even when FocusEcho is fully backgrounded.
+     */
+    private fun sendDistractionNotification(appLabel: String, packageName: String) {
+        // Throttle: at most one distraction notification per 30 seconds
+        val now = System.currentTimeMillis()
+        if (now - lastDistractionNotifMs < DISTRACTION_NOTIF_THROTTLE_MS) return
+        lastDistractionNotifMs = now
+
+        val openAppIntent = packageManager.getLaunchIntentForPackage(this.packageName)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, openAppIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
+            .setContentTitle("⚠️ Focus check — $appLabel detected")
+            .setContentText("You opened $appLabel during your focus session. Tap to return.")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.notify(DISTRACTION_NOTIF_ID, notification)
     }
 
     /**
@@ -173,13 +215,26 @@ class FocusDetectionService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val manager = getSystemService(NotificationManager::class.java)
+
+            // Persistent foreground service notification (low importance — silent)
+            val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Focus Detection",
                 NotificationManager.IMPORTANCE_LOW
             )
-            val manager = getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(channel)
+            manager.createNotificationChannel(serviceChannel)
+
+            // Distraction alert notifications (high importance — heads-up banner)
+            val alertChannel = NotificationChannel(
+                DISTRACTION_CHANNEL_ID,
+                "Distraction Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifies you when a distracting app is opened during a focus session"
+                enableVibration(true)
+            }
+            manager.createNotificationChannel(alertChannel)
         }
     }
 
@@ -196,6 +251,8 @@ class FocusDetectionService : Service() {
         const val START_ACTION = "com.focusecho.ai.START_FOCUS_DETECTION"
         const val STOP_ACTION = "com.focusecho.ai.STOP_FOCUS_DETECTION"
         private const val CHANNEL_ID = "focus_detection_channel"
+        private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
+        private const val DISTRACTION_NOTIF_ID = 2001
 
         /** Poll every 3 seconds instead of 1 to reduce battery drain. */
         private const val POLL_INTERVAL_MS = 3_000L
@@ -205,6 +262,19 @@ class FocusDetectionService : Service() {
 
         /** Max buffered events when Flutter UI is not active. */
         private const val MAX_BUFFER_SIZE = 100
+
+        /** Throttle distraction notifications to one per 30 seconds. */
+        private const val DISTRACTION_NOTIF_THROTTLE_MS = 30_000L
+
+        /** Well-known always-distracting packages (fallback if prefs unavailable). */
+        private val ALWAYS_DISTRACTION_PACKAGES = setOf(
+            "com.instagram.android",
+            "com.facebook.katana",
+            "com.twitter.android",
+            "com.zhiliaoapp.musically",
+            "com.snapchat.android",
+            "com.reddit.frontpage",
+        )
 
         /** Events buffered when EventChannel sink is null. */
         val pendingEvents = mutableListOf<String>()
