@@ -79,7 +79,7 @@ class FocusSessionScreen extends ConsumerWidget {
                           : AppColors.textSecondary,
                       boxShadow: [
                         BoxShadow(
-                          color: AppColors.accentBlue.withOpacity(0.4),
+                          color: AppColors.accentBlue.withValues(alpha: 0.4),
                           blurRadius: 24,
                         ),
                       ],
@@ -140,7 +140,7 @@ class FocusSessionScreen extends ConsumerWidget {
                 const SizedBox(height: 24),
                 ElevatedButton.icon(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accentRed.withOpacity(0.2),
+                    backgroundColor: AppColors.accentRed.withValues(alpha: 0.2),
                     foregroundColor: AppColors.accentRed,
                     side: const BorderSide(color: AppColors.accentRed),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),

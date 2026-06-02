@@ -98,7 +98,7 @@ class AppSelectorScreen extends ConsumerWidget {
                   width: 28,
                   height: 28,
                   decoration: BoxDecoration(
-                    color: AppColors.accentBlue.withOpacity(0.2),
+                    color: AppColors.accentBlue.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),

@@ -42,6 +42,7 @@ void nightlySyncCallbackDispatcher() {
 }
 
 Future<void> initializeNightlySyncWorker() async {
+  // ignore: deprecated_member_use
   await Workmanager().initialize(nightlySyncCallbackDispatcher, isInDebugMode: false);
   await Workmanager().registerPeriodicTask(
     nightlySyncTaskName,

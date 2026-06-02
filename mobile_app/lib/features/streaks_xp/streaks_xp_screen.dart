@@ -50,7 +50,7 @@ class StreaksXpScreen extends ConsumerWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     height: 36,
                     decoration: BoxDecoration(
-                      color: active ? AppColors.accentGreen : AppColors.accentRed.withOpacity(0.4),
+                      color: active ? AppColors.accentGreen : AppColors.accentRed.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -59,9 +59,9 @@ class StreaksXpScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             Text('Achievements', style: AppTextStyles.displayMedium),
-            Wrap(
+            const Wrap(
               spacing: 8,
-              children: const [
+              children: [
                 Chip(label: Text('First Session 🔒')),
                 Chip(label: Text('7 Day Streak 🔒')),
                 Chip(label: Text('1000 XP 🔒')),

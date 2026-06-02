@@ -47,7 +47,7 @@ class AppTextStyles {
 class AppDecorations {
   static BoxDecoration glassmorphismCard() {
     return BoxDecoration(
-      color: AppColors.card.withOpacity(0.85),
+      color: AppColors.card.withValues(alpha: 0.85),
       borderRadius: BorderRadius.circular(12),
       border: Border.all(color: AppColors.border, width: 1),
       boxShadow: const [
@@ -65,7 +65,7 @@ class AppDecorations {
     return glassmorphismCard().copyWith(
       boxShadow: [
         BoxShadow(
-          color: glowColor.withOpacity(0.3),
+          color: glowColor.withValues(alpha: 0.3),
           blurRadius: 0,
           spreadRadius: 0,
         ),
@@ -78,7 +78,7 @@ class AppDecorations {
     return BoxDecoration(
       borderRadius: BorderRadius.circular(8),
       gradient: LinearGradient(
-        colors: [color.withOpacity(0.85), color],
+        colors: [color.withValues(alpha: 0.85), color],
       ),
     );
   }

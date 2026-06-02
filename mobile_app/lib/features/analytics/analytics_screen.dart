@@ -36,7 +36,7 @@ class AnalyticsScreen extends ConsumerWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: AppColors.accentRed.withOpacity(0.15),
+                    color: AppColors.accentRed.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -64,7 +64,7 @@ class AnalyticsScreen extends ConsumerWidget {
                           BarChartRodData(
                             toY: state.weeklyFocusMinutes[i],
                             gradient: LinearGradient(
-                              colors: [AppColors.accentBlue.withOpacity(0.6), AppColors.accentBlue],
+                              colors: [AppColors.accentBlue.withValues(alpha: 0.6), AppColors.accentBlue],
                             ),
                           ),
                         ],

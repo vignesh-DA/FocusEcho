@@ -70,7 +70,7 @@ class _DistractionAlertModalState extends State<DistractionAlertModal>
     };
 
     return Material(
-      color: Colors.black.withOpacity(0.8),
+      color: Colors.black.withValues(alpha: 0.8),
       child: Center(
         child: Container(
           margin: const EdgeInsets.all(20),
@@ -94,7 +94,7 @@ class _DistractionAlertModalState extends State<DistractionAlertModal>
               Text('Still focused after ${widget.appName}?', style: AppTextStyles.bodyLarge),
               const SizedBox(height: 8),
               Chip(
-                backgroundColor: color.withOpacity(0.25),
+                backgroundColor: color.withValues(alpha: 0.25),
                 label: Text(widget.riskScore),
               ),
               const SizedBox(height: 16),
@@ -153,7 +153,7 @@ class _DistractionAlertModalState extends State<DistractionAlertModal>
                   },
                   child: Text(
                     'Snooze for 5 mins (Override)',
-                    style: TextStyle(color: Colors.white.withOpacity(0.7)),
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
                   ),
                 ),
               ),

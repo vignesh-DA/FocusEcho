@@ -150,7 +150,7 @@ class MainShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: index,
         backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.accentBlue.withOpacity(0.15),
+        indicatorColor: AppColors.accentBlue.withValues(alpha: 0.15),
         onDestinationSelected: (i) => context.go(_tabs[i]),
         destinations: const [
           NavigationDestination(

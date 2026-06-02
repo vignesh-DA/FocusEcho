@@ -34,7 +34,7 @@ class AppLimitsScreen extends ConsumerWidget {
                 padding: const EdgeInsets.symmetric(vertical: 40),
                 child: Column(
                   children: [
-                    Icon(Icons.timer_off_outlined, size: 64, color: AppColors.textSecondary),
+                    const Icon(Icons.timer_off_outlined, size: 64, color: AppColors.textSecondary),
                     const SizedBox(height: 16),
                     Text('No limits set yet', style: AppTextStyles.bodyLarge),
                   ],
