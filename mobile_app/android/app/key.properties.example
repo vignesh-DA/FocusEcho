@@ -1,0 +1,8 @@
+# Release signing — fill in after generating your keystore:
+#   keytool -genkey -v -keystore focusecho.jks -keyalg RSA -keysize 2048 -validity 10000 -alias focusecho
+#
+# Then place the .jks file in this same directory (android/app/)
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=focusecho
+storeFile=focusecho.jks

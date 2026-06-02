@@ -1,0 +1,51 @@
+name: focus_echo_ai
+description: Real-time focus recovery platform
+publish_to: "none"
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_riverpod: 2.5.1
+  riverpod_annotation: 2.3.5
+  supabase_flutter: 2.3.4
+  firebase_core: 3.5.0
+  firebase_messaging: 15.1.2
+  sqflite: ^2.4.2+1
+  fl_chart: 0.67.0
+  permission_handler: 11.3.1
+  flutter_local_notifications: ^19.5.0
+  workmanager: ^0.9.0+3
+  shared_preferences: 2.2.3
+  go_router: 13.2.0
+  freezed_annotation: 2.4.1
+  json_annotation: 4.9.0
+  dio: 5.4.3+1
+  connectivity_plus: 7.1.1
+  path_provider: 2.1.3
+  path: ^1.9.0
+  collection: ^1.18.0
+  intl: 0.19.0
+  google_fonts: ^6.3.0
+  lottie: 3.1.2
+  shimmer: 3.0.0
+  uuid: 4.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  build_runner: 2.4.9
+  freezed: 2.5.2
+  json_serializable: 6.8.0
+  riverpod_generator: 2.4.0
+  flutter_lints: 3.0.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/privacy_policy.md

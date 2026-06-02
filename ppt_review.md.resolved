@@ -1,0 +1,341 @@
+# FocusEchoAI_Capstone.pptx — Full Review & Corrections
+
+> All corrections below are based on the **actual FocusEcho codebase** (mobile app + backend). Replace the generic template content with the verified real information.
+
+---
+
+## Slide 1 — Title / Cover
+
+| # | Current (Wrong) | ✅ Correct (from codebase) |
+|---|---|---|
+| 1 | `Candidate Name - 1 / Register Number` | Replace with **your actual names & register numbers** |
+| 2 | Language shown as **Kotlin (Android)** | Actual language: **Flutter / Dart** (not Kotlin) — `pubspec.yaml` confirms `flutter_riverpod`, `supabase_flutter` etc. |
+| 3 | Backend implied as **Firebase-only** | Actual backend: **FastAPI (Python) + Supabase (PostgreSQL)** deployed on **Render** |
+
+---
+
+## Slide 2 — Abstract
+
+| # | Current (Wrong) | ✅ Correct (from codebase) |
+|---|---|---|
+| 1 | "3-module pipeline: Data Collection → Cloud ML Processing → Android Push Recovery" | Actual pipeline: **5-module** — Data Collection → Cloud API (FastAPI) → Rule-Engine Scoring → Supabase Sync → FCM Push Recovery |
+| 2 | "Firebase Realtime DB + Google Cloud ML Engine for inference" | Actual: **Supabase (PostgreSQL)** for storage; **custom Rule Engine (Python)** for scoring — NOT Cloud ML Engine / Vertex AI |
+| 3 | "REST API layer between Android app and BigData analytics backend" | Correct, but clarify: REST API is a **FastAPI** service hosted on **Render**, not GCP |
+| 4 | "92% detection accuracy on distraction patterns" | This is a placeholder from the template. Real accuracy metric needs to be verified or removed. Use the **rule-based risk scoring** description instead |
+
+---
+
+## Slide 3 — Literature Review
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Focus Echo uses lightweight on-device sensors + cloud offloading" | Correct partially — actual sensors used: **Android UsageStatsManager + PermissionBridge (Kotlin)** for app-usage detection, NOT accelerometer/webcam |
+| 2 | "Replace EEG with phone gyroscope + usage pattern signals" | Wrong — FocusEcho does NOT use gyroscope. Uses **package name tracking + time-away duration + app category** |
+| 3 | "Focus Echo adds streaming pipeline with instant push notification" | Correct concept but: streaming is done via **Supabase Realtime**, not Pub/Sub |
+| 4 | "Extends with predictive ML model deployed on Cloud ML Engine" | Wrong — FocusEcho uses a **deterministic rule engine** (`rule_engine.py`) with weighted scoring, not a trained ML model on Cloud ML Engine |
+
+---
+
+## Slide 4 — Problem Statement
+
+✅ The core problem statement is **accurate and well-framed** — no major corrections needed.
+
+Minor improvement:
+- Add: "No existing system fuses **Flutter-based cross-platform mobile** sensors with a **serverless REST backend** and **Supabase cloud sync** to auto-detect and recover focus."
+
+---
+
+## Slide 5 — Problem Context & Motivation
+
+✅ Generally accurate. No data corrections needed.
+
+Minor add:
+- "FocusEcho specifically targets **Flutter (Dart)** mobile users on **Android 8+** leveraging UsageStats API without requiring wearable sensors."
+
+---
+
+## Slide 6 — Objectives
+
+| # | Current (Wrong) | ✅ Correct (from codebase) |
+|---|---|---|
+| 1 | "Module 2: Stream and store in Firebase and Cloud BigQuery" | Actual: **Supabase (PostgreSQL)** — not Firebase Realtime DB or BigQuery |
+| 2 | "Module 3: Train and deploy ML model on Cloud ML Engine" | Actual: **Rule-based scoring engine** (`rule_engine.py`) — no ML training, no Vertex AI |
+| 3 | "Module 4: FCM push notification" | ✅ Correct — FCM (`firebase_messaging: 15.1.2`) is actually used |
+| 4 | "Module 5: SUS score ≥ 75; battery overhead < 5%" | These are template placeholders — replace with actual measured values from your testing |
+
+---
+
+## Slide 7 — System Architecture / Workflow
+
+**Major corrections needed:**
+
+| # | Current (Wrong) | ✅ Correct Architecture |
+|---|---|---|
+| 1 | Android App (Kotlin) | **Flutter/Dart** mobile app with **Kotlin PermissionBridge** for UsageStats only |
+| 2 | Firebase Realtime DB | **Supabase (PostgreSQL)** for session & event storage |
+| 3 | BigQuery + Pub/Sub | NOT used — replace with **FastAPI REST API on Render** |
+| 4 | Cloud ML Engine / Vertex AI | NOT used — replace with **Rule Engine (Python)** in backend |
+| 5 | FCM Push Notification | ✅ Correct — FCM IS used |
+
+**Correct Architecture Flow:**
+```
+Flutter App (Dart)
+  → Kotlin PermissionBridge (UsageStats)
+  → Focus Detection Engine (Dart state machine)
+  → FastAPI Backend (Python / Render)
+      → Rule Engine (scoring_service.py + rule_engine.py)
+      → Supabase PostgreSQL (sessions, events, analytics)
+  → FCM Push Notification (Firebase Messaging)
+  → Supabase Realtime Sync
+```
+
+---
+
+## Slide 8 — Module 1: Data Collection & Ingestion
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Firebase SDK for Android (v32+)" | ✅ Partially correct — `firebase_core: 3.5.0` is used, but for **FCM only**, not event storage |
+| 2 | "Room DB for local buffering" | Wrong — actual local storage: **SQLite via `sqflite: ^2.4.2`** |
+| 3 | "Kotlin Coroutines for async collection" | Wrong — app is **Flutter/Dart** using **Dart async/await + Riverpod** |
+| 4 | "Input: Android system broadcasts & UsageStatsManager API" | ✅ Correct — `PermissionBridge.kt` bridges UsageStats to Flutter |
+| 5 | "Output: JSON event stream pushed to Firebase Realtime DB" | Wrong — events sent via **FastAPI REST API** → **Supabase** |
+| 6 | "WorkManager for background service" | ✅ Correct — `workmanager: ^0.9.0+3` is in pubspec |
+
+---
+
+## Slide 9 — Module 1: Technical Details / Algorithm (Pseudocode)
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Start foreground service with WAKE_LOCK permission" | ✅ Correct |
+| 2 | "Read accelerometer via SensorEventListener" | **WRONG** — FocusEcho does **NOT** read accelerometer. Remove this step |
+| 3 | "Serialize to JSON: {uid, ts, app, screen, accel_x, accel_y, accel_z}" | Wrong schema. Actual fields from codebase: `{package_name, event_type, triggered_at, app_category, time_away_seconds, returned_to_origin, risk_score}` |
+| 4 | "Push JSON to Firebase /events/{uid}/{timestamp}" | Wrong — push to **FastAPI endpoint**: `POST /api/v1/events` → stored in **Supabase** |
+| 5 | "Store in Room DB, retry on next cycle" | Wrong — retry via **sqflite** (not Room DB, which is Android-Java specific) |
+
+---
+
+## Slide 10 — Module 1: Implementation & Validation
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Platform: Android 10+, Kotlin 1.9" | Wrong — platform is **Flutter (Dart)** with Kotlin bridge. `minSdkVersion 26` (Android 8+) |
+| 2 | "Library: Firebase Realtime DB 32.3.1" | Wrong — actual library: **`supabase_flutter: 2.3.4`** for data; `firebase_messaging: 15.1.2` for notifications |
+| 3 | "Firebase console shows event documents arriving within 500ms" | Wrong — validation via **Supabase dashboard** / FastAPI health endpoint `/health` |
+
+---
+
+## Slide 11 — Module 2: Cloud Data Pipeline
+
+**Major rewrite needed:**
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Google Cloud Pub/Sub → Dataflow (Apache Beam) → BigQuery" | **NONE of these are used.** Replace with: **FastAPI REST API → Supabase PostgreSQL** |
+| 2 | "Python 3.11 Beam pipeline" | Replace with: **FastAPI (Python 3.10) backend with SQLAlchemy ORM** |
+| 3 | "Cloud Functions (Firebase → Pub/Sub bridge)" | Not used — replace with **Render hosted FastAPI** (see `render.yaml`) |
+
+**Correct Module 2 description:**
+> Events from Flutter app are sent via `POST /api/v1/events` to the **FastAPI backend** (Python, hosted on Render). The backend validates schemas using **Pydantic v2**, stores events in **Supabase (PostgreSQL)** via SQLAlchemy, and triggers real-time score computation.
+
+---
+
+## Slide 12 — Module 2: Technical Details / Algorithm (Pseudocode)
+
+Replace entire pseudocode with:
+```
+1. Flutter app detects app switch via FocusDetectionEngine (Dart state machine)
+2. FocusState transitions: focus → grace → transition → distraction → recovering
+3. Distraction event serialized: {package_name, event_type, triggered_at, app_category, time_away_seconds}
+4. HTTP POST /api/v1/events → FastAPI backend (Render)
+5. Pydantic validates event schema
+6. SQLAlchemy writes to Supabase PostgreSQL (distraction_events table)
+7. Scoring triggered: POST /api/v1/scoring/session/{session_id}
+8. RuleEngine.compute_risk() → risk label: SAFE / LOW / MEDIUM / HIGH / CRITICAL
+9. Score returned to Flutter app for real-time UI update
+```
+
+---
+
+## Slide 13 — Module 2: Implementation & Validation
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "GCP project, Dataflow runner, BigQuery focus_db" | Wrong — **Render (cloud hosting) + Supabase** |
+| 2 | "Python 3.11, Apache Beam 2.54" | Wrong — **Python 3.10, FastAPI 0.111, SQLAlchemy 2.0** |
+| 3 | "synthetic event burst of 1000 events in < 8s" | Replace with your actual API response time test results |
+
+---
+
+## Slide 14 — Module 3: ML Distraction Detection Model
+
+**Major rewrite needed — NO ML model is used:**
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Trains a binary classifier on BigQuery feature windows" | Wrong — FocusEcho uses a **deterministic rule-based engine**, not a trained ML model |
+| 2 | "Google Cloud AI Platform / Vertex AI" | Not used |
+| 3 | "scikit-learn (RandomForest + XGBoost)" | Not used |
+| 4 | "BigQuery ML for in-warehouse baseline" | Not used |
+
+**Correct Module 3 description:**
+> FocusEcho uses a **custom Rule Engine** (`rule_engine.py`) that computes distraction risk using:
+> - **App category weights** (always_distraction=60pts, allowed_with_limit=20pts, unknown=30pts)
+> - **Time-away duration** (logarithmic penalty)
+> - **Distraction frequency** (last 30 min count × 5pts)
+> - **Recovery bonus** (−15pts if returned < 30s)
+> - Final **risk labels**: SAFE / LOW / MEDIUM / HIGH / CRITICAL
+
+---
+
+## Slide 15 — Module 3: Technical Details / Algorithm
+
+Replace pseudocode with **actual rule engine logic:**
+```
+INPUT: List of distraction events for session
+OUTPUT: risk_label (SAFE/LOW/MEDIUM/HIGH/CRITICAL), focus_score (0-100)
+
+1. Filter events from last 30 minutes
+2. Get latest event: app_category, time_away_seconds, returned_to_origin
+3. score = 0.0
+4. score += category_weight[app_category]  
+   # always_distraction=60, allowed_with_limit=20, unknown=30
+5. score += (log(time_away_seconds+1) / log(60)) × 25
+6. score += distraction_count_last_30min × 5
+7. IF returned_to_focus AND time_away < 30s: score -= 15
+8. score = clamp(score, 0, 100)
+9. risk_label = CRITICAL(≥70) / HIGH(≥45) / MEDIUM(≥20) / LOW(<20)
+10. focus_score = 100 - count_penalty - recovery_penalty - critical_penalty + time_bonus
+```
+
+---
+
+## Slide 16 — Module 3: Implementation & Validation
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "GCP Vertex AI, scikit-learn 1.4" | Wrong — **Python 3.10 FastAPI backend, custom rule_engine.py** |
+| 2 | "Dataset: 2,400 labelled 5-min windows" | Not applicable — rule-based, no training dataset |
+| 3 | "Accuracy 92.3%, F1 0.91, ROC-AUC 0.96" | **REMOVE** — these are placeholder numbers. Rule engine has no ML accuracy metric. Use: "Rule engine validated against 5 test scenarios, all PASS" |
+
+---
+
+## Slide 17 — Module 4: Notification Engine
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Receives ML prediction results (distraction_prob float) from Cloud Function" | Wrong — trigger comes from **Flutter app's FocusDetectionEngine** state machine, not Vertex AI |
+| 2 | "Cloud Functions (Python) as orchestrator" | Wrong — **FastAPI scoring endpoint** orchestrates, hosted on Render |
+| 3 | "Vertex AI prediction API" | Not used |
+| 4 | "FCM + NotificationCompat" | ✅ Correct — `firebase_messaging: 15.1.2` + `flutter_local_notifications` are both used |
+| 5 | "Firestore for notification log" | Wrong — **Supabase PostgreSQL** used for all persistence |
+
+---
+
+## Slide 18 — Module 4: Technical Details / Algorithm
+
+Replace pseudocode:
+```
+1. FocusDetectionEngine (Dart) detects distraction onset
+2. State machine transitions: focus → grace (10s) → transition (20s) → distraction
+3. Distraction event POSTed to FastAPI /api/v1/events
+4. RuleEngine computes risk_score → recommendation string
+5. IF risk == HIGH or CRITICAL: trigger FCM notification
+6. Firebase Cloud Messaging sends push via firebase_messaging SDK
+7. flutter_local_notifications displays in-app alert
+8. Recovery technique shown (Pomodoro / breathing / walk) based on risk level
+9. User returns to focus app → state → recovering → focus
+10. Session score updated in Supabase via /api/v1/scoring/session/{id}
+```
+
+---
+
+## Slide 19 — Module 4: Implementation & Validation
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Firebase Admin SDK 6.2, Cloud Functions v2, Cloud Scheduler cron every 5 min" | Wrong — **Flutter firebase_messaging SDK + FastAPI** (no Cloud Functions, no Cloud Scheduler) |
+| 2 | "avg 1.7s" | Replace with your **actual measured latency** from testing |
+
+---
+
+## Slide 20-22 — Module 5: Evaluation
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Android Battery Historian" | ✅ Can keep — valid tool |
+| 2 | "Google Cloud Dataflow" metrics | Not applicable |
+| 3 | "30-user A/B study" | Replace with your **actual user test size** |
+| 4 | "92.3% ML accuracy" | **Remove** — no ML model; use rule engine validation metrics instead |
+
+---
+
+## Slide 23 — Implementation / Tech Stack
+
+**Replace the entire tech stack table with:**
+
+| Layer | Actual Technology |
+|---|---|
+| **Language (Mobile)** | Flutter (Dart 3.3+) |
+| **Language (Bridge)** | Kotlin (Android UsageStats PermissionBridge) |
+| **Language (Backend)** | Python 3.10 |
+| **Mobile Framework** | Flutter 3.19 + Riverpod 2.5.1 |
+| **Backend Framework** | FastAPI 0.111 + Uvicorn |
+| **Database** | Supabase (PostgreSQL) via `supabase_flutter: 2.3.4` |
+| **Local Storage** | SQLite via `sqflite: ^2.4.2` |
+| **Push Notifications** | Firebase Cloud Messaging (`firebase_messaging: 15.1.2`) |
+| **Hosting** | Render (Docker container via `render.yaml`) |
+| **State Management** | Riverpod + Freezed |
+| **ORM** | SQLAlchemy 2.0 |
+| **Schema Validation** | Pydantic v2 |
+| **Routing (Mobile)** | GoRouter 13.2 |
+| **Charts** | fl_chart 0.67 |
+
+---
+
+## Slide 24 — Software / Hardware Functionality
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "Android Studio Hedgehog, min SDK 26" | ✅ Correct (minSdk 26 confirmed) |
+| 2 | "GCP project with Dataflow, Vertex AI, Cloud Functions" | Wrong — **Render (Docker) + Supabase + Firebase (FCM only)** |
+| 3 | "BigQuery: focus_db dataset" | Wrong — **Supabase PostgreSQL with migrations** (`20260416_sprint2_schema.sql`, `20260430_event_context.sql`) |
+| 4 | "Vertex AI Endpoint: 1 vCPU, 4GB RAM" | Not used |
+
+---
+
+## Slide 27 — Ethics & Engineering Standards
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "30-day auto-purge policy in Firestore" | Wrong — data stored in **Supabase (PostgreSQL)** with **Row Level Security (RLS)** policies (`20260430_rls_policies.sql`) |
+| 2 | "Firebase Security Rules restrict read/write to authenticated UID" | Wrong — **Supabase RLS policies** enforce per-user data isolation |
+| 3 | "Code documented with KDoc (Android)" | Wrong — code uses **Dart/Flutter** with standard Dart docstrings |
+
+---
+
+## Slide 28 — Conclusion & Future Work
+
+| # | Current (Wrong) | ✅ Correct |
+|---|---|---|
+| 1 | "92.3% distraction detection accuracy with < 2s alert latency" | Remove ML accuracy claim. Keep: **"Rule-based detection with < 2s alert latency"** |
+| 2 | "Published event schema + pipeline design" | ✅ Keep |
+| 3 | Future: "Cross-platform expansion to iOS with Flutter" | ✅ Correct — already Flutter, iOS is feasible |
+| 4 | "Scale ML training to 10,000+ users via Vertex AI AutoML" | Change to: **"Scale rule engine to support Vertex AI ML model upgrade in future sprint"** |
+| 5 | "Federated learning to train on-device" | ✅ Valid future work, keep |
+
+---
+
+## Summary of Critical Errors to Fix
+
+| Priority | Slide(s) | Issue |
+|---|---|---|
+| 🔴 Critical | 1, 8, 9, 23 | Wrong language: **Kotlin → Flutter/Dart** |
+| 🔴 Critical | 7, 11, 12, 13 | Wrong backend: **BigQuery/GCP → Supabase/Render/FastAPI** |
+| 🔴 Critical | 14, 15, 16, 25 | No ML model used: **Remove Vertex AI/scikit-learn** → Rule Engine |
+| 🔴 Critical | 9 | Remove accelerometer — **not used in FocusEcho** |
+| 🟠 High | 17, 18, 19 | Wrong notification trigger: **Vertex AI → FocusDetectionEngine (Dart)** |
+| 🟠 High | 2, 16, 25 | Remove **"92.3% ML accuracy"** — not applicable |
+| 🟡 Medium | 10, 13 | Wrong DB: **Firebase Realtime DB → Supabase PostgreSQL** |
+| 🟡 Medium | 27 | Wrong security: **Firebase Rules → Supabase RLS** |

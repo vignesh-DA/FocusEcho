@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: focus-echo-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: PORT
+        value: "8000"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false

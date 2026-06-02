@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/focus_echo_bg" />
+    <item>
+        <shape android:shape="oval">
+            <size android:width="160dp" android:height="160dp" />
+            <solid android:color="@color/focus_echo_accent" />
+            <stroke android:width="10dp" android:color="#6600C2FF" />
+        </shape>
+    </item>
+</layer-list>

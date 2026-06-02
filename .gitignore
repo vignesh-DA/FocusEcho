@@ -1,0 +1,53 @@
+# Flutter
+.dart_tool/
+build/
+.packages
+pubspec.lock
+*.g.dart
+*.freezed.dart
+
+# Python
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+.eggs/
+
+# VS Code & IntelliJ
+.vscode
+.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+.idea.zip
+*.iml
+*.ipr
+*.iws
+
+# Android
+*.keystore
+*.jks
+key.properties
+local.properties
+**/android/app/google-services.json
+
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+backend/.env
+**/.env
+prompt.md
+TODO.md
+
+# iOS
+Pods/
+*.xcworkspace/xcuserdata/
+
+# General
+.DS_Store
+*.log
+_pptx_extracted/

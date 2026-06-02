@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Focus Echo AI</string>
+    <string name="accessibility_service_description">Detects app switches to deliver focus recovery nudges.</string>
+</resources>

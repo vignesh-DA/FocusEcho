@@ -1,0 +1,59 @@
+name: Build and Release Android APK
+
+on:
+  push:
+    tags:
+      - 'v*' # Triggers on tags starting with v, e.g. v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Release APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Get dependencies
+        run: |
+          cd mobile_app
+          flutter pub get
+
+      - name: Build Release APK
+        run: |
+          cd mobile_app
+          flutter build apk --release --no-tree-shake-icons
+
+      - name: Rename APK
+        run: |
+          mv mobile_app/build/app/outputs/flutter-apk/app-release.apk mobile_app/build/app/outputs/flutter-apk/FocusEchoAI-release.apk
+
+      - name: Create GitHub Release and Upload APK
+        uses: softprops/action-gh-release@v1
+        with:
+          files: mobile_app/build/app/outputs/flutter-apk/FocusEchoAI-release.apk
+          name: Release ${{ github.ref_name }}
+          body: |
+            Automatic build of FocusEcho AI Android Application for release ${{ github.ref_name }}.
+            
+            ### Download
+            - **[FocusEchoAI-release.apk](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/FocusEchoAI-release.apk)** - Download and install on your physical Android device.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
