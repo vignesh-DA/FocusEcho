@@ -10,6 +10,7 @@ class FocusSessionDao {
   Future<void> insertSession(FocusSession session) async {
     if (kIsWeb) {
       DatabaseHelper.webSessions.add(Map<String, dynamic>.from(session.toSqliteMap()));
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -33,6 +34,7 @@ class FocusSessionDao {
         DatabaseHelper.webSessions[index]['focus_score'] = focusScore;
         DatabaseHelper.webSessions[index]['status'] = status;
       }
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -97,6 +99,7 @@ class FocusSessionDao {
       if (index != -1) {
         DatabaseHelper.webSessions[index]['is_synced'] = 1;
       }
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -106,6 +109,7 @@ class FocusSessionDao {
   Future<void> clearAllSessions() async {
     if (kIsWeb) {
       DatabaseHelper.webSessions.clear();
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -124,6 +128,7 @@ class FocusSessionDao {
           count++;
         }
       }
+      await DatabaseHelper.persistWeb();
       return count;
     }
     final db = await _databaseHelper.getDatabase();

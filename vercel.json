@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "outputDirectory": "mobile_app/build/web",
+  "routes": [
+    {
+      "src": "/flutter_service_worker.js",
+      "headers": { "Cache-Control": "no-cache" },
+      "dest": "/flutter_service_worker.js"
+    },
+    {
+      "src": "^/assets/(.*)",
+      "dest": "/assets/$1"
+    },
+    {
+      "src": "^/canvaskit/(.*)",
+      "dest": "/canvaskit/$1"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

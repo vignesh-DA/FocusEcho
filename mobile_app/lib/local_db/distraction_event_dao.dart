@@ -10,6 +10,7 @@ class DistractionEventDao {
   Future<void> insertEvent(DistractionEvent event) async {
     if (kIsWeb) {
       DatabaseHelper.webEvents.add(Map<String, dynamic>.from(event.toSqliteMap()));
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -30,6 +31,7 @@ class DistractionEventDao {
         DatabaseHelper.webEvents[index]['is_recovered'] = 1;
         DatabaseHelper.webEvents[index]['returned_to_origin'] = returnedToOrigin ? 1 : 0;
       }
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -68,6 +70,7 @@ class DistractionEventDao {
       if (index != -1) {
         DatabaseHelper.webEvents[index]['is_synced'] = 1;
       }
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -130,6 +133,7 @@ class DistractionEventDao {
   Future<void> clearAllEvents() async {
     if (kIsWeb) {
       DatabaseHelper.webEvents.clear();
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -146,6 +150,7 @@ class DistractionEventDao {
           event['is_synced'] = 0;
         }
       }
+      await DatabaseHelper.persistWeb();
       return;
     }
     final db = await _databaseHelper.getDatabase();

@@ -27,7 +27,22 @@ Future<void> main() async {
     debugPrint('Supabase Init Failed: $e. Using offline mode.');
   }
 
-  if (!kIsWeb) {
+  if (kIsWeb) {
+    await DatabaseHelper.initWebStorage(prefs);
+    // Pre-populate web-friendly app names on first run so Focus Session works immediately
+    if ((prefs.getString(AppKeys.productiveApps) ?? '[]') == '[]') {
+      await prefs.setString(
+        AppKeys.productiveApps,
+        '["Figma","VS Code","GitHub","Google Docs","Notion"]',
+      );
+    }
+    if ((prefs.getString(AppKeys.distractingApps) ?? '[]') == '[]') {
+      await prefs.setString(
+        AppKeys.distractingApps,
+        '["Instagram","Twitter","YouTube","Reddit","TikTok"]',
+      );
+    }
+  } else {
     await DatabaseHelper.instance.getDatabase();
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(

@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 
 class DatabaseHelper {
@@ -12,9 +15,43 @@ class DatabaseHelper {
 
   Database? _database;
 
-  // In-memory store for Web demo
+  // Web storage — backed by localStorage via SharedPreferences
   static final List<Map<String, dynamic>> webSessions = [];
   static final List<Map<String, dynamic>> webEvents = [];
+  static SharedPreferences? _webPrefs;
+  static const _sessionsKey = 'focusecho_web_sessions';
+  static const _eventsKey = 'focusecho_web_events';
+
+  /// Call once at startup on web to load persisted data from localStorage.
+  static Future<void> initWebStorage(SharedPreferences prefs) async {
+    if (!kIsWeb) return;
+    _webPrefs = prefs;
+    try {
+      final sessionsJson = prefs.getString(_sessionsKey);
+      if (sessionsJson != null) {
+        final list = jsonDecode(sessionsJson) as List<dynamic>;
+        webSessions.addAll(list.cast<Map<String, dynamic>>());
+      }
+      final eventsJson = prefs.getString(_eventsKey);
+      if (eventsJson != null) {
+        final list = jsonDecode(eventsJson) as List<dynamic>;
+        webEvents.addAll(list.cast<Map<String, dynamic>>());
+      }
+    } catch (e) {
+      debugPrint('[WebStorage] Failed to load from localStorage: $e');
+    }
+  }
+
+  /// Persist both lists to localStorage. Call after every web mutation.
+  static Future<void> persistWeb() async {
+    if (!kIsWeb || _webPrefs == null) return;
+    try {
+      await _webPrefs!.setString(_sessionsKey, jsonEncode(webSessions));
+      await _webPrefs!.setString(_eventsKey, jsonEncode(webEvents));
+    } catch (e) {
+      debugPrint('[WebStorage] Failed to persist to localStorage: $e');
+    }
+  }
 
   Future<Database> getDatabase() async {
     if (kIsWeb) {
@@ -103,6 +140,7 @@ class DatabaseHelper {
     if (kIsWeb) {
       webSessions.clear();
       webEvents.clear();
+      await persistWeb();
       return;
     }
     final db = await getDatabase();
