@@ -45,6 +45,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     'com.android.systemui',
     'com.google.android.apps.authenticator2',
     'com.microsoft.authenticator',
+    'com.focusecho.ai',
   };
 
   static const Set<String> _defaultAllowedWithLimit = {

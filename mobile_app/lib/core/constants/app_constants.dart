@@ -1,5 +1,6 @@
 class AppRoutes {
   static const splash = '/splash';
+  static const login = '/login';
   static const consent = '/consent';
   static const permissionWizard = '/permission-wizard';
   static const batteryOptimization = '/battery-optimization';
@@ -26,6 +27,7 @@ class AppKeys {
   static const syncEnabled = 'sync_enabled';
   static const localOnlyMode = 'local_only_mode';
   static const analyticsEnabled = 'analytics_enabled';
+  static const hasSkippedLogin = 'has_skipped_login';
 }
 
 class AppChannels {

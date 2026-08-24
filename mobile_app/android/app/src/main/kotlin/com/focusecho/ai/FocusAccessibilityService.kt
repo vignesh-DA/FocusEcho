@@ -44,7 +44,6 @@ class FocusAccessibilityService : AccessibilityService() {
         lastSwitchTimeMs = now
 
         val packageName = event.packageName?.toString() ?: return
-        if (packageName == this.packageName) return
 
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
 

@@ -75,7 +75,6 @@ class FocusDetectionService : Service() {
 
         val packageName = getForegroundPackageName() ?: return
         if (packageName == lastForegroundPackage) return
-        if (packageName == this.packageName) return
 
         val now = System.currentTimeMillis()
         if (now - lastSwitchTimeMs < 500) return
