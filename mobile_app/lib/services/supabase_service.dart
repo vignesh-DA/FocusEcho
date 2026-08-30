@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/models/distraction_event.dart';
@@ -36,7 +37,10 @@ class SupabaseService {
   }
 
   Future<bool> signInWithGoogle() {
-    return _client.auth.signInWithOAuth(OAuthProvider.google);
+    return _client.auth.signInWithOAuth(
+      OAuthProvider.google,
+      redirectTo: kIsWeb ? null : 'com.focusecho.ai://login-callback',
+    );
   }
 
   Future<void> signOut() => _client.auth.signOut();
