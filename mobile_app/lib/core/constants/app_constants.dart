@@ -29,6 +29,8 @@ class AppKeys {
   static const localOnlyMode = 'local_only_mode';
   static const analyticsEnabled = 'analytics_enabled';
   static const hasSkippedLogin = 'has_skipped_login';
+  static const sessionIntent = 'session_intent';
+  static const crossSurfaceNudges = 'cross_surface_nudges';
 }
 
 class AppChannels {

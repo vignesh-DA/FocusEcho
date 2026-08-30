@@ -10,9 +10,11 @@ import 'package:uuid/uuid.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/models/distraction_event.dart';
 import '../../core/models/focus_session.dart';
+import '../../core/models/intervention_event.dart';
 import '../../core/providers/app_dependencies.dart';
 import '../../local_db/distraction_event_dao.dart';
 import '../../local_db/focus_session_dao.dart';
+import '../../local_db/intervention_event_dao.dart';
 import '../../services/sync_service.dart';
 import '../../services/browser_monitor/browser_monitor.dart';
 import 'focus_session_state.dart';
@@ -20,8 +22,13 @@ import 'focus_detection_engine.dart';
 import 'rule_engine.dart';
 
 class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
-  FocusSessionViewModel(this._prefs, this._sessionDao, this._eventDao, this._syncService)
-      : _sessionChannel = const MethodChannel(AppChannels.session),
+  FocusSessionViewModel(
+    this._prefs,
+    this._sessionDao,
+    this._eventDao,
+    this._interventionDao,
+    this._syncService,
+  )   : _sessionChannel = const MethodChannel(AppChannels.session),
         _streamChannel = const EventChannel(AppChannels.distractionStream),
         super(const FocusSessionState()) {
     _loadAvailableApps();
@@ -36,6 +43,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   final SharedPreferences _prefs;
   final FocusSessionDao _sessionDao;
   final DistractionEventDao _eventDao;
+  final InterventionEventDao _interventionDao;
   final SyncService _syncService;
   final MethodChannel _sessionChannel;
   final EventChannel _streamChannel;
@@ -96,6 +104,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     state = state.copyWith(selectedProductiveApp: app);
   }
 
+  /// Feature 1 — Focus Intent. Called on every keystroke so the setup UI can
+  /// enable/disable the start button live.
+  void setIntent(String value) {
+    state = state.copyWith(intent: value);
+  }
+
   void _listenToDistractionStream() {
     if (kIsWeb) return;
     _subscription = _streamChannel.receiveBroadcastStream().listen((event) {
@@ -105,6 +119,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       final timestamp = DateTime.tryParse(timestampRaw ?? '') ?? DateTime.now();
       final packageName = map['packageName'] as String?;
       final appLabel = map['appLabel'] as String? ?? packageName ?? 'unknown';
+
+      // Feature 2 — intervention lifecycle events emitted by the native layer.
+      if (eventType == 'intervention_shown' || eventType == 'intervention_action') {
+        unawaited(_handleNativeInterventionEvent(eventType, map));
+        return;
+      }
 
       final signal = switch (eventType) {
         'notification' => FocusSignal(
@@ -137,7 +157,11 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     });
   }
 
-  Future<void> startSession(String productiveApp) async {
+  Future<void> startSession(String productiveApp, {String intent = ''}) async {
+    // Feature 1 — a session cannot start without a stated intent.
+    final trimmedIntent = intent.trim();
+    if (trimmedIntent.isEmpty) return;
+
     var userId = _prefs.getString(AppKeys.userId) ?? _prefs.getString(AppKeys.deviceId);
     if (userId == null || userId.isEmpty) {
       userId = _uuid.v4();
@@ -149,8 +173,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       userId: userId,
       startTime: DateTime.now(),
       productiveApp: productiveApp,
+      intent: trimmedIntent,
     );
     await _sessionDao.insertSession(session);
+    // Persist the intent so the native layer can show it on full-screen
+    // interventions (Feature 2).
+    await _prefs.setString(AppKeys.sessionIntent, trimmedIntent);
     if (!kIsWeb) {
       await _sessionChannel.invokeMethod<void>('startSession');
     }
@@ -169,7 +197,19 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       state = state.copyWith(elapsedSeconds: state.elapsedSeconds + 1);
     });
 
-    state = state.copyWith(isActive: true, session: session, distractionCount: 0, sessionXp: 0);
+    state = state.copyWith(
+      isActive: true,
+      session: session,
+      distractionCount: 0,
+      sessionXp: 0,
+      intent: trimmedIntent,
+      escalationLevel: 1,
+      sessionSummary: null,
+      crossSurfaceNudge: null,
+    );
+
+    // Feature 4 — subscribe to the cross-surface intervention channel.
+    unawaited(_subscribeCrossSurface());
   }
 
   Future<void> onDistractionDetected(String packageName, String appLabel) async {
@@ -195,14 +235,35 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       riskScoreNumeric: riskScore,
     );
     await _eventDao.insertEvent(event);
+    await _registerDistraction(event);
+  }
+
+  /// Shared escalation path for both native and browser distractions.
+  /// Computes the relapse level for this session, updates state, logs the
+  /// intervention as shown, and broadcasts cross-surface (Feature 4).
+  Future<void> _registerDistraction(DistractionEvent event) async {
+    final newCount = state.distractionCount + 1;
+    final level = _levelForRelapse(newCount);
     state = state.copyWith(
-      distractionCount: state.distractionCount + 1,
-      currentRiskScore: risk,
+      distractionCount: newCount,
+      currentRiskScore: event.riskScore,
       showAlert: true,
-      lastDistractionPackage: packageName,
-      lastDistractionLabel: appLabel,
+      lastDistractionPackage: event.packageName,
+      lastDistractionLabel: event.appLabel,
       lastEventId: event.id,
+      escalationLevel: level,
     );
+    await _logIntervention(level, 'shown');
+    unawaited(_broadcastDistraction(event, level));
+  }
+
+  /// Escalation ladder (Feature 2):
+  /// relapse 1 -> level 1 (heads-up), relapse 2-3 -> level 2 (full-screen),
+  /// relapse 4+ -> level 3 (forced choice, no dismiss-and-ignore).
+  int _levelForRelapse(int relapseCount) {
+    if (relapseCount <= 1) return 1;
+    if (relapseCount <= 3) return 2;
+    return 3;
   }
 
   Future<void> onRecovery(String eventId, {bool returnedToOrigin = false, int? timeAwaySeconds}) async {
@@ -221,8 +282,13 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
         seconds,
         returnedToOrigin: returnedToOrigin,
       );
+      // Feature 3 — the recovered row must be re-pushed so Supabase gets the
+      // returned_at (recovered_at) backfill even if the original event was
+      // already synced before the user returned.
+      await _eventDao.markAsUnsynced(eventId);
       final gained = seconds < 10 ? AppXP.recoveryXp : 10;
       state = state.copyWith(sessionXp: state.sessionXp + gained, showAlert: false);
+      unawaited(_syncService.syncPendingEvents());
     } catch (e) {
       debugPrint('Error during recovery: $e');
       state = state.copyWith(showAlert: false);
@@ -264,10 +330,34 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       await _browserMonitor.stopSession();
     }
     await _prefs.setBool(AppKeys.sessionActive, false);
+    await _prefs.remove(AppKeys.sessionIntent);
     unawaited(_syncService.syncPendingEvents());
+    _unsubscribeCrossSurface();
     _engine.reset();
-    state = const FocusSessionState();
+    // Feature 1 — keep the completed session around so the session-complete
+    // view can render intent + planned vs. actual duration.
+    state = state.copyWith(
+      isActive: false,
+      sessionSummary: SessionSummary(
+        sessionId: session.id,
+        intent: session.intent,
+        productiveApp: session.productiveApp,
+        actualSeconds: state.elapsedSeconds,
+        totalDistractions: totalDistractions,
+        sessionXp: state.sessionXp,
+        focusScore: focusScore,
+      ),
+      showAlert: false,
+    );
     _loadAvailableApps(); // Reload for next session
+  }
+
+  /// Dismisses the session-complete summary and returns to the setup view.
+  void dismissSummary() {
+    state = FocusSessionState(
+      availableProductiveApps: state.availableProductiveApps,
+      selectedProductiveApp: state.selectedProductiveApp,
+    );
   }
 
   void dismissAlert() => state = state.copyWith(showAlert: false);
@@ -275,6 +365,74 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   void snoozeApp(String packageName) {
     _engine.snooze(packageName, 5); // 5 minutes snooze
     state = state.copyWith(showAlert: false);
+    unawaited(_logIntervention(state.escalationLevel, 'snoozed'));
+  }
+
+  /// Feature 2 — user chose "Return to Focus" on an intervention.
+  void returnToFocusFromIntervention() {
+    state = state.copyWith(showAlert: false);
+    unawaited(_logIntervention(state.escalationLevel, 'return_to_focus'));
+  }
+
+  /// Feature 2 — user chose "Take a Break" (level 2-3 full-screen alert).
+  void takeBreakFromIntervention() {
+    state = state.copyWith(showAlert: false);
+    unawaited(_logIntervention(state.escalationLevel, 'take_break'));
+  }
+
+  /// Feature 2 — user chose "Pause Session" (level 3+ forced choice).
+  Future<void> pauseSessionFromIntervention() async {
+    unawaited(_logIntervention(state.escalationLevel, 'pause_session'));
+    await stopSession();
+  }
+
+  /// Logs an intervention row (Feature 2). [actionTaken] is one of:
+  /// shown | dismissed | return_to_focus | take_break | pause_session | snoozed
+  Future<void> _logIntervention(int level, String actionTaken) async {
+    final sessionId = state.session?.id;
+    if (sessionId == null) return;
+    final event = InterventionEvent(
+      id: _uuid.v4(),
+      sessionId: sessionId,
+      level: level,
+      actionTaken: actionTaken,
+      timestamp: DateTime.now(),
+    );
+    try {
+      await _interventionDao.insertEvent(event);
+    } catch (e) {
+      debugPrint('Failed to log intervention: $e');
+    }
+  }
+
+  /// Handles intervention lifecycle events forwarded by the native layer
+  /// (full-screen InterventionActivity shown / button pressed).
+  Future<void> _handleNativeInterventionEvent(String eventType, Map<String, dynamic> map) async {
+    final sessionId = state.session?.id;
+    if (sessionId == null) return;
+    final level = (map['level'] as num?)?.toInt() ?? 1;
+    final action = eventType == 'intervention_shown'
+        ? 'shown'
+        : (map['action'] as String?) ?? 'dismissed';
+    final event = InterventionEvent(
+      id: _uuid.v4(),
+      sessionId: sessionId,
+      level: level,
+      actionTaken: action,
+      timestamp: DateTime.now(),
+    );
+    try {
+      await _interventionDao.insertEvent(event);
+    } catch (e) {
+      debugPrint('Failed to log native intervention: $e');
+    }
+    if (eventType == 'intervention_action') {
+      if (action == 'pause_session') {
+        await stopSession();
+      } else if (action == 'return_to_focus' || action == 'take_break') {
+        state = state.copyWith(showAlert: false);
+      }
+    }
   }
 
   FocusDetectionConfig _buildConfig(String focusApp) {
@@ -395,14 +553,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     );
 
     await _eventDao.insertEvent(event);
-    state = state.copyWith(
-      distractionCount: state.distractionCount + 1,
-      currentRiskScore: risk,
-      showAlert: true,
-      lastDistractionPackage: packageName,
-      lastDistractionLabel: event.appLabel,
-      lastEventId: event.id,
-    );
+    await _registerDistraction(event);
   }
 
   Future<void> _logIntentionalSwitch(Map<String, dynamic> payload) async {
@@ -450,11 +601,59 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     };
   }
 
+  // ── Feature 4 — Cross-Surface Intervention Sync ──────────────────────────
+
+  bool get _crossSurfaceEnabled =>
+      (_prefs.getBool(AppKeys.crossSurfaceNudges) ?? false) &&
+      AppDependencies.supabaseService.currentUser != null;
+
+  Future<void> _subscribeCrossSurface() async {
+    if (!_crossSurfaceEnabled) return;
+    final userId = AppDependencies.supabaseService.currentUser?.id;
+    if (userId == null) return;
+    await AppDependencies.supabaseService.subscribeToInterventions(
+      userId,
+      (surface, label, level) {
+        if (!state.isActive || !mounted) return;
+        state = state.copyWith(
+          crossSurfaceNudge: 'You opened $label on your $surface — session still active.',
+        );
+      },
+    );
+  }
+
+  void _unsubscribeCrossSurface() {
+    AppDependencies.supabaseService.unsubscribeFromInterventions();
+  }
+
+  Future<void> _broadcastDistraction(DistractionEvent event, int level) async {
+    if (!_crossSurfaceEnabled) return;
+    final userId = AppDependencies.supabaseService.currentUser?.id;
+    if (userId == null) return;
+    const surface = kIsWeb ? 'browser' : 'phone';
+    try {
+      await AppDependencies.supabaseService.broadcastDistraction(
+        userId,
+        surface: surface,
+        label: event.appLabel,
+        level: level,
+      );
+    } catch (e) {
+      debugPrint('Cross-surface broadcast failed: $e');
+    }
+  }
+
+  /// Clears the currently displayed cross-surface nudge.
+  void clearCrossSurfaceNudge() {
+    state = state.copyWith(crossSurfaceNudge: null);
+  }
+
   @override
   void dispose() {
     _timer?.cancel();
     _subscription?.cancel();
     _browserSubscription?.cancel();
+    _unsubscribeCrossSurface();
     super.dispose();
   }
 }
@@ -464,6 +663,7 @@ final focusSessionProvider = StateNotifierProvider<FocusSessionViewModel, FocusS
     AppDependencies.prefs,
     AppDependencies.sessionDao,
     AppDependencies.eventDao,
+    AppDependencies.interventionDao,
     AppDependencies.syncService,
   ),
 );

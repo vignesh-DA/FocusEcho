@@ -11,16 +11,18 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const _dbName = 'focus_echo.db';
-  static const _dbVersion = 2;
+  static const _dbVersion = 3;
 
   Database? _database;
 
   // Web storage — backed by localStorage via SharedPreferences
   static final List<Map<String, dynamic>> webSessions = [];
   static final List<Map<String, dynamic>> webEvents = [];
+  static final List<Map<String, dynamic>> webInterventions = [];
   static SharedPreferences? _webPrefs;
   static const _sessionsKey = 'focusecho_web_sessions';
   static const _eventsKey = 'focusecho_web_events';
+  static const _interventionsKey = 'focusecho_web_interventions';
 
   /// Call once at startup on web to load persisted data from localStorage.
   static Future<void> initWebStorage(SharedPreferences prefs) async {
@@ -37,6 +39,11 @@ class DatabaseHelper {
         final list = jsonDecode(eventsJson) as List<dynamic>;
         webEvents.addAll(list.cast<Map<String, dynamic>>());
       }
+      final interventionsJson = prefs.getString(_interventionsKey);
+      if (interventionsJson != null) {
+        final list = jsonDecode(interventionsJson) as List<dynamic>;
+        webInterventions.addAll(list.cast<Map<String, dynamic>>());
+      }
     } catch (e) {
       debugPrint('[WebStorage] Failed to load from localStorage: $e');
     }
@@ -48,6 +55,7 @@ class DatabaseHelper {
     try {
       await _webPrefs!.setString(_sessionsKey, jsonEncode(webSessions));
       await _webPrefs!.setString(_eventsKey, jsonEncode(webEvents));
+      await _webPrefs!.setString(_interventionsKey, jsonEncode(webInterventions));
     } catch (e) {
       debugPrint('[WebStorage] Failed to persist to localStorage: $e');
     }
@@ -95,17 +103,29 @@ class DatabaseHelper {
       )
     ''');
 
-    await db.execute('''
+  await db.execute('''
       CREATE TABLE focus_sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
         start_time TEXT NOT NULL,
         end_time TEXT,
         productive_app TEXT NOT NULL,
+        intent TEXT NOT NULL DEFAULT '',
         total_distractions INTEGER NOT NULL DEFAULT 0,
         total_xp_earned INTEGER NOT NULL DEFAULT 0,
         focus_score REAL NOT NULL DEFAULT 0.0,
         status TEXT NOT NULL DEFAULT 'active',
+        is_synced INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE intervention_events (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        level INTEGER NOT NULL,
+        action_taken TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
         is_synced INTEGER NOT NULL DEFAULT 0
       )
     ''');
@@ -128,6 +148,21 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE distraction_events ADD COLUMN day_of_week INTEGER');
       await db.execute('ALTER TABLE distraction_events ADD COLUMN session_minute_when_occurred INTEGER');
     }
+    if (oldVersion < 3) {
+      // Feature 1 — Focus Intent: every session carries a stated goal.
+      await db.execute("ALTER TABLE focus_sessions ADD COLUMN intent TEXT NOT NULL DEFAULT ''");
+      // Feature 2 — Escalating Intervention log.
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS intervention_events (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          level INTEGER NOT NULL,
+          action_taken TEXT NOT NULL,
+          timestamp TEXT NOT NULL,
+          is_synced INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+    }
   }
 
   Future<void> close() async {
@@ -140,6 +175,7 @@ class DatabaseHelper {
     if (kIsWeb) {
       webSessions.clear();
       webEvents.clear();
+      webInterventions.clear();
       await persistWeb();
       return;
     }
@@ -147,6 +183,7 @@ class DatabaseHelper {
     await db.transaction((txn) async {
       await txn.delete('distraction_events');
       await txn.delete('focus_sessions');
+      await txn.delete('intervention_events');
     });
   }
 }

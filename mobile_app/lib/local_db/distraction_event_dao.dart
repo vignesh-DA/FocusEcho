@@ -77,6 +77,21 @@ class DistractionEventDao {
     await db.update('distraction_events', {'is_synced': 1}, where: 'id = ?', whereArgs: [eventId]);
   }
 
+  /// Feature 3 — flags an event for re-upload so a later recovery update
+  /// (recovered_at / recovery_time_seconds) backfills the cloud row via upsert.
+  Future<void> markAsUnsynced(String eventId) async {
+    if (kIsWeb) {
+      final index = DatabaseHelper.webEvents.indexWhere((e) => e['id'] == eventId);
+      if (index != -1) {
+        DatabaseHelper.webEvents[index]['is_synced'] = 0;
+      }
+      await DatabaseHelper.persistWeb();
+      return;
+    }
+    final db = await _databaseHelper.getDatabase();
+    await db.update('distraction_events', {'is_synced': 0}, where: 'id = ?', whereArgs: [eventId]);
+  }
+
   Future<List<DistractionEvent>> getEventsForSession(String sessionId) async {
     if (kIsWeb) {
       final sessionEvents = DatabaseHelper.webEvents.where((e) => e['session_id'] == sessionId).toList()

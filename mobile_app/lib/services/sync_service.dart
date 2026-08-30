@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/constants/app_constants.dart';
 import '../local_db/distraction_event_dao.dart';
 import '../local_db/focus_session_dao.dart';
+import '../local_db/intervention_event_dao.dart';
 import 'supabase_service.dart';
 
 class SyncResult {
@@ -30,10 +31,17 @@ class SyncResult {
 }
 
 class SyncService {
-  SyncService(this._eventDao, this._sessionDao, this._supabaseService, this._prefs);
+  SyncService(
+    this._eventDao,
+    this._sessionDao,
+    this._interventionDao,
+    this._supabaseService,
+    this._prefs,
+  );
 
   final DistractionEventDao _eventDao;
   final FocusSessionDao _sessionDao;
+  final InterventionEventDao _interventionDao;
   final SupabaseService _supabaseService;
   final SharedPreferences _prefs;
   Timer? _timer;
@@ -76,6 +84,20 @@ class SyncService {
         final success = await _retryWithBackoff(() async {
           await _supabaseService.upsertFocusSession(session);
           await _sessionDao.markAsSynced(session.id);
+        });
+        if (success) {
+          synced++;
+        } else {
+          failed++;
+        }
+      }
+
+      // Feature 2 — intervention log rows sync alongside events/sessions.
+      final interventions = await _interventionDao.getUnsyncedInterventions();
+      for (final intervention in interventions) {
+        final success = await _retryWithBackoff(() async {
+          await _supabaseService.upsertInterventionEvent(intervention);
+          await _interventionDao.markAsSynced(intervention.id);
         });
         if (success) {
           synced++;

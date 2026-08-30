@@ -7,6 +7,7 @@ import '../core/constants/app_constants.dart';
 import '../local_db/database_helper.dart';
 import '../local_db/distraction_event_dao.dart';
 import '../local_db/focus_session_dao.dart';
+import '../local_db/intervention_event_dao.dart';
 import 'supabase_service.dart';
 import 'sync_service.dart';
 
@@ -29,8 +30,9 @@ void nightlySyncCallbackDispatcher() {
 
       final eventDao = DistractionEventDao(DatabaseHelper.instance);
       final sessionDao = FocusSessionDao(DatabaseHelper.instance);
+      final interventionDao = InterventionEventDao(DatabaseHelper.instance);
       final supabaseService = SupabaseService();
-      final syncService = SyncService(eventDao, sessionDao, supabaseService, prefs);
+      final syncService = SyncService(eventDao, sessionDao, interventionDao, supabaseService, prefs);
 
       await syncService.syncPendingEvents();
       return true;

@@ -18,6 +18,7 @@ class SettingsState {
     this.localOnlyMode = false,
     this.nudgesEnabled = true,
     this.streakRemindersEnabled = true,
+    this.crossSurfaceNudges = false,
     this.userEmail,
     this.isAuthenticating = false,
     this.isDeletingData = false,
@@ -30,9 +31,10 @@ class SettingsState {
   final bool cloudSyncEnabled;
   final bool analyticsEnabled;
   final bool localOnlyMode;
-  final bool nudgesEnabled;
-  final bool streakRemindersEnabled;
-  final String? userEmail;
+    final bool nudgesEnabled;
+    final bool streakRemindersEnabled;
+    final bool crossSurfaceNudges;
+    final String? userEmail;
   final bool isAuthenticating;
   final bool isDeletingData;
   final Map<String, int> appLimits;
@@ -46,6 +48,7 @@ class SettingsState {
     bool? localOnlyMode,
     bool? nudgesEnabled,
     bool? streakRemindersEnabled,
+    bool? crossSurfaceNudges,
     Object? userEmail = _noChange,
     bool? isAuthenticating,
     bool? isDeletingData,
@@ -60,6 +63,7 @@ class SettingsState {
       localOnlyMode: localOnlyMode ?? this.localOnlyMode,
       nudgesEnabled: nudgesEnabled ?? this.nudgesEnabled,
       streakRemindersEnabled: streakRemindersEnabled ?? this.streakRemindersEnabled,
+      crossSurfaceNudges: crossSurfaceNudges ?? this.crossSurfaceNudges,
       userEmail: userEmail == _noChange ? this.userEmail : userEmail as String?,
       isAuthenticating: isAuthenticating ?? this.isAuthenticating,
       isDeletingData: isDeletingData ?? this.isDeletingData,
@@ -78,6 +82,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
       localOnlyMode: _prefs.getBool(AppKeys.localOnlyMode) ?? false,
       nudgesEnabled: _prefs.getBool('nudges_enabled') ?? true,
       streakRemindersEnabled: _prefs.getBool('streak_reminders_enabled') ?? true,
+      crossSurfaceNudges: _prefs.getBool(AppKeys.crossSurfaceNudges) ?? false,
       recoveryDuration: _prefs.getInt('recovery_duration') ?? 10,
       strictness: _prefs.getString('strictness') ?? 'Normal',
       userEmail: currentUser?.email,
@@ -135,6 +140,17 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
   Future<void> updateStreakReminders(bool value) async {
     state = state.copyWith(streakRemindersEnabled: value);
     await _prefs.setBool('streak_reminders_enabled', value);
+  }
+
+  /// Feature 4 — cross-surface intervention nudges (default off).
+  /// Requires a signed-in account so both surfaces share the same channel.
+  Future<String?> updateCrossSurfaceNudges(bool value) async {
+    if (value && AppDependencies.supabaseService.currentUser == null) {
+      return 'Sign in with Google first — cross-device nudges need a linked account.';
+    }
+    state = state.copyWith(crossSurfaceNudges: value);
+    await _prefs.setBool(AppKeys.crossSurfaceNudges, value);
+    return null;
   }
 
   Future<bool> signInWithGoogle() async {

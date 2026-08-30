@@ -56,6 +56,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Feature 2 — full-screen escalating intervention (levels 2-3) -->
+        <activity
+            android:name=".InterventionActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.Dialog" />
+
         <service
             android:name=".FocusDetectionService"
             android:enabled="true"

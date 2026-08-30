@@ -81,18 +81,58 @@ class DashboardScreen extends ConsumerWidget {
                   ],
                 ),
                 const SizedBox(height: 12),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: AppDecorations.glassmorphismCard(),
-                  child: Column(
-                    children: [
-                      const Icon(Icons.local_fire_department, color: AppColors.accentYellow, size: 40),
-                      Text('${state.userProfile?.streakDays ?? 0} Day Streak',
-                          style: AppTextStyles.displayLarge.copyWith(fontSize: 32)),
-                      Text('Personal Best: ${state.userProfile?.longestStreak ?? 0} days'),
-                    ],
-                  ),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Feature 3 — Recovery Rate promoted to a headline stat
+                    // next to the focus streak, with week-over-week trend.
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: AppDecorations.glassmorphismCard(),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.speed, color: AppColors.accentGreen, size: 40),
+                            Text('${state.recoveryRate.toStringAsFixed(0)}%',
+                                style: AppTextStyles.displayLarge.copyWith(fontSize: 32)),
+                            Text('Recovery Rate', style: AppTextStyles.bodyMedium),
+                            const SizedBox(height: 4),
+                            Text(
+                              state.recoveryRateTrend >= 0
+                                  ? '▲ +${state.recoveryRateTrend.toStringAsFixed(1)} pts vs last week'
+                                  : '▼ ${state.recoveryRateTrend.toStringAsFixed(1)} pts vs last week',
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: state.recoveryRateTrend >= 0
+                                    ? AppColors.accentGreen
+                                    : AppColors.accentRed,
+                              ),
+                            ),
+                            if (state.medianRecoverySeconds > 0)
+                              Text(
+                                'Median return: ${state.medianRecoverySeconds.toStringAsFixed(0)}s',
+                                style: AppTextStyles.bodySmall,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: AppDecorations.glassmorphismCard(),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.local_fire_department, color: AppColors.accentYellow, size: 40),
+                            Text('${state.userProfile?.streakDays ?? 0} Day Streak',
+                                style: AppTextStyles.displayLarge.copyWith(fontSize: 28)),
+                            Text('Personal Best: ${state.userProfile?.longestStreak ?? 0} days',
+                                textAlign: TextAlign.center),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 SizedBox(

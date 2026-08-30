@@ -90,6 +90,20 @@ class SettingsScreen extends ConsumerWidget {
             value: state.streakRemindersEnabled,
             onChanged: vm.updateStreakReminders,
           ),
+          // Feature 4 — cross-surface intervention nudges (default off).
+          SwitchListTile(
+            title: const Text('Cross-device nudges'),
+            subtitle: const Text(
+              'Get a heads-up on this device when you drift on your other device. Requires sign-in.',
+            ),
+            value: state.crossSurfaceNudges,
+            onChanged: (v) async {
+              final error = await vm.updateCrossSurfaceNudges(v);
+              if (error != null && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+              }
+            },
+          ),
           ListTile(
             title: const Text('Daily summary time'),
             onTap: () => showTimePicker(context: context, initialTime: TimeOfDay.now()),

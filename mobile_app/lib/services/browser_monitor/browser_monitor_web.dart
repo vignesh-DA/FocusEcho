@@ -27,11 +27,12 @@ class BrowserMonitor {
         event['kind']?.toString() ?? 'away',
         event['host']?.toString() ?? 'unknown',
         event['timestamp']?.toString(),
+        (event['escalation_level'] as num?)?.toInt() ?? 1,
       );
     });
     _visibilitySubscription = document.onVisibilityChange.listen((_) {
       if (document.visibilityState == 'visible') {
-        _emit('return', 'focusecho', DateTime.now().toIso8601String());
+        _emit('return', 'focusecho', DateTime.now().toIso8601String(), 1);
       }
     });
     window.postMessage({'source': 'focusecho-web', 'type': 'register'}, '*');
@@ -56,11 +57,12 @@ class BrowserMonitor {
     }, '*');
   }
 
-  void _emit(String kind, String host, String? rawTimestamp) {
+  void _emit(String kind, String host, String? rawTimestamp, int escalationLevel) {
     _activities.add(BrowserActivity(
       kind: kind,
       host: host,
       timestamp: DateTime.tryParse(rawTimestamp ?? '') ?? DateTime.now(),
+      escalationLevel: escalationLevel,
     ));
   }
 

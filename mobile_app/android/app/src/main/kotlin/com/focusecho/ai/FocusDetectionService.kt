@@ -45,6 +45,8 @@ class FocusDetectionService : Service() {
             return START_NOT_STICKY
         }
 
+        // Feature 2 — a fresh session resets the relapse ladder.
+        DistractionEventQueue.resetSession()
         refreshCache(force = true)
         startForeground(1001, buildNotification())
         runnable = Runnable {
@@ -83,13 +85,33 @@ class FocusDetectionService : Service() {
 
         val label = getAppLabel(packageName)
 
-        // Check if this is a known distracting app and fire a heads-up notification
+        // Check if this is a known distracting app and escalate accordingly
         val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
         val distractingRaw = prefs.getString("flutter.distracting_apps", "[]") ?: "[]"
         val isDistraction = distractingRaw.contains(packageName) ||
             ALWAYS_DISTRACTION_PACKAGES.contains(packageName)
         if (isDistraction) {
-            sendDistractionNotification(label, packageName)
+            // Feature 2 — escalating intervention ladder:
+            // relapse 1 -> heads-up notification (unchanged copy)
+            // relapse 2-3 -> full-screen alert (Return to Focus / Take a Break)
+            // relapse 4+ -> full-screen forced choice (Pause / Return)
+            val relapse = DistractionEventQueue.registerRelapse()
+            val level = escalationLevelFor(relapse)
+            if (level == 1) {
+                sendDistractionNotification(label, packageName)
+            } else {
+                InterventionActivity.start(this, level, relapse, label)
+            }
+            val payload = JSONObject()
+                .put("eventType", "app_switch")
+                .put("packageName", packageName)
+                .put("appLabel", label)
+                .put("timestamp", Instant.now().toString())
+                .put("source", "usage_stats")
+                .put("escalation_level", level)
+                .toString()
+            sendOrBuffer(payload)
+            return
         }
 
         val payload = JSONObject()
@@ -100,6 +122,15 @@ class FocusDetectionService : Service() {
             .put("source", "usage_stats")
             .toString()
         sendOrBuffer(payload)
+    }
+
+    /** Feature 2 — relapse count to escalation level (1/2/3). */
+    private fun escalationLevelFor(relapse: Int): Int {
+        return when {
+            relapse <= 1 -> 1
+            relapse <= 3 -> 2
+            else -> 3
+        }
     }
 
     /**

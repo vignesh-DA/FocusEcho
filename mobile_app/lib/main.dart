@@ -13,6 +13,7 @@ import 'core/theme/app_theme.dart';
 import 'local_db/database_helper.dart';
 import 'local_db/distraction_event_dao.dart';
 import 'local_db/focus_session_dao.dart';
+import 'local_db/intervention_event_dao.dart';
 import 'services/fcm_service.dart';
 import 'services/nightly_sync_worker.dart';
 import 'services/supabase_service.dart';
@@ -61,8 +62,9 @@ Future<void> main() async {
 
   final sessionDao = FocusSessionDao(DatabaseHelper.instance);
   final eventDao = DistractionEventDao(DatabaseHelper.instance);
+  final interventionDao = InterventionEventDao(DatabaseHelper.instance);
   final supabaseService = SupabaseService();
-  final syncService = SyncService(eventDao, sessionDao, supabaseService, prefs);
+  final syncService = SyncService(eventDao, sessionDao, interventionDao, supabaseService, prefs);
 
   final deviceId = await _ensureDeviceId(prefs);
   final currentUser = Supabase.instance.client.auth.currentUser;
@@ -89,6 +91,7 @@ Future<void> main() async {
   AppDependencies.prefs = prefs;
   AppDependencies.sessionDao = sessionDao;
   AppDependencies.eventDao = eventDao;
+  AppDependencies.interventionDao = interventionDao;
   AppDependencies.supabaseService = supabaseService;
   AppDependencies.syncService = syncService;
   syncService.startPeriodicSync();
