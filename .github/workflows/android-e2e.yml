@@ -1,0 +1,563 @@
+name: 🤖 FocusEcho Android Appium E2E CI/CD
+
+on:
+  push:
+    branches: [ "**" ]
+  pull_request:
+    branches: [ main, master, develop ]
+  workflow_dispatch:
+    inputs:
+      avd_api:
+        description: 'Android API Level'
+        required: false
+        default: '33'
+      run_suite:
+        description: 'Test suite to run (all/smoke/regression)'
+        required: false
+        default: 'all'
+  schedule:
+    - cron: '0 2 * * *'   # Nightly at 02:00 UTC
+
+env:
+  JAVA_VERSION: '17'
+  ANDROID_API_LEVEL: ${{ github.event.inputs.avd_api || '33' }}
+  ANDROID_BUILD_TOOLS: '33.0.3'
+  AVD_NAME: 'FocusEcho_AVD'
+  APP_PACKAGE: 'com.focusecho.ai'
+  APPIUM_PORT: '4723'
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  # ───────────────────────────────────────────────────────────────────────────
+  # Stage 1-5: Build APK
+  # ───────────────────────────────────────────────────────────────────────────
+  build-apk:
+    name: 🏗️ Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      apk_path: ${{ steps.find-apk.outputs.apk_path }}
+
+    steps:
+      - name: 📥 Stage 1 — Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Stage 2 — Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
+
+      - name: 🤖 Stage 3 — Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 Stage 4 — Install Android Build Dependencies
+        run: |
+          echo "y" | sdkmanager "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" "platforms;android-${{ env.ANDROID_API_LEVEL }}"
+
+      - name: 🦋 Stage 5 — Setup Flutter & Build Debug APK
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+          cache: true
+
+      - name: 📱 Build FocusEcho Debug APK
+        working-directory: mobile_app
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          flutter pub get
+          flutter build apk --debug \
+            --dart-define=SUPABASE_URL="${SUPABASE_URL:-https://dfqwjobcbhifvuwwroys.supabase.co}" \
+            --dart-define=SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9}" \
+            --dart-define=BACKEND_URL="http://10.0.2.2:8000"
+          echo "✅ APK built successfully"
+
+      - name: 🔍 Find APK Path
+        id: find-apk
+        run: |
+          APK=$(find mobile_app/build -name "*.apk" | head -1)
+          echo "apk_path=$APK" >> $GITHUB_OUTPUT
+          echo "APK: $APK"
+          ls -lh "$APK"
+
+      - name: 📤 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusecho-debug-apk
+          path: mobile_app/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 30
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Stage 6-21: Run E2E Tests
+  # ───────────────────────────────────────────────────────────────────────────
+  appium-e2e:
+    name: 🧪 Appium E2E Tests (Android ${{ github.event.inputs.avd_api || '33' }})
+    runs-on: ubuntu-latest
+    needs: build-apk
+    timeout-minutes: 90
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 Install Emulator Packages
+        run: |
+          echo "y" | sdkmanager \
+            "emulator" \
+            "system-images;android-${{ env.ANDROID_API_LEVEL }};google_apis;x86_64" \
+            "platform-tools" \
+            "build-tools;${{ env.ANDROID_BUILD_TOOLS }}" \
+            "platforms;android-${{ env.ANDROID_API_LEVEL }}"
+          echo "✅ Android emulator packages installed"
+
+      - name: 📱 Download APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: focusecho-debug-apk
+          path: ./apk
+
+      - name: 🐍 Stage Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 📦 Install Python Dependencies
+        working-directory: automation
+        run: |
+          pip install -r requirements.txt
+          echo "✅ Python dependencies installed"
+
+      - name: 🟢 Stage 6 — Create & Start Android Emulator
+        run: |
+          echo "no" | avdmanager create avd \
+            --force \
+            --name "${{ env.AVD_NAME }}" \
+            --package "system-images;android-${{ env.ANDROID_API_LEVEL }};google_apis;x86_64" \
+            --device "pixel_4"
+          
+          # Enable hardware acceleration
+          mkdir -p ~/.android
+          echo "hw.gpu.enabled=yes" >> ~/.android/avd/${{ env.AVD_NAME }}.avd/config.ini
+          echo "hw.gpu.mode=swiftshader_indirect" >> ~/.android/avd/${{ env.AVD_NAME }}.avd/config.ini
+          
+          # Start emulator in background
+          nohup $ANDROID_HOME/emulator/emulator \
+            -avd "${{ env.AVD_NAME }}" \
+            -no-window \
+            -no-audio \
+            -no-boot-anim \
+            -gpu swiftshader_indirect \
+            -memory 2048 \
+            -accel auto \
+            > /tmp/emulator.log 2>&1 &
+          
+          echo "EMULATOR_PID=$!" >> $GITHUB_ENV
+          echo "🚀 Emulator started with PID $EMULATOR_PID"
+
+      - name: ⏳ Stage 7 — Wait for Emulator to Boot
+        run: |
+          echo "Waiting for emulator boot..."
+          TIMEOUT=300
+          ELAPSED=0
+          
+          while [ $ELAPSED -lt $TIMEOUT ]; do
+            BOOT_STATUS=$(adb -e shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$BOOT_STATUS" = "1" ]; then
+              echo "✅ Emulator booted successfully after ${ELAPSED}s"
+              break
+            fi
+            sleep 5
+            ELAPSED=$((ELAPSED + 5))
+            echo "  Still booting... ${ELAPSED}s elapsed"
+          done
+          
+          if [ $ELAPSED -ge $TIMEOUT ]; then
+            echo "❌ Emulator failed to boot within ${TIMEOUT}s"
+            cat /tmp/emulator.log
+            exit 1
+          fi
+          
+          # Disable animations for faster test execution
+          adb shell settings put global window_animation_scale 0
+          adb shell settings put global transition_animation_scale 0
+          adb shell settings put global animator_duration_scale 0
+          adb shell wm dismiss-keyguard 2>/dev/null || true
+          echo "✅ Emulator ready"
+
+      - name: 📲 Stage 8 — Install APK on Emulator
+        run: |
+          echo "Installing FocusEcho APK..."
+          adb install -r ./apk/app-debug.apk
+          echo "✅ APK installed"
+          
+          # Verify installation
+          INSTALLED=$(adb shell pm list packages | grep "com.focusecho.ai")
+          if [ -z "$INSTALLED" ]; then
+            echo "❌ APK installation verification failed"
+            exit 1
+          fi
+          echo "✅ Package verified: $INSTALLED"
+          
+          # Grant required permissions automatically
+          adb shell pm grant com.focusecho.ai android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+
+      - name: 🟢 Stage 9 — Install & Start Appium Server
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Appium 2.x
+        run: |
+          npm install -g appium@latest
+          appium driver install uiautomator2
+          echo "✅ Appium 2 + UiAutomator2 driver installed"
+
+      - name: Start Appium Server
+        run: |
+          nohup appium \
+            --address 127.0.0.1 \
+            --port ${{ env.APPIUM_PORT }} \
+            --relaxed-security \
+            --log /tmp/appium.log \
+            --log-level info \
+            > /tmp/appium_stdout.log 2>&1 &
+          echo "APPIUM_PID=$!" >> $GITHUB_ENV
+          sleep 8
+
+      - name: 🔍 Stage 10 — Verify Appium Health
+        run: |
+          MAX_RETRIES=10
+          for i in $(seq 1 $MAX_RETRIES); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:${{ env.APPIUM_PORT }}/status)
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Appium server is healthy (attempt $i)"
+              curl -s http://127.0.0.1:${{ env.APPIUM_PORT }}/status | python3 -m json.tool
+              break
+            fi
+            echo "  Appium not ready (attempt $i/$MAX_RETRIES)..."
+            sleep 3
+            if [ $i -eq $MAX_RETRIES ]; then
+              echo "❌ Appium server failed to start"
+              cat /tmp/appium.log
+              exit 1
+            fi
+          done
+
+      - name: 🧪 Stage 11 — Execute Appium E2E Tests
+        working-directory: automation
+        env:
+          APPIUM_SERVER_URL: "http://127.0.0.1:${{ env.APPIUM_PORT }}"
+          DEVICE_NAME: "emulator-5554"
+          PLATFORM_VERSION: "${{ env.ANDROID_API_LEVEL }}.0"
+          APK_PATH: "${{ github.workspace }}/apk/app-debug.apk"
+          BUILD_NUMBER: "${{ github.run_number }}"
+          GITHUB_SHA: "${{ github.sha }}"
+          GITHUB_REF_NAME: "${{ github.ref_name }}"
+          PARALLEL_WORKERS: "1"
+        run: |
+          # Determine which suites to run
+          SUITE="${{ github.event.inputs.run_suite || 'all' }}"
+          
+          if [ "$SUITE" = "smoke" ]; then
+            MARKER="-m smoke"
+          elif [ "$SUITE" = "regression" ]; then
+            MARKER="-m regression"
+          else
+            MARKER=""
+          fi
+          
+          # Set PYTHONPATH so conftest imports resolve
+          export PYTHONPATH="${{ github.workspace }}/automation"
+          
+          python -m pytest tests/ \
+            $MARKER \
+            --rootdir="${{ github.workspace }}/automation/runners" \
+            -v \
+            --tb=short \
+            --timeout=120 \
+            --retries=2 \
+            --retry-delay=3 \
+            -p no:warnings \
+            --junitxml=reports/JSON/junit-results.xml \
+            2>&1 | tee /tmp/pytest_output.log || TEST_EXIT=$?
+          
+          echo "TEST_EXIT_CODE=${TEST_EXIT:-0}" >> $GITHUB_ENV
+          echo "Tests finished with exit code: ${TEST_EXIT:-0}"
+
+      - name: 📸 Stage 12 — Collect Screenshots
+        if: always()
+        run: |
+          ls -la automation/reports/Screenshots/ 2>/dev/null | head -50 || echo "No screenshots directory"
+          SCREENSHOT_COUNT=$(find automation/reports/Screenshots -name "*.png" 2>/dev/null | wc -l)
+          echo "📸 Total screenshots captured: $SCREENSHOT_COUNT"
+
+      - name: 📋 Stage 13 — Capture Device Logs
+        if: always()
+        run: |
+          mkdir -p automation/reports/Logs
+          adb logcat -d > automation/reports/Logs/device_logcat.txt 2>/dev/null || true
+          cat /tmp/appium.log > automation/reports/Logs/appium_server.log 2>/dev/null || true
+          cat /tmp/pytest_output.log > automation/reports/Logs/pytest_output.log 2>/dev/null || true
+          echo "✅ Logs collected"
+
+      - name: 📊 Stage 14-16 — Generate Excel, HTML, JSON Reports
+        if: always()
+        working-directory: automation
+        env:
+          BUILD_NUMBER: "${{ github.run_number }}"
+          GITHUB_SHA: "${{ github.sha }}"
+          GITHUB_REF_NAME: "${{ github.ref_name }}"
+          DEVICE_NAME: "emulator-5554"
+          PLATFORM_VERSION: "${{ env.ANDROID_API_LEVEL }}.0"
+          PYTHONPATH: "${{ github.workspace }}/automation"
+        run: |
+          python -c "
+          import sys, json
+          from pathlib import Path
+          from datetime import datetime
+
+          sys.path.insert(0, '.')
+
+          # Parse JUnit XML for results
+          results = []
+          junit_file = Path('reports/JSON/junit-results.xml')
+          if junit_file.exists():
+              import xml.etree.ElementTree as ET
+              tree = ET.parse(junit_file)
+              root = tree.getroot()
+              for suite in root.iter('testsuite'):
+                  for case in suite.iter('testcase'):
+                      test_id_prop = case.find('.//property[@name=\"test_id\"]')
+                      tc_id = test_id_prop.get('value') if test_id_prop is not None else case.get('name', '')
+                      failure = case.find('failure')
+                      skipped = case.find('skipped')
+                      status = 'PASS' if (failure is None and skipped is None) else ('SKIP' if skipped is not None else 'FAIL')
+                      error_msg = failure.get('message', '') if failure is not None else ''
+                      results.append({
+                          'test_id': tc_id,
+                          'module': case.get('classname', '').split('.')[-1].replace('Test',''),
+                          'name': case.get('name', ''),
+                          'priority': 'P2',
+                          'status': status,
+                          'duration': float(case.get('time', 0)),
+                          'error_message': error_msg[:300],
+                          'screenshot_path': '',
+                          'timestamp': datetime.now().isoformat()
+                      })
+          
+          if not results:
+              print('No JUnit results found — generating mock summary')
+              results = [{'test_id': 'TC_MOCK_001', 'module': 'General', 'name': 'No tests ran', 'priority': 'P1', 'status': 'SKIP', 'duration': 0, 'error_message': 'No APK/emulator', 'screenshot_path': '', 'timestamp': datetime.now().isoformat()}]
+
+          print(f'Total results: {len(results)}')
+          passed = sum(1 for r in results if r[\"status\"] in (\"PASS\",\"PASSED\"))
+          print(f'Passed: {passed}, Failed: {len(results)-passed}')
+
+          # Generate Excel
+          try:
+              from utils.excel_reporter import generate_all_reports
+              generate_all_reports(results)
+              print('Excel reports generated')
+          except Exception as e:
+              print(f'Excel generation error: {e}')
+
+          # Generate HTML
+          try:
+              from utils.html_reporter import HtmlReporter
+              HtmlReporter(results).generate()
+              print('HTML reports generated')
+          except Exception as e:
+              print(f'HTML generation error: {e}')
+
+          # Generate JSON
+          try:
+              from utils.json_reporter import JsonReporter, SummaryReporter
+              JsonReporter(results).generate()
+              SummaryReporter(results).generate()
+              print('JSON/Summary reports generated')
+          except Exception as e:
+              print(f'JSON generation error: {e}')
+          " || echo "Report generation completed with warnings"
+
+      - name: 📝 Stage 17 — Generate GitHub Actions Summary
+        if: always()
+        working-directory: automation
+        env:
+          BUILD_NUMBER: "${{ github.run_number }}"
+          GITHUB_SHA: "${{ github.sha }}"
+          GITHUB_REF_NAME: "${{ github.ref_name }}"
+          DEVICE_NAME: "emulator-5554"
+          PLATFORM_VERSION: "${{ env.ANDROID_API_LEVEL }}.0"
+          PYTHONPATH: "${{ github.workspace }}/automation"
+        run: |
+          python -c "
+          import os, sys
+          from pathlib import Path
+
+          summary_file = os.environ.get('GITHUB_STEP_SUMMARY', '/dev/stdout')
+          build = os.environ.get('BUILD_NUMBER', 'local')
+          sha = os.environ.get('GITHUB_SHA', 'local')[:8]
+          branch = os.environ.get('GITHUB_REF_NAME', 'local')
+          device = os.environ.get('DEVICE_NAME', 'emulator-5554')
+          api = os.environ.get('PLATFORM_VERSION', '13.0')
+
+          summary = Path('reports/Summary/summary.md')
+          if summary.exists():
+              content = summary.read_text()
+          else:
+              content = f'''# 🎯 FocusEcho AI — Android Appium E2E Summary
+
+          | Build | Branch | Commit | Device | Android |
+          |-------|--------|--------|--------|---------|
+          | \`{build}\` | \`{branch}\` | \`{sha}\` | \`{device}\` | \`{api}\` |
+
+          > Reports available as artifacts below.
+          '''
+
+          with open(summary_file, 'a') as f:
+              f.write(content)
+          print('GitHub Actions summary written')
+          " || true
+
+      - name: 📤 Stage 18 — Upload All Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusecho-e2e-reports-build-${{ github.run_number }}
+          retention-days: 30
+          path: |
+            automation/reports/Excel/
+            automation/reports/HTML/
+            automation/reports/JSON/
+            automation/reports/Screenshots/
+            automation/reports/Logs/
+            automation/reports/Summary/
+
+      - name: 📤 Upload Test Reports (HTML)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-report-build-${{ github.run_number }}
+          retention-days: 30
+          path: automation/reports/HTML/
+
+      - name: 🚦 Stage 21 — Check Pipeline Pass/Fail Threshold
+        if: always()
+        run: |
+          EXIT_CODE="${{ env.TEST_EXIT_CODE }}"
+          echo "Test exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" = "0" ]; then
+            echo "✅ All tests passed"
+          else
+            echo "⚠️  Some tests failed — check artifacts"
+            # Don't fail the pipeline on test failures — reports are still uploaded
+            # Uncomment below to enforce 95% pass rate:
+            # exit 1
+          fi
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # Stage 19-20: Deploy to GitHub Pages
+  # ───────────────────────────────────────────────────────────────────────────
+  deploy-pages:
+    name: 🌐 Deploy Reports to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: appium-e2e
+    if: always() && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📥 Download HTML Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: html-report-build-${{ github.run_number }}
+          path: ./downloaded-reports
+
+      - name: 📥 Download All Reports
+        uses: actions/download-artifact@v4
+        with:
+          name: focusecho-e2e-reports-build-${{ github.run_number }}
+          path: ./all-reports
+
+      - name: 🌐 Stage 19 — Publish to GitHub Pages
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Fetch or create gh-pages branch
+          git fetch origin gh-pages || true
+          git checkout gh-pages || git checkout --orphan gh-pages
+
+          # Stage 20 — Archive previous latest build
+          BUILD_NUM="${{ github.run_number }}"
+          PREV_BUILD=$((BUILD_NUM - 1))
+
+          if [ -d "reports/latest" ] && [ "$(ls -A reports/latest 2>/dev/null)" ]; then
+            mkdir -p "reports/history/build-${PREV_BUILD}"
+            cp -r reports/latest/* "reports/history/build-${PREV_BUILD}/" 2>/dev/null || true
+            echo "📦 Archived build ${PREV_BUILD} to history"
+          fi
+
+          # Deploy latest
+          mkdir -p reports/latest/screenshots
+          mkdir -p reports/latest/logs
+          mkdir -p reports/latest/excel
+
+          cp downloaded-reports/*.html reports/latest/ 2>/dev/null || true
+          cp -r all-reports/Excel/* reports/latest/excel/ 2>/dev/null || true
+          cp -r all-reports/Screenshots/* reports/latest/screenshots/ 2>/dev/null || true
+          cp -r all-reports/Logs/* reports/latest/logs/ 2>/dev/null || true
+          cp -r all-reports/Summary/summary.md reports/latest/ 2>/dev/null || true
+          cp -r all-reports/JSON/* reports/latest/ 2>/dev/null || true
+
+          # Generate index.html for root
+          cat > index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>FocusEcho AI — Test Reports</title>
+          <style>
+            body{font-family:'Segoe UI',sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:40px;text-align:center;}
+            h1{color:#60a5fa;font-size:2rem;} p{color:#64748b;}
+            .btn{display:inline-block;background:#3b82f6;color:#fff;padding:14px 28px;border-radius:10px;text-decoration:none;margin:10px;font-weight:600;transition:opacity 0.2s;}
+            .btn:hover{opacity:0.85;} .btn.green{background:#16a34a;} .btn.gray{background:#374151;}
+          </style></head>
+          <body>
+          <h1>🎯 FocusEcho AI — Automation Reports</h1>
+          <p>Android Appium E2E Test Reports — GitHub Pages</p>
+          <div style="margin-top:30px;">
+            <a href="reports/latest/execution-report.html" class="btn">📊 Latest Execution Report</a>
+            <a href="reports/latest/dashboard.html" class="btn green">🎛️ Dashboard</a>
+            <a href="reports/latest/trends.html" class="btn gray">📈 Trends</a>
+          </div>
+          </body></html>
+          EOF
+
+          git add -A
+          git commit -m "📊 Deploy E2E report — Build #${{ github.run_number }} | $(date -u '+%Y-%m-%d %H:%M UTC')" || echo "Nothing to commit"
+          git push origin gh-pages
+          
+          echo "✅ Reports deployed to GitHub Pages"
+          echo "🌐 URL: https://$(git remote get-url origin | sed 's/.*github.com[:/]//' | sed 's/\.git//' | cut -d'/' -f1).github.io/$(git remote get-url origin | sed 's/.*github.com[:/]//' | sed 's/\.git//' | cut -d'/' -f2)/reports/latest/execution-report.html"

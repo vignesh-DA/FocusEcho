@@ -42,6 +42,12 @@ Future<void> main() async {
         '["Instagram","Twitter","YouTube","Reddit","TikTok"]',
       );
     }
+    if ((prefs.getString(AppKeys.webDistractingSites) ?? '[]') == '[]') {
+      await prefs.setString(
+        AppKeys.webDistractingSites,
+        '["instagram.com","youtube.com","x.com","reddit.com","tiktok.com"]',
+      );
+    }
   } else {
     await DatabaseHelper.instance.getDatabase();
     await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -56,7 +62,7 @@ Future<void> main() async {
   final sessionDao = FocusSessionDao(DatabaseHelper.instance);
   final eventDao = DistractionEventDao(DatabaseHelper.instance);
   final supabaseService = SupabaseService();
-  final syncService = SyncService(eventDao, sessionDao, supabaseService);
+  final syncService = SyncService(eventDao, sessionDao, supabaseService, prefs);
 
   final deviceId = await _ensureDeviceId(prefs);
   final currentUser = Supabase.instance.client.auth.currentUser;
@@ -85,6 +91,7 @@ Future<void> main() async {
   AppDependencies.eventDao = eventDao;
   AppDependencies.supabaseService = supabaseService;
   AppDependencies.syncService = syncService;
+  syncService.startPeriodicSync();
 
   // Listen for OAuth deep-link callback (signedIn fires after browser redirect)
   Supabase.instance.client.auth.onAuthStateChange.listen((data) async {

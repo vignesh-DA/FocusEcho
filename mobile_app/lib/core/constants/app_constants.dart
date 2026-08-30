@@ -19,6 +19,7 @@ class AppKeys {
   static const productiveApps = 'productive_apps';
   static const distractingApps = 'distracting_apps';
   static const appTimeLimitsSeconds = 'app_time_limits_seconds';
+  static const webDistractingSites = 'web_distracting_sites';
   static const deviceId = 'device_id';
   static const userId = 'user_id';
   static const xpTotal = 'xp_total';

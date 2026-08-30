@@ -12,6 +12,7 @@ import '../../features/onboarding/app_selector/app_selector_screen.dart';
 import '../../features/onboarding/consent/consent_screen.dart';
 import '../../features/onboarding/permission_wizard/permission_wizard_screen.dart';
 import '../../features/onboarding/splash/splash_screen.dart';
+import '../../features/auth/login_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/settings/app_limits_screen.dart';
 import '../../features/streaks_xp/streaks_xp_screen.dart';
@@ -59,6 +60,11 @@ class AppRouter {
           name: 'splash',
           path: AppRoutes.splash,
           builder: (context, state) => const SplashScreen(),
+        ),
+        GoRoute(
+          name: 'login',
+          path: AppRoutes.login,
+          builder: (context, state) => const LoginScreen(),
         ),
         GoRoute(
           name: 'consent',

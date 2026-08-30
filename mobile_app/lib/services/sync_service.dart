@@ -4,8 +4,10 @@ import 'dart:math';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/constants/app_constants.dart';
 import '../local_db/distraction_event_dao.dart';
 import '../local_db/focus_session_dao.dart';
 import 'supabase_service.dart';
@@ -28,17 +30,23 @@ class SyncResult {
 }
 
 class SyncService {
-  SyncService(this._eventDao, this._sessionDao, this._supabaseService);
+  SyncService(this._eventDao, this._sessionDao, this._supabaseService, this._prefs);
 
   final DistractionEventDao _eventDao;
   final FocusSessionDao _sessionDao;
   final SupabaseService _supabaseService;
+  final SharedPreferences _prefs;
   Timer? _timer;
 
   static const int _maxRetries = 3;
 
   Future<SyncResult> syncPendingEvents() async {
     try {
+      final localOnly = _prefs.getBool(AppKeys.localOnlyMode) ?? false;
+      final cloudSyncEnabled = _prefs.getBool(AppKeys.syncEnabled) ?? true;
+      if (localOnly || !cloudSyncEnabled) {
+        return const SyncResult(synced: 0, failed: 0, skipped: 0, noConnection: false);
+      }
       if (_supabaseService.currentUser == null) {
         return const SyncResult(synced: 0, failed: 0, skipped: 0, noConnection: false);
       }

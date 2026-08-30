@@ -30,7 +30,7 @@ void nightlySyncCallbackDispatcher() {
       final eventDao = DistractionEventDao(DatabaseHelper.instance);
       final sessionDao = FocusSessionDao(DatabaseHelper.instance);
       final supabaseService = SupabaseService();
-      final syncService = SyncService(eventDao, sessionDao, supabaseService);
+      final syncService = SyncService(eventDao, sessionDao, supabaseService, prefs);
 
       await syncService.syncPendingEvents();
       return true;

@@ -60,4 +60,24 @@ void main() {
       expect(score, 0.0);
     });
   });
+
+  group('RuleEngine.explainFocusScore', () {
+    test('returns deterministic factors that add up to the score', () {
+      final breakdown = RuleEngine.explainFocusScore(
+        totalDistractions: 2,
+        sessionMinutes: 30,
+        avgRecoverySeconds: 15,
+        criticalDistractions: 0,
+      );
+
+      expect(
+        breakdown.focusDuration +
+            breakdown.distractionControl +
+            breakdown.recovery +
+            breakdown.consistency,
+        breakdown.score,
+      );
+      expect(breakdown.negativeFactors, contains('2 distractions'));
+    });
+  });
 }

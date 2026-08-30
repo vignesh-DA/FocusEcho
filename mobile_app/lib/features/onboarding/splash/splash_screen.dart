@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_theme.dart';
@@ -32,9 +33,18 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     final usage = prefs.getBool('has_usage_access') ?? false;
     final accessibility = prefs.getBool('has_accessibility') ?? false;
     final battery = prefs.getBool('has_battery_optimization') ?? false;
+    final hasSkippedLogin = prefs.getBool(AppKeys.hasSkippedLogin) ?? false;
+    final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+
     if (!mounted) return;
+    
     if (!consentGiven) {
       context.go(AppRoutes.consent);
+      return;
+    }
+
+    if (!isLoggedIn && !hasSkippedLogin) {
+      context.go(AppRoutes.login);
       return;
     }
 

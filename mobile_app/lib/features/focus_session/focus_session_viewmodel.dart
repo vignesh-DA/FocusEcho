@@ -14,6 +14,7 @@ import '../../core/providers/app_dependencies.dart';
 import '../../local_db/distraction_event_dao.dart';
 import '../../local_db/focus_session_dao.dart';
 import '../../services/sync_service.dart';
+import '../../services/browser_monitor/browser_monitor.dart';
 import 'focus_session_state.dart';
 import 'focus_detection_engine.dart';
 import 'rule_engine.dart';
@@ -26,6 +27,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _loadAvailableApps();
     _engine.setActionHandler(_handleEngineAction);
     _listenToDistractionStream();
+    if (kIsWeb) {
+      unawaited(_browserMonitor.initialize());
+      _browserSubscription = _browserMonitor.activities.listen(_handleBrowserActivity);
+    }
   }
 
   final SharedPreferences _prefs;
@@ -36,8 +41,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   final EventChannel _streamChannel;
   final Uuid _uuid = const Uuid();
   final FocusDetectionEngine _engine = FocusDetectionEngine();
+  final BrowserMonitor _browserMonitor = BrowserMonitor.instance;
   Timer? _timer;
   StreamSubscription<dynamic>? _subscription;
+  StreamSubscription? _browserSubscription;
 
   static const Set<String> _defaultAlwaysAllowed = {
     'com.android.phone',
@@ -148,6 +155,11 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       await _sessionChannel.invokeMethod<void>('startSession');
     }
     await _prefs.setBool(AppKeys.sessionActive, true);
+    if (kIsWeb) {
+      await _browserMonitor.startSession(
+        _decodeStringList(_prefs.getString(AppKeys.webDistractingSites) ?? '[]'),
+      );
+    }
 
     _engine.reset();
     _engine.configure(_buildConfig(productiveApp));
@@ -248,6 +260,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     );
     if (!kIsWeb) {
       await _sessionChannel.invokeMethod<void>('stopSession');
+    } else {
+      await _browserMonitor.stopSession();
     }
     await _prefs.setBool(AppKeys.sessionActive, false);
     unawaited(_syncService.syncPendingEvents());
@@ -308,6 +322,16 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       );
     } catch (_) {
       return const {};
+    }
+  }
+
+  Future<void> _handleBrowserActivity(BrowserActivity activity) async {
+    if (!state.isActive) return;
+    final kind = activity.kind;
+    if (kind == 'distraction') {
+      await onDistractionDetected('web:${activity.host}', activity.host);
+    } else if (kind == 'return' && state.showAlert && state.lastEventId != null) {
+      await onRecovery(state.lastEventId!, returnedToOrigin: true);
     }
   }
 
@@ -430,6 +454,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   void dispose() {
     _timer?.cancel();
     _subscription?.cancel();
+    _browserSubscription?.cancel();
     super.dispose();
   }
 }

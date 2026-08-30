@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Dict, List
 
 from .rule_engine import RuleEngine
+from .scoring.focus_score import explain_focus_score
 
 
 class ScoringService:
@@ -14,30 +15,21 @@ class ScoringService:
             event for event in events if event.get("event_type", "distraction") == "distraction"
         ]
         total_distractions = len(distraction_events)
-        total_recovered = sum(1 for event in distraction_events if event.get("is_recovered"))
-        recovery_rate = (total_recovered / total_distractions) if total_distractions else 1.0
         risk_score = self.rule_engine.compute_risk(events, events[-1]["package_name"] if events else "")
-        avg_recovery_seconds = (
-            sum((event.get("recovery_time_seconds") or 0) for event in distraction_events)
-            / total_distractions
-            if total_distractions
-            else 0.0
-        )
-        critical_distractions = sum(
-            1 for event in distraction_events if event.get("risk_score") == "CRITICAL"
-        )
-        focus_score = self.rule_engine.compute_focus_score(
-            total_distractions,
-            max(1, len(events) * 2),
-            avg_recovery_seconds,
-            critical_distractions,
-        )
+        # Session minutes are optional in legacy clients.  Preserve the old
+        # fallback while returning an explainable, deterministic breakdown.
+        session_minutes = max(1, int(events[-1].get("session_minutes", len(events) * 2))) if events else 1
+        score_details = explain_focus_score(events, session_minutes)
         return {
             "session_id": session_id,
-            "focus_score": focus_score,
+            "focus_score": score_details["score"],
+            "score_breakdown": score_details,
             "risk_score": risk_score,
             "total_distractions": total_distractions,
-            "recovery_rate": round(recovery_rate, 2),
+            "recovery_rate": round(
+                sum(1 for event in distraction_events if event.get("is_recovered")) / total_distractions,
+                2,
+            ) if total_distractions else 1.0,
             "recommendation": self.get_recommendation(risk_score),
         }
 

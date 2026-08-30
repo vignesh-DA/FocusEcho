@@ -22,6 +22,7 @@ class SettingsState {
     this.isAuthenticating = false,
     this.isDeletingData = false,
     this.appLimits = const {},
+    this.webDistractingSites = const [],
   });
 
   final String strictness;
@@ -35,6 +36,7 @@ class SettingsState {
   final bool isAuthenticating;
   final bool isDeletingData;
   final Map<String, int> appLimits;
+  final List<String> webDistractingSites;
 
   SettingsState copyWith({
     String? strictness,
@@ -48,6 +50,7 @@ class SettingsState {
     bool? isAuthenticating,
     bool? isDeletingData,
     Map<String, int>? appLimits,
+    List<String>? webDistractingSites,
   }) {
     return SettingsState(
       strictness: strictness ?? this.strictness,
@@ -61,6 +64,7 @@ class SettingsState {
       isAuthenticating: isAuthenticating ?? this.isAuthenticating,
       isDeletingData: isDeletingData ?? this.isDeletingData,
       appLimits: appLimits ?? this.appLimits,
+      webDistractingSites: webDistractingSites ?? this.webDistractingSites,
     );
   }
 }
@@ -78,6 +82,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
       strictness: _prefs.getString('strictness') ?? 'Normal',
       userEmail: currentUser?.email,
       appLimits: _loadAppLimits(),
+      webDistractingSites: _loadWebDistractingSites(),
     );
     if (currentUser != null) {
       // userId is saved by the auth state listener in main.dart
@@ -165,6 +170,17 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     await _prefs.setString(AppKeys.appTimeLimitsSeconds, jsonEncode(newLimits));
   }
 
+  Future<void> updateWebDistractingSites(List<String> sites) async {
+    final normalized = sites
+        .map((site) => site.trim().toLowerCase())
+        .where((site) => site.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    state = state.copyWith(webDistractingSites: normalized);
+    await _prefs.setString(AppKeys.webDistractingSites, jsonEncode(normalized));
+  }
+
   Map<String, int> _loadAppLimits() {
     final raw = _prefs.getString(AppKeys.appTimeLimitsSeconds) ?? '{}';
     try {
@@ -172,6 +188,15 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
       return decoded.map((k, v) => MapEntry(k, (v as num).toInt()));
     } catch (_) {
       return const {};
+    }
+  }
+
+  List<String> _loadWebDistractingSites() {
+    final raw = _prefs.getString(AppKeys.webDistractingSites) ?? '[]';
+    try {
+      return (jsonDecode(raw) as List<dynamic>).map((site) => site.toString()).toList();
+    } catch (_) {
+      return const [];
     }
   }
 
