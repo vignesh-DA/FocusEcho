@@ -84,7 +84,16 @@ class FocusSessionScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(20),
               child: Column(
                 children: [
-                  Text(timer, style: AppTextStyles.displayLarge.copyWith(color: AppColors.accentGreen)),
+                  // Bug 2 fix — FittedBox prevents the HH:MM:SS string from
+                  // overflowing at narrow/mobile viewport widths.
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      timer,
+                      style: AppTextStyles.displayLarge.copyWith(color: AppColors.accentGreen),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   const SizedBox(height: 28),
                   TweenAnimationBuilder<double>(
                     tween: Tween(begin: 0.98, end: 1.02),
@@ -118,10 +127,23 @@ class FocusSessionScreen extends ConsumerWidget {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Distractions: ${state.distractionCount}',
-                          style: AppTextStyles.bodyLarge.copyWith(color: AppColors.accentRed)),
-                      Text('XP: ${state.sessionXp}',
-                          style: AppTextStyles.bodyLarge.copyWith(color: AppColors.accentYellow)),
+                      // Bug 2 fix — Flexible prevents right-edge clipping when
+                      // the distraction count label grows long at small widths.
+                      Flexible(
+                        child: Text(
+                          'Distractions: ${state.distractionCount}',
+                          style: AppTextStyles.bodyLarge.copyWith(color: AppColors.accentRed),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'XP: ${state.sessionXp}',
+                          style: AppTextStyles.bodyLarge.copyWith(color: AppColors.accentYellow),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
                   if (kIsWeb) ...[
@@ -133,7 +155,11 @@ class FocusSessionScreen extends ConsumerWidget {
                         side: const BorderSide(color: AppColors.accentRed),
                         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                       ),
-                      onPressed: () => vm.onDistractionDetected('com.instagram.android', 'Instagram'),
+                      // Bug 1 fix — simulateWebDistraction bypasses sqflite
+                      // DAO calls that throw MissingPluginException on web,
+                      // directly calling _registerDistraction so the counter
+                      // and escalation ladder fire correctly.
+                      onPressed: () => vm.simulateWebDistraction('com.instagram.android', 'Instagram'),
                       icon: const Icon(Icons.warning_amber_rounded),
                       label: const Text('Simulate Distraction (Web Demo)'),
                     ),

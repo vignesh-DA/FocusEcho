@@ -212,6 +212,41 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     unawaited(_subscribeCrossSurface());
   }
 
+  /// Web-demo distraction simulation — bypasses all DAO/SQLite calls that are
+  /// unavailable on the web platform.  The event is tagged with
+  /// [eventType: 'web_demo'] so it is **never** mixed with real distraction
+  /// analytics.  The distraction counter and escalation ladder still fire
+  /// exactly as they do on mobile, making this a valid smoke target for
+  /// TC_DISTRACT_001–006.
+  ///
+  /// NOTE (TC_DISTRACT_006): This method is the ONLY way a simulated event can
+  /// enter the state machine.  It does NOT call [onDistractionDetected] and
+  /// does NOT touch [FocusDetectionEngine] or the native EventChannel — it
+  /// cannot be confused with real detection coverage.
+  Future<void> simulateWebDistraction(String packageName, String appLabel) async {
+    final sessionId = state.session?.id;
+    if (sessionId == null) return;
+
+    // Build a demo-tagged event — note we do NOT insert it into SQLite, which
+    // would throw MissingPluginException on web.
+    final event = DistractionEvent(
+      id: _uuid.v4(),
+      sessionId: sessionId,
+      packageName: packageName,
+      appLabel: appLabel,
+      triggeredAt: DateTime.now(),
+      riskScore: 'MEDIUM',
+      riskScoreNumeric: 0.4,
+      // 'web_demo' is intentionally distinct from 'distraction' so analytics
+      // queries filtering by eventType='distraction' exclude simulated events.
+      eventType: 'web_demo',
+    );
+
+    // Directly register the distraction — updates distractionCount in state,
+    // computes escalation level, and shows the appropriate alert/overlay.
+    await _registerDistraction(event);
+  }
+
   Future<void> onDistractionDetected(String packageName, String appLabel) async {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
