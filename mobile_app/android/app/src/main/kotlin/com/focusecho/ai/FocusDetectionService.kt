@@ -27,6 +27,7 @@ class FocusDetectionService : Service() {
     private var lastSwitchTimeMs: Long = 0
     private var lastDistractionNotifMs: Long = 0
     private var screenReceiver: BroadcastReceiver? = null
+    private var simulationReceiver: BroadcastReceiver? = null
 
     // Cached values — refreshed every CACHE_TTL_MS to avoid disk reads every tick
     private var cachedSessionActive = false
@@ -36,6 +37,7 @@ class FocusDetectionService : Service() {
         super.onCreate()
         createNotificationChannel()
         registerScreenReceiver()
+        registerSimulationReceiver()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -271,6 +273,7 @@ class FocusDetectionService : Service() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         unregisterScreenReceiver()
+        unregisterSimulationReceiver()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -280,6 +283,7 @@ class FocusDetectionService : Service() {
     companion object {
         const val START_ACTION = "com.focusecho.ai.START_FOCUS_DETECTION"
         const val STOP_ACTION = "com.focusecho.ai.STOP_FOCUS_DETECTION"
+        const val SIMULATE_DISTRACTION_ACTION = "com.focusecho.ai.SIMULATE_DISTRACTION"
         private const val CHANNEL_ID = "focus_detection_channel"
         private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
         private const val DISTRACTION_NOTIF_ID = 2001
@@ -308,6 +312,53 @@ class FocusDetectionService : Service() {
 
         /** Events buffered when EventChannel sink is null. */
         val pendingEvents = mutableListOf<String>()
+    }
+
+    private fun registerSimulationReceiver() {
+        val filter = IntentFilter(SIMULATE_DISTRACTION_ACTION)
+        simulationReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val packageName = intent?.getStringExtra("package_name")
+                    ?: intent?.getStringExtra("packageName")
+                    ?: "com.instagram.android"
+                val label = intent?.getStringExtra("app_label")
+                    ?: intent?.getStringExtra("appLabel")
+                    ?: getAppLabel(packageName)
+
+                // Feature 2 — escalating intervention ladder:
+                // relapse 1 -> heads-up notification
+                // relapse 2-3 -> full-screen alert (Return to Focus / Take a Break)
+                // relapse 4+ -> full-screen forced choice (Pause / Return)
+                val relapse = DistractionEventQueue.registerRelapse()
+                val level = escalationLevelFor(relapse)
+                if (level == 1) {
+                    sendDistractionNotification(label, packageName)
+                } else {
+                    InterventionActivity.start(this@FocusDetectionService, level, relapse, label)
+                }
+                val payload = JSONObject()
+                    .put("eventType", "app_switch")
+                    .put("packageName", packageName)
+                    .put("appLabel", label)
+                    .put("timestamp", Instant.now().toString())
+                    .put("source", "adb_fixture")
+                    .put("escalation_level", level)
+                    .toString()
+                sendOrBuffer(payload)
+            }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(simulationReceiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(simulationReceiver, filter)
+        }
+    }
+
+    private fun unregisterSimulationReceiver() {
+        simulationReceiver?.let {
+            unregisterReceiver(it)
+        }
+        simulationReceiver = null
     }
 
     private fun registerScreenReceiver() {
