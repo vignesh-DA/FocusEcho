@@ -55,20 +55,27 @@ class ConsentScreen extends ConsumerWidget {
                           ),
                           _section('Local-only mode', 'You can choose to keep all data on-device.'),
                           const SizedBox(height: AppSpacing.md),
-                          SwitchListTile(
-                            title: const Text('Enable analytics'),
-                            value: state.analyticsEnabled,
-                            onChanged: vm.toggleAnalytics,
-                          ),
-                          SwitchListTile(
-                            title: const Text('Enable cloud sync'),
-                            value: state.cloudSyncEnabled,
-                            onChanged: state.localOnlyMode ? null : vm.toggleCloudSync,
-                          ),
-                          SwitchListTile(
-                            title: const Text('Local only mode'),
-                            value: state.localOnlyMode,
-                            onChanged: vm.toggleLocalOnly,
+                          Material(
+                            color: Colors.transparent,
+                            child: Column(
+                              children: [
+                                SwitchListTile(
+                                  title: const Text('Enable analytics'),
+                                  value: state.analyticsEnabled,
+                                  onChanged: vm.toggleAnalytics,
+                                ),
+                                SwitchListTile(
+                                  title: const Text('Enable cloud sync'),
+                                  value: state.cloudSyncEnabled,
+                                  onChanged: state.localOnlyMode ? null : vm.toggleCloudSync,
+                                ),
+                                SwitchListTile(
+                                  title: const Text('Local only mode'),
+                                  value: state.localOnlyMode,
+                                  onChanged: vm.toggleLocalOnly,
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),

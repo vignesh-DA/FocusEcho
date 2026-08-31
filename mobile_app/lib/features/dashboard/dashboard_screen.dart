@@ -82,7 +82,7 @@ class DashboardScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 Row(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     // Feature 3 — Recovery Rate promoted to a headline stat
                     // next to the focus streak, with week-over-week trend.
