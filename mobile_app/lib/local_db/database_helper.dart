@@ -11,7 +11,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const _dbName = 'focus_echo.db';
-  static const _dbVersion = 3;
+  static const _dbVersion = 4;
 
   Database? _database;
 
@@ -98,6 +98,7 @@ class DatabaseHelper {
         time_of_day_hour INTEGER,
         day_of_week INTEGER,
         session_minute_when_occurred INTEGER,
+        escalation_level INTEGER NOT NULL DEFAULT 1,
         is_recovered INTEGER NOT NULL DEFAULT 0,
         is_synced INTEGER NOT NULL DEFAULT 0
       )
@@ -162,6 +163,13 @@ class DatabaseHelper {
           is_synced INTEGER NOT NULL DEFAULT 0
         )
       ''');
+    }
+    if (oldVersion < 4) {
+      // Feature 2 — escalation ladder level on every distraction event
+      // (mirrors the Supabase escalation_level column).
+      await db.execute(
+        'ALTER TABLE distraction_events ADD COLUMN escalation_level INTEGER NOT NULL DEFAULT 1',
+      );
     }
   }
 

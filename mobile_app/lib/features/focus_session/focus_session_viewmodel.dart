@@ -119,10 +119,28 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       final timestamp = DateTime.tryParse(timestampRaw ?? '') ?? DateTime.now();
       final packageName = map['packageName'] as String?;
       final appLabel = map['appLabel'] as String? ?? packageName ?? 'unknown';
+      // Feature 2 — escalation level computed by the native relapse ladder.
+      final escalationLevel = (map['escalation_level'] as num?)?.toInt() ?? 1;
 
       // Feature 2 — intervention lifecycle events emitted by the native layer.
       if (eventType == 'intervention_shown' || eventType == 'intervention_action') {
         unawaited(_handleNativeInterventionEvent(eventType, map));
+        return;
+      }
+
+      // ADB test fixture relapses feed onDistractionDetected directly — the
+      // SAME registration path real detection uses (SQLite insert, distraction
+      // counter, escalation ladder). The engine's app-switch dedupe would
+      // otherwise swallow repeated synthetic broadcasts (same package, no real
+      // foreground change between them).
+      if (map['source'] == 'adb_fixture' && packageName != null) {
+        unawaited(
+          onDistractionDetected(
+            packageName,
+            appLabel,
+            escalationLevel: escalationLevel,
+          ),
+        );
         return;
       }
 
@@ -147,6 +165,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
             packageName: packageName,
             appLabel: appLabel,
             source: map['source'] as String?,
+            escalationLevel: escalationLevel,
           ),
       };
 
@@ -247,7 +266,11 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     await _registerDistraction(event);
   }
 
-  Future<void> onDistractionDetected(String packageName, String appLabel) async {
+  Future<void> onDistractionDetected(
+    String packageName,
+    String appLabel, {
+    int escalationLevel = 1,
+  }) async {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
 
@@ -268,6 +291,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       triggeredAt: DateTime.now(),
       riskScore: risk,
       riskScoreNumeric: riskScore,
+      escalationLevel: escalationLevel,
     );
     await _eventDao.insertEvent(event);
     await _registerDistraction(event);
@@ -464,10 +488,30 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     if (eventType == 'intervention_action') {
       if (action == 'pause_session') {
         await stopSession();
-      } else if (action == 'return_to_focus' || action == 'take_break') {
+      } else if (action == 'return_to_focus') {
         state = state.copyWith(showAlert: false);
+      } else if (action == 'take_break') {
+        await _pauseSessionForBreak();
       }
     }
+  }
+
+  /// Feature 2 — "Take a Break" pauses the active session: the timer and the
+  /// native detection service stop, and the UI returns to the setup view.
+  /// The session row is intentionally left open (no end_time, status stays
+  /// 'active') so a future resume feature can continue the same session.
+  Future<void> _pauseSessionForBreak() async {
+    if (!state.isActive) return;
+    _timer?.cancel();
+    state = state.copyWith(showAlert: false, isActive: false);
+    if (!kIsWeb) {
+      try {
+        await _sessionChannel.invokeMethod<void>('stopSession');
+      } catch (e) {
+        debugPrint('Failed to stop native detection on break: $e');
+      }
+    }
+    await _prefs.setBool(AppKeys.sessionActive, false);
   }
 
   FocusDetectionConfig _buildConfig(String focusApp) {
@@ -557,6 +601,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final returnedToOrigin = payload['returnedToOrigin'] as bool? ?? false;
     final switchStackDepth = payload['switchStackDepth'] as int? ?? 0;
     final timestamp = payload['timestamp'] as DateTime? ?? DateTime.now();
+    // Feature 2 — escalation level attached by the native relapse ladder
+    // (adb_fixture / usage_stats payloads); engine-only paths default to 1.
+    final escalationLevel = payload['escalation_level'] as int? ?? 1;
 
     final recent = await _eventDao.getRecentEvents(30, eventType: 'distraction');
     final riskScore = RuleEngine.computeRiskScore(
@@ -585,6 +632,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       timeOfDayHour: now.hour,
       dayOfWeek: now.weekday,
       sessionMinuteWhenOccurred: state.elapsedSeconds ~/ 60,
+      escalationLevel: escalationLevel,
     );
 
     await _eventDao.insertEvent(event);

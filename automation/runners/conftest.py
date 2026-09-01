@@ -118,6 +118,10 @@ def test_metadata(request):
         if driver_fixture:
             screenshot_path = ScreenshotUtils.capture_on_failure(driver_fixture, tc_id, request.node.name)
             save_logcat_for_test(tc_id)
+    elif rep.skipped:
+        # Preserve the skip reason so the CI gate can surface it instead of
+        # silently folding skips into the pass rate.
+        error_msg = str(getattr(rep, "wasxfail", "") or rep.longrepr or "skipped")[:500]
 
     _test_results.append({
         "test_id": tc_id,
@@ -208,3 +212,4 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "error_handling: Error handling tests")
     config.addinivalue_line("markers", "performance: Performance smoke tests")
     config.addinivalue_line("markers", "accessibility: Accessibility tests")
+    config.addinivalue_line("markers", "native: Native escalation tests (ADB broadcast fixture)")

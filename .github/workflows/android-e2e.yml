@@ -434,6 +434,52 @@ jobs:
           print('GitHub Actions summary written')
           " || true
 
+      - name: 🚦 Stage 17b — Pass-Rate Gate (executed tests only)
+        if: always()
+        working-directory: automation
+        run: |
+          python -c "
+          import json, sys
+          from pathlib import Path
+
+          results_file = Path('reports/JSON/execution-results.json')
+          if not results_file.exists():
+              print('FAIL: no execution-results.json found - no evidence of a test run.')
+              sys.exit(1)
+
+          data = json.loads(results_file.read_text())
+          summary = data.get('summary', {})
+          passed = summary.get('passed', 0)
+          failed = summary.get('failed', 0)
+          skipped = summary.get('skipped', 0)
+          blocked = summary.get('blocked', 0)
+
+          # Deliberately excludes skipped/blocked from the denominator —
+          # skips must never silently inflate the pass rate.
+          executed = passed + failed
+          rate = (passed / executed * 100) if executed else 0
+
+          print('Passed: ' + str(passed) + ' | Failed: ' + str(failed) + ' | Executed: ' + str(executed))
+          print('Skipped: ' + str(skipped) + ' (excluded from pass rate) | Blocked: ' + str(blocked))
+          print('Executed-only pass rate: ' + str(round(rate, 1)) + '% (threshold 95%)')
+
+          if skipped:
+              print()
+              print('Skipped tests (with reasons):')
+              for r in data.get('results', []):
+                  if str(r.get('status', '')).upper() in ('SKIP', 'SKIPPED'):
+                      reason = r.get('error_message') or 'no reason recorded'
+                      print('  - ' + str(r.get('test_id', '?')) + ': ' + reason.splitlines()[0])
+
+          if executed == 0:
+              print('FAIL: zero executed tests - nothing ran.')
+              sys.exit(1)
+          if rate < 95:
+              print('FAIL: executed-only pass rate below 95%.')
+              sys.exit(1)
+          print('PASS: gate passed.')
+          "
+
       - name: 📤 Stage 18 — Upload All Artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -459,7 +505,7 @@ jobs:
       - name: 🚦 Stage 21 — Check Pipeline Pass/Fail Threshold
         if: always()
         run: |
-          EXIT_CODE="${{ env.TEST_EXIT_CODE }}"
+          EXIT_CODE="${TEST_EXIT_CODE:-0}"
           echo "Test exit code: $EXIT_CODE"
           if [ "$EXIT_CODE" = "0" ]; then
             echo "✅ All tests passed"

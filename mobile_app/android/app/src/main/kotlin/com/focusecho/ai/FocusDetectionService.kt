@@ -11,6 +11,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.BroadcastReceiver
 import android.content.IntentFilter
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Handler
@@ -93,26 +94,7 @@ class FocusDetectionService : Service() {
         val isDistraction = distractingRaw.contains(packageName) ||
             ALWAYS_DISTRACTION_PACKAGES.contains(packageName)
         if (isDistraction) {
-            // Feature 2 — escalating intervention ladder:
-            // relapse 1 -> heads-up notification (unchanged copy)
-            // relapse 2-3 -> full-screen alert (Return to Focus / Take a Break)
-            // relapse 4+ -> full-screen forced choice (Pause / Return)
-            val relapse = DistractionEventQueue.registerRelapse()
-            val level = escalationLevelFor(relapse)
-            if (level == 1) {
-                sendDistractionNotification(label, packageName)
-            } else {
-                InterventionActivity.start(this, level, relapse, label)
-            }
-            val payload = JSONObject()
-                .put("eventType", "app_switch")
-                .put("packageName", packageName)
-                .put("appLabel", label)
-                .put("timestamp", Instant.now().toString())
-                .put("source", "usage_stats")
-                .put("escalation_level", level)
-                .toString()
-            sendOrBuffer(payload)
+            handleDistractionDetected(packageName, label, source = "usage_stats")
             return
         }
 
@@ -133,6 +115,33 @@ class FocusDetectionService : Service() {
             relapse <= 3 -> 2
             else -> 3
         }
+    }
+
+    /**
+     * Feature 2 — single escalation entry point shared by real foreground-app
+     * polling (source="usage_stats") and the debug ADB broadcast fixture
+     * (source="adb_fixture"). Registers the per-session relapse, drives the
+     * intervention ladder (1 = heads-up notification, 2-3 = full-screen
+     * InterventionActivity), and forwards the event to Flutter with its
+     * escalation level so the SQLite row records it.
+     */
+    private fun handleDistractionDetected(packageName: String, label: String, source: String) {
+        val relapse = DistractionEventQueue.registerRelapse()
+        val level = escalationLevelFor(relapse)
+        if (level == 1) {
+            sendDistractionNotification(label, packageName)
+        } else {
+            InterventionActivity.start(this, level, relapse, label)
+        }
+        val payload = JSONObject()
+            .put("eventType", "app_switch")
+            .put("packageName", packageName)
+            .put("appLabel", label)
+            .put("timestamp", Instant.now().toString())
+            .put("source", source)
+            .put("escalation_level", level)
+            .toString()
+        sendOrBuffer(payload)
     }
 
     /**
@@ -285,6 +294,10 @@ class FocusDetectionService : Service() {
         const val STOP_ACTION = "com.focusecho.ai.STOP_FOCUS_DETECTION"
         const val SIMULATE_DISTRACTION_ACTION = "com.focusecho.ai.SIMULATE_DISTRACTION"
         private const val CHANNEL_ID = "focus_detection_channel"
+        /** ADB test fixture — simulation broadcast actions (debug builds only). */
+        const val SIMULATE_DISTRACTION_ACTION = "com.focusecho.ai.SIMULATE_DISTRACTION"
+        const val SIMULATE_DISTRACTION_DEBUG_ACTION = "com.focusecho.debug.SIMULATE_DISTRACTION"
+
         private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
         private const val DISTRACTION_NOTIF_ID = 2001
 
@@ -315,7 +328,15 @@ class FocusDetectionService : Service() {
     }
 
     private fun registerSimulationReceiver() {
-        val filter = IntentFilter(SIMULATE_DISTRACTION_ACTION)
+        // Debug-builds only — the simulation entry point must never ship in a
+        // release APK (it is an exported receiver accepting synthetic events).
+        if (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        // Hybrid alias: both the established action and the plan's
+        // com.focusecho.debug.* namespace resolve to the same receiver.
+        val filter = IntentFilter().apply {
+            addAction(SIMULATE_DISTRACTION_ACTION)
+            addAction(SIMULATE_DISTRACTION_DEBUG_ACTION)
+        }
         simulationReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 val packageName = intent?.getStringExtra("package_name")
@@ -325,26 +346,11 @@ class FocusDetectionService : Service() {
                     ?: intent?.getStringExtra("appLabel")
                     ?: getAppLabel(packageName)
 
-                // Feature 2 — escalating intervention ladder:
-                // relapse 1 -> heads-up notification
-                // relapse 2-3 -> full-screen alert (Return to Focus / Take a Break)
-                // relapse 4+ -> full-screen forced choice (Pause / Return)
-                val relapse = DistractionEventQueue.registerRelapse()
-                val level = escalationLevelFor(relapse)
-                if (level == 1) {
-                    sendDistractionNotification(label, packageName)
-                } else {
-                    InterventionActivity.start(this@FocusDetectionService, level, relapse, label)
-                }
-                val payload = JSONObject()
-                    .put("eventType", "app_switch")
-                    .put("packageName", packageName)
-                    .put("appLabel", label)
-                    .put("timestamp", Instant.now().toString())
-                    .put("source", "adb_fixture")
-                    .put("escalation_level", level)
-                    .toString()
-                sendOrBuffer(payload)
+                // Feed into the SAME function real UsageStatsManager polling
+                // calls — relapse counter, escalation ladder, notification /
+                // full-screen intervention, and EventChannel payload are all
+                // exercised for real (no bypass of the production path).
+                handleDistractionDetected(packageName, label, source = "adb_fixture")
             }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

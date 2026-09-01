@@ -24,6 +24,9 @@ class DistractionEvent with _$DistractionEvent {
     int? timeOfDayHour,
     int? dayOfWeek,
     int? sessionMinuteWhenOccurred,
+    // Feature 2 — escalation ladder level (1 = heads-up, 2-3 = full-screen)
+    // recorded at the time the event fired. Mirrors the Supabase column.
+    @Default(1) int escalationLevel,
     @Default(false) bool isRecovered,
     @Default(false) bool isSynced,
   }) = _DistractionEvent;
@@ -52,6 +55,7 @@ class DistractionEvent with _$DistractionEvent {
       'time_of_day_hour': timeOfDayHour,
       'day_of_week': dayOfWeek,
       'session_minute_when_occurred': sessionMinuteWhenOccurred,
+      'escalation_level': escalationLevel,
       'is_recovered': isRecovered ? 1 : 0,
       'is_synced': isSynced ? 1 : 0,
     };
@@ -77,6 +81,7 @@ class DistractionEvent with _$DistractionEvent {
       timeOfDayHour: map['time_of_day_hour'] as int?,
       dayOfWeek: map['day_of_week'] as int?,
       sessionMinuteWhenOccurred: map['session_minute_when_occurred'] as int?,
+      escalationLevel: (map['escalation_level'] as int?) ?? 1,
       isRecovered: (map['is_recovered'] as int? ?? 0) == 1,
       isSynced: (map['is_synced'] as int? ?? 0) == 1,
     );

@@ -36,6 +36,7 @@ class FocusSignal {
     this.packageName,
     this.appLabel,
     this.source,
+    this.escalationLevel = 1,
   });
 
   final FocusEventType type;
@@ -43,6 +44,11 @@ class FocusSignal {
   final String? packageName;
   final String? appLabel;
   final String? source;
+
+  /// Feature 2 — escalation level attached by the native layer when the
+  /// payload already ran through the relapse ladder (adb_fixture / usage_stats
+  /// distractions). Defaults to 1 for signals without one.
+  final int escalationLevel;
 }
 
 class FocusAction {
@@ -98,6 +104,7 @@ class FocusDetectionEngine {
   DateTime? _screenOnGraceUntil;
   bool _paused = false;
   int _switchStackDepth = 0;
+  int _lastEscalationLevel = 1;
   final Map<String, DateTime> _snoozedApps = {};
 
   Timer? _graceTimer;
@@ -126,6 +133,7 @@ class FocusDetectionEngine {
     _screenOnGraceUntil = null;
     _paused = false;
     _switchStackDepth = 0;
+    _lastEscalationLevel = 1;
     _snoozedApps.clear();
     _graceTimer?.cancel();
     _transitionTimer?.cancel();
@@ -180,6 +188,7 @@ class FocusDetectionEngine {
     _lastSwitchTime = now;
     _currentPackage = packageName;
     _currentLabel = signal.appLabel ?? packageName;
+    _lastEscalationLevel = signal.escalationLevel;
 
     if (packageName == config.focusApp) {
       return _handleReturnToFocus(now);
@@ -385,6 +394,7 @@ class FocusDetectionEngine {
       'wasNotificationTriggered': _isNotificationTriggered(packageName),
       'returnedToOrigin': _currentPackage == config.focusApp,
       'switchStackDepth': _switchStackDepth,
+      'escalation_level': _lastEscalationLevel,
       'timestamp': now,
     };
   }
