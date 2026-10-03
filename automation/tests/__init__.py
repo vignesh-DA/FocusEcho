@@ -1,1 +1,0 @@
-# FocusEcho Automation Package
