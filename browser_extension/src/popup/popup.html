@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FocusEcho</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 16px; width: 280px; }
+    p { font-size: 0.8rem; color: #8b949e; }
+    a { color: #58a6ff; }
+  </style>
+</head>
+<body>
+  <p>⚡ FocusEcho — Phase 1</p>
+  <p>Popup UI ships in Phase 3. Use the <a href="#" id="opt-link">debug options page</a> to control sessions.</p>
+  <script>
+    document.getElementById('opt-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.runtime.openOptionsPage();
+    });
+  </script>
+</body>
+</html>

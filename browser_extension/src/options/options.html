@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FocusEcho — Debug Options</title>
+  <style>
+    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 20px; max-width: 720px; }
+    h1   { color: #58a6ff; font-size: 1.1rem; margin-bottom: 4px; }
+    h2   { color: #8b949e; font-size: 0.85rem; margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 1px; }
+    .warn { background: #3d2b00; border-left: 3px solid #f0883e; padding: 8px 12px; margin-bottom: 12px; font-size: 0.8rem; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
+    input[type=text] {
+      background: #161b22; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 5px 8px; border-radius: 4px; flex: 1; font-family: monospace; font-size: 0.85rem;
+    }
+    button {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 5px 12px; border-radius: 4px; cursor: pointer; font-family: monospace; font-size: 0.85rem;
+    }
+    button:hover  { background: #30363d; }
+    button.danger { border-color: #f85149; color: #f85149; }
+    button.primary { border-color: #58a6ff; color: #58a6ff; }
+    #state-box {
+      background: #161b22; border: 1px solid #30363d; border-radius: 6px;
+      padding: 12px; min-height: 80px; font-size: 0.8rem; white-space: pre; overflow-x: auto;
+    }
+    #log-box {
+      background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+      padding: 12px; height: 260px; overflow-y: auto; font-size: 0.75rem; line-height: 1.6;
+    }
+    .log-entry { color: #8b949e; }
+    .log-entry.sm  { color: #79c0ff; }
+    .log-entry.act { color: #7ee787; }
+    .log-entry.warn { color: #f0883e; }
+    label { font-size: 0.82rem; color: #8b949e; white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <h1>⚡ FocusEcho — Phase 1 Debug Panel</h1>
+  <div class="warn">
+    ⚠ Debug only. Do not ship with debug panel visible to end users. Timers are shortened in debug mode.
+  </div>
+
+  <h2>Session Control</h2>
+  <div class="row">
+    <label>Intention:</label>
+    <input type="text" id="intention-input" value="Test SW restart" data-testid="options.intention-input">
+  </div>
+  <div class="row">
+    <label>Distraction sites (comma-separated):</label>
+    <input type="text" id="sites-input" value="twitter.com,youtube.com" data-testid="options.sites-input">
+  </div>
+  <div class="row">
+    <button class="primary" id="btn-start" data-testid="options.start-session">▶ Start Session</button>
+    <button class="danger"  id="btn-stop"  data-testid="options.stop-session">■ End Session</button>
+    <button id="btn-refresh" data-testid="options.refresh-state">⟳ Refresh State</button>
+  </div>
+
+  <h2>Scenario Simulator</h2>
+  <div class="row">
+    <button id="btn-glance"   data-testid="options.sim-glance">Glance &lt;3 s</button>
+    <button id="btn-visit20"  data-testid="options.sim-visit20">20 s visit</button>
+    <button id="btn-reentry"  data-testid="options.sim-reentry">Re-entry</button>
+    <button id="btn-countdown-expire" data-testid="options.sim-countdown">L2 countdown expire</button>
+    <button id="btn-drift"    data-testid="options.sim-drift">"I'm drifting"</button>
+    <button id="btn-heartbeat" data-testid="options.sim-heartbeat">Force heartbeat</button>
+  </div>
+
+  <h2>Current State</h2>
+  <pre id="state-box" data-testid="options.state-box">Loading…</pre>
+
+  <h2>Event Log</h2>
+  <div id="log-box" data-testid="options.log-box"></div>
+  <div class="row" style="margin-top:6px">
+    <button id="btn-clear-log" data-testid="options.clear-log">Clear log</button>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

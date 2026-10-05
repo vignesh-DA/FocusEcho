@@ -1,17 +1,47 @@
 {
   "manifest_version": 3,
-  "name": "FocusEcho Browser Monitor",
-  "version": "1.0.0",
-  "description": "Sends configured browser distraction events to the FocusEcho web app.",
-  "permissions": ["tabs", "webNavigation", "storage"],
-  "host_permissions": ["<all_urls>"],
-  "background": {"service_worker": "background.js"},
+  "name": "FocusEcho",
+  "version": "2.0.0",
+  "description": "Intention-aware focus coach for your browser. Detects distraction and escalates interventions tied to your declared goal.",
+  "minimum_chrome_version": "102",
+
+  "permissions": [
+    "storage",
+    "idle",
+    "alarms",
+    "tabs",
+    "webNavigation",
+    "scripting"
+  ],
+
+  "optional_host_permissions": ["<all_urls>"],
+
+  "background": {
+    "service_worker": "src/background/service-worker.js",
+    "type": "module"
+  },
+
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_start"
+      "matches": [
+        "https://focusecho-app.vercel.app/*",
+        "http://localhost:3000/*",
+        "http://localhost:5173/*"
+      ],
+      "js": ["src/content/bridge.js"],
+      "run_at": "document_idle"
     }
   ],
-  "action": {"default_title": "FocusEcho Browser Monitor"}
+
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16":  "src/assets/icons/icon-16.png",
+      "48":  "src/assets/icons/icon-48.png",
+      "128": "src/assets/icons/icon-128.png"
+    },
+    "default_title": "FocusEcho"
+  },
+
+  "options_page": "src/options/options.html"
 }
