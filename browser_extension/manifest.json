@@ -23,6 +23,7 @@
 
   "content_scripts": [
     {
+      "_comment": "CONFIRM: replace focusecho-app.vercel.app with your actual Vercel project URL",
       "matches": [
         "https://focusecho-app.vercel.app/*",
         "http://localhost:3000/*",
