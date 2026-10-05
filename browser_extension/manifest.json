@@ -21,9 +21,26 @@
     "type": "module"
   },
 
+  "icons": {
+    "16":  "src/assets/icons/icon-16.png",
+    "32":  "src/assets/icons/icon-32.png",
+    "48":  "src/assets/icons/icon-48.png",
+    "128": "src/assets/icons/icon-128.png"
+  },
+
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16":  "src/assets/icons/icon-16.png",
+      "32":  "src/assets/icons/icon-32.png",
+      "48":  "src/assets/icons/icon-48.png",
+      "128": "src/assets/icons/icon-128.png"
+    },
+    "default_title": "FocusEcho"
+  },
+
   "content_scripts": [
     {
-      "_comment": "CONFIRM: replace focusecho-app.vercel.app with your actual Vercel project URL",
       "matches": [
         "https://focusecho-app.vercel.app/*",
         "http://localhost:3000/*",
@@ -33,16 +50,6 @@
       "run_at": "document_idle"
     }
   ],
-
-  "action": {
-    "default_popup": "src/popup/popup.html",
-    "default_icon": {
-      "16":  "src/assets/icons/icon-16.png",
-      "48":  "src/assets/icons/icon-48.png",
-      "128": "src/assets/icons/icon-128.png"
-    },
-    "default_title": "FocusEcho"
-  },
 
   "options_page": "src/options/options.html"
 }
