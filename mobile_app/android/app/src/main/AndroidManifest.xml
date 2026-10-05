@@ -5,14 +5,26 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!--
+        H1 fix (Android 14): FocusDetectionService polls UsageStatsManager to
+        detect which app is in the foreground — it does not use the camera, mic,
+        location, or media subsystems.  "specialUse" is the correct type for
+        monitoring/coaching services that do not fit a predefined category.
+
+        Play Store requirement: submit a declaration in the Play Console at
+        "App content > Foreground service type > Special use" with this
+        justification: "FocusEcho polls UsageStatsManager every 3 s to detect
+        distracting app launches during a user-initiated focus session. No
+        sensitive data, user content, or media is accessed."
+
+        Android 12 and below: no foreground service type enforcement — the
+        permission declaration is accepted as-is.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
-        tools:ignore="ProtectedPermissions" />
-    <uses-permission
-        android:name="android.permission.BIND_ACCESSIBILITY_SERVICE"
         tools:ignore="ProtectedPermissions" />
 
     <!-- Query launcher apps for label resolution (replaces QUERY_ALL_PACKAGES) -->
@@ -65,23 +77,19 @@
             android:turnScreenOn="true"
             android:theme="@android:style/Theme.Dialog" />
 
+        <!--
+            Single detection path: UsageStats polling only (Accessibility service
+            removed — decision approved 2026-10-03). foregroundServiceType
+            updated to "specialUse" per H1 fix.
+        -->
         <service
             android:name=".FocusDetectionService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="dataSync" />
-
-        <service
-            android:name=".FocusAccessibilityService"
-            android:enabled="true"
-            android:exported="true"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_service_config" />
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="UsageStats monitoring for focus coaching" />
         </service>
 
         <service

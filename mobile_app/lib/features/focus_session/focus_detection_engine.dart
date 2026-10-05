@@ -265,18 +265,38 @@ class FocusDetectionEngine {
 
     final switchedAwayAt = _switchedAwayAt;
     final transitionPackage = _transitionPackage;
+    // Item 26 fix: capture distraction state BEFORE resetting it below.
+    // If we were in distraction, returning via ANY intermediate app
+    // (launcher, settings, browser) must still resolve as a recovery —
+    // not silently filed as an intentional switch.
+    final wasInDistraction = _state == FocusState.distraction;
     final timeAwaySeconds = switchedAwayAt == null
         ? 0
         : now.difference(switchedAwayAt).inSeconds;
 
     final actions = <FocusAction>[];
 
-    if (switchedAwayAt != null && timeAwaySeconds <= (config.gracePeriodMs ~/ 1000)) {
+    if (switchedAwayAt != null &&
+        timeAwaySeconds <= (config.gracePeriodMs ~/ 1000)) {
+      // Returned within grace window — treat as never having left.
       _state = FocusState.focus;
+    } else if (wasInDistraction) {
+      // Item 26 fix: distraction → [any path] → focusApp → always recovery.
+      _state = FocusState.recovering;
+      actions.add(
+        FocusAction(
+          type: FocusActionType.recovery,
+          payload: {
+            'timeAwaySeconds': timeAwaySeconds,
+            'returnedToOrigin': true,
+          },
+        ),
+      );
     } else if (transitionPackage != null) {
       final category = _classify(transitionPackage);
       final thresholdMs = _thresholdFor(transitionPackage, category);
-      if (category == AppCategory.alwaysAllowed || category == AppCategory.neutral) {
+      if (category == AppCategory.alwaysAllowed ||
+          category == AppCategory.neutral) {
         _state = FocusState.focus;
         actions.add(
           FocusAction(
@@ -312,6 +332,7 @@ class FocusDetectionEngine {
     _switchStackDepth = 0;
     return actions;
   }
+
 
   void _enterGrace(String packageName, DateTime now) {
     final config = _config!;

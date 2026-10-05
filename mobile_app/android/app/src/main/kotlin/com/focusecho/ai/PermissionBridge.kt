@@ -9,22 +9,27 @@ import android.provider.Settings
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
+/**
+ * Flutter ↔ native bridge for permission checks and settings deep-links.
+ *
+ * Permissions checked:
+ *   - Usage Access (PACKAGE_USAGE_STATS) — required for detection.
+ *   - Battery optimisation exemption    — required for background reliability.
+ *
+ * Accessibility service has been removed (decision 2026-10-03 — single
+ * detection path via UsageStats).  The [checkAccessibility] method has been
+ * deleted; the wizard view-model always reports true for that flag.
+ */
 class PermissionBridge(private val context: Context) {
     fun register(engine: FlutterEngine) {
         MethodChannel(engine.dartExecutor.binaryMessenger, "focus_echo/permissions")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
                     "checkUsageAccess" -> result.success(checkUsageAccess())
-                    "checkAccessibility" -> result.success(checkAccessibility())
                     "openUsageSettings" -> {
                         context.startActivity(
-                            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        )
-                        result.success(true)
-                    }
-                    "openAccessibilitySettings" -> {
-                        context.startActivity(
-                            Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         )
                         result.success(true)
                     }
@@ -42,16 +47,6 @@ class PermissionBridge(private val context: Context) {
             context.packageName
         )
         return mode == AppOpsManager.MODE_ALLOWED
-    }
-
-    private fun checkAccessibility(): Boolean {
-        val enabledServices = Settings.Secure.getString(
-            context.contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-
-        val service = "${context.packageName}/com.focusecho.ai.FocusAccessibilityService"
-        return enabledServices.contains(service)
     }
 
     private fun isIgnoringBatteryOptimizations(): Boolean {

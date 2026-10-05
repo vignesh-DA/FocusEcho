@@ -41,13 +41,18 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
     final state = ref.watch(permissionWizardProvider);
     final vm = ref.read(permissionWizardProvider.notifier);
 
+    // Decision 2026-10-03: single detection path via UsageStats only.
+    // Accessibility service has been removed — wizard is now 3 pages:
+    //   Page 0 — Usage Access
+    //   Page 1 — Battery Optimisation
+    //   Page 2 — All Set
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('${state.currentPage + 1}/4', style: AppTextStyles.displayMedium),
+              child: Text('${state.currentPage + 1}/3', style: AppTextStyles.displayMedium),
             ),
             Expanded(
               child: PageView(
@@ -55,6 +60,7 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
                 physics: const NeverScrollableScrollPhysics(),
                 children: [
                   _permissionPage(
+                    key: const ValueKey('usage_access_step'),
                     icon: Icons.bar_chart_rounded,
                     title: 'Usage Access',
                     body:
@@ -64,14 +70,7 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
                     onTap: vm.openUsageAccessSettings,
                   ),
                   _permissionPage(
-                    icon: Icons.accessibility_new_rounded,
-                    title: 'Accessibility Service',
-                    body: 'For instant app switch detection, enable Focus Echo in Accessibility Settings.',
-                    button: 'Open Accessibility Settings',
-                    granted: state.hasAccessibility,
-                    onTap: vm.openAccessibilitySettings,
-                  ),
-                  _permissionPage(
+                    key: const ValueKey('battery_step'),
                     icon: Icons.battery_charging_full_rounded,
                     title: 'Keep Focus Echo Running',
                     body: 'Disable battery optimization so the app is not killed in the background.',
@@ -90,6 +89,7 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
               child: SizedBox(
                 width: double.infinity,
                 child: ElevatedButton(
+                  key: const ValueKey('wizard_next_btn'),
                   onPressed: () => vm.nextPage(_pageController, context),
                   child: const Text('Next'),
                 ),
@@ -102,6 +102,7 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
   }
 
   Widget _permissionPage({
+    required Key key,
     required IconData icon,
     required String title,
     required String body,
@@ -112,6 +113,7 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
     Future<void> Function()? onSecondaryTap,
   }) {
     return Padding(
+      key: key,
       padding: const EdgeInsets.all(20),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -140,6 +142,7 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
   Widget _allSetPage(BuildContext context, PermissionWizardViewModel vm, dynamic state) {
     final allGranted = vm.isAllGranted;
     return Padding(
+      key: const ValueKey('all_set_page'),
       padding: const EdgeInsets.all(20),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -155,13 +158,14 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
           ),
           const SizedBox(height: 16),
           const ListTile(leading: Icon(Icons.check), title: Text('Usage Access granted')),
-          const ListTile(leading: Icon(Icons.check), title: Text('Accessibility enabled')),
-          const ListTile(leading: Icon(Icons.check), title: Text('Battery optimization disabled')),
+          const ListTile(
+              leading: Icon(Icons.check), title: Text('Battery optimization disabled')),
           const SizedBox(height: 16),
           if (allGranted)
             ElevatedButton(
+              key: const ValueKey('start_app_btn'),
               onPressed: () {
-                AppRouter.refresh(); // Trigger router re-evaluation
+                AppRouter.refresh();
                 context.go(AppRoutes.appSelector);
               },
               child: const Text('Start Using Focus Echo'),
@@ -171,7 +175,11 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
               children: [
                 const Text('Some permissions are still missing.'),
                 const SizedBox(height: 8),
-                OutlinedButton(onPressed: vm.checkAllPermissions, child: const Text('Check Again')),
+                OutlinedButton(
+                  key: const ValueKey('check_again_btn'),
+                  onPressed: vm.checkAllPermissions,
+                  child: const Text('Check Again'),
+                ),
               ],
             ),
         ],

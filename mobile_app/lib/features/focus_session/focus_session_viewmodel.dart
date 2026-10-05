@@ -246,8 +246,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
 
-    // Build a demo-tagged event — note we do NOT insert it into SQLite, which
-    // would throw MissingPluginException on web.
+    // Compute escalation level the same way native does, so the web demo
+    // ladder mirrors the real escalation ladder exactly.
+    final level = _levelForRelapse(state.distractionCount + 1);
+
     final event = DistractionEvent(
       id: _uuid.v4(),
       sessionId: sessionId,
@@ -256,15 +258,13 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       triggeredAt: DateTime.now(),
       riskScore: 'MEDIUM',
       riskScoreNumeric: 0.4,
-      // 'web_demo' is intentionally distinct from 'distraction' so analytics
-      // queries filtering by eventType='distraction' exclude simulated events.
       eventType: 'web_demo',
+      escalationLevel: level,
     );
 
-    // Directly register the distraction — updates distractionCount in state,
-    // computes escalation level, and shows the appropriate alert/overlay.
     await _registerDistraction(event);
   }
+
 
   Future<void> onDistractionDetected(
     String packageName,
@@ -298,11 +298,28 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   }
 
   /// Shared escalation path for both native and browser distractions.
-  /// Computes the relapse level for this session, updates state, logs the
-  /// intervention as shown, and broadcasts cross-surface (Feature 4).
+  ///
+  /// [C1 fix] Escalation level source-of-truth:
+  ///   - For native events (usage_stats / adb_fixture): [event.escalationLevel]
+  ///     is set from the Kotlin payload which already ran through
+  ///     [DistractionEventQueue.registerRelapse()] + [escalationLevelFor()].
+  ///     Flutter trusts that value directly — no recomputation.
+  ///   - For web / simulation (escalationLevel == 1 at default AND
+  ///     distractionCount > 0): Flutter's own [_levelForRelapse] is used as a
+  ///     fallback so the web demo escalation ladder still works.
   Future<void> _registerDistraction(DistractionEvent event) async {
     final newCount = state.distractionCount + 1;
-    final level = _levelForRelapse(newCount);
+    // Use the native-computed level when present; fall back to local computation
+    // only for web demo / simulation (where native layer never runs).
+    final level = (event.escalationLevel > 1)
+        ? event.escalationLevel
+        : _levelForRelapse(newCount);
+    debugPrint(
+      '[FocusSession] distraction #$newCount '
+      'native_level=${event.escalationLevel} '
+      'resolved_level=$level '
+      'source=${event.eventType}',
+    );
     state = state.copyWith(
       distractionCount: newCount,
       currentRiskScore: event.riskScore,

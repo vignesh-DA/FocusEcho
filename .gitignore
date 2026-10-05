@@ -40,8 +40,10 @@ local.properties
 !.env.example
 backend/.env
 **/.env
+dart_defines.json
 prompt.md
 TODO.md
+
 
 # iOS
 Pods/

@@ -53,17 +53,25 @@ class AppDurations {
   static const debounceMs = 500;
 }
 
-/// Supabase config — override at build time with --dart-define:
-///   flutter run --dart-define=SUPABASE_URL=https://... --dart-define=SUPABASE_ANON_KEY=...
+/// Supabase + backend config — ALL values must be injected at build time:
+///
+///   flutter run \
+///     --dart-define=SUPABASE_URL=https://<ref>.supabase.co \
+///     --dart-define=SUPABASE_ANON_KEY=<anon-key> \
+///     --dart-define=BACKEND_URL=https://<render-host>
+///
+/// See dart_defines.example in the repo root for a template.
+/// Never hard-code credentials here — the file is checked into git and the
+/// compiled string is visible in the decompiled APK.
 class AppConfig {
-  static const supabaseUrl = String.fromEnvironment(
-    'SUPABASE_URL',
-    defaultValue: 'https://dfqwjobcbhifvuwwroys.supabase.co',
-  );
-  static const supabaseAnonKey = String.fromEnvironment(
-    'SUPABASE_ANON_KEY',
-    defaultValue: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRmcXdqb2JjYmhpZnZ1d3dyb3lzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYzMjEzMjQsImV4cCI6MjA5MTg5NzMyNH0.Bcj8It-Z8f-jkj3VeVehsIYyMmS-cJETeSB0xzQ6k9s',
-  );
+  /// Supabase project URL. Required — app will throw at startup if empty.
+  static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
+
+  /// Supabase anon key. Required — app will throw at startup if empty.
+  static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+
+  /// FastAPI backend base URL.
+  /// Default: Android emulator localhost. Override for physical device / CI.
   static const backendBaseUrl = String.fromEnvironment(
     'BACKEND_URL',
     defaultValue: 'http://10.0.2.2:8000',

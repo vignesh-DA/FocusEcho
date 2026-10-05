@@ -55,7 +55,7 @@ class FocusDetectionService : Service() {
         runnable = Runnable {
             refreshCache()
             detectForegroundApp()
-            drainAccessibilityQueue()
+            drainInterventionQueue()
             handler.postDelayed(runnable, POLL_INTERVAL_MS)
         }
         handler.post(runnable)
@@ -175,10 +175,17 @@ class FocusDetectionService : Service() {
     }
 
     /**
-     * Drain events posted by [FocusAccessibilityService] via the shared
-     * [DistractionEventQueue].
+     * Drain intervention lifecycle events posted to [DistractionEventQueue] by
+     * [InterventionActivity] (intervention_shown / intervention_action) and
+     * forward them to Flutter via the EventChannel sink.
+     *
+     * Called once per poll tick so intervention events are never lost even if
+     * the Flutter UI was not active when [InterventionActivity] was shown.
+     *
+     * Note: [FocusAccessibilityService] has been removed (single detection path
+     * via UsageStats only). This queue now carries only intervention events.
      */
-    private fun drainAccessibilityQueue() {
+    private fun drainInterventionQueue() {
         if (!cachedSessionActive) return
         val events = DistractionEventQueue.drainAll()
         for (event in events) {
@@ -292,11 +299,10 @@ class FocusDetectionService : Service() {
     companion object {
         const val START_ACTION = "com.focusecho.ai.START_FOCUS_DETECTION"
         const val STOP_ACTION = "com.focusecho.ai.STOP_FOCUS_DETECTION"
-        const val SIMULATE_DISTRACTION_ACTION = "com.focusecho.ai.SIMULATE_DISTRACTION"
-        private const val CHANNEL_ID = "focus_detection_channel"
         /** ADB test fixture — simulation broadcast actions (debug builds only). */
         const val SIMULATE_DISTRACTION_ACTION = "com.focusecho.ai.SIMULATE_DISTRACTION"
         const val SIMULATE_DISTRACTION_DEBUG_ACTION = "com.focusecho.debug.SIMULATE_DISTRACTION"
+        private const val CHANNEL_ID = "focus_detection_channel"
 
         private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
         private const val DISTRACTION_NOTIF_ID = 2001

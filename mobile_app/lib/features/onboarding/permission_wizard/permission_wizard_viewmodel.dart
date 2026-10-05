@@ -11,6 +11,15 @@ import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/app_dependencies.dart';
 import 'permission_state.dart';
 
+/// Permission wizard view-model.
+///
+/// Decision 2026-10-03: Accessibility service removed — single detection path
+/// via UsageStats only.  Wizard now checks two permissions:
+///   1. Usage Access (PACKAGE_USAGE_STATS)
+///   2. Battery Optimization exemption
+///
+/// [hasAccessibility] is kept in state for forward compatibility but is always
+/// reported as `true` so it never blocks the wizard flow.
 class PermissionWizardViewModel extends StateNotifier<PermissionWizardState> {
   PermissionWizardViewModel(this._prefs)
       : _permissionChannel = const MethodChannel(AppChannels.permissions),
@@ -26,11 +35,10 @@ class PermissionWizardViewModel extends StateNotifier<PermissionWizardState> {
   Future<void> checkAllPermissions() async {
     if (kIsWeb) {
       await _prefs.setBool('has_usage_access', true);
-      await _prefs.setBool('has_accessibility', true);
       await _prefs.setBool('has_battery_optimization', true);
       state = state.copyWith(
         hasUsageAccess: true,
-        hasAccessibility: true,
+        hasAccessibility: true, // not used — kept for compat
         hasBatteryOptimization: true,
         isChecking: false,
       );
@@ -39,29 +47,28 @@ class PermissionWizardViewModel extends StateNotifier<PermissionWizardState> {
 
     state = state.copyWith(isChecking: true);
     bool hasUsage = false;
-    bool hasAccessibility = false;
     bool hasBattery = false;
 
     try {
       hasUsage = await _permissionChannel.invokeMethod<bool>('checkUsageAccess') ?? false;
-      hasAccessibility = await _permissionChannel.invokeMethod<bool>('checkAccessibility') ?? false;
-      hasBattery = await _permissionChannel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ?? false;
+      hasBattery =
+          await _permissionChannel.invokeMethod<bool>('isIgnoringBatteryOptimizations') ?? false;
     } on MissingPluginException {
       hasUsage = true;
-      hasAccessibility = true;
       hasBattery = true;
     } on PlatformException {
       hasUsage = false;
-      hasAccessibility = false;
       hasBattery = false;
     }
 
     await _prefs.setBool('has_usage_access', hasUsage);
-    await _prefs.setBool('has_accessibility', hasAccessibility);
     await _prefs.setBool('has_battery_optimization', hasBattery);
+    // Accessibility is no longer required — always report granted so the
+    // router redirect never blocks on it.
+    await _prefs.setBool('has_accessibility', true);
     state = state.copyWith(
       hasUsageAccess: hasUsage,
-      hasAccessibility: hasAccessibility,
+      hasAccessibility: true,
       hasBatteryOptimization: hasBattery,
       isChecking: false,
     );
@@ -70,11 +77,6 @@ class PermissionWizardViewModel extends StateNotifier<PermissionWizardState> {
   Future<void> openUsageAccessSettings() async {
     if (kIsWeb) return;
     await _permissionChannel.invokeMethod<void>('openUsageSettings');
-  }
-
-  Future<void> openAccessibilitySettings() async {
-    if (kIsWeb) return;
-    await _permissionChannel.invokeMethod<void>('openAccessibilitySettings');
   }
 
   Future<void> requestBatteryOptimization() async {
@@ -94,8 +96,7 @@ class PermissionWizardViewModel extends StateNotifier<PermissionWizardState> {
   Future<void> nextPage(PageController controller, BuildContext context) async {
     final canProceed = switch (state.currentPage) {
       0 => state.hasUsageAccess,
-      1 => state.hasAccessibility,
-      2 => state.hasBatteryOptimization,
+      1 => state.hasBatteryOptimization,
       _ => isAllGranted,
     };
 
@@ -106,16 +107,23 @@ class PermissionWizardViewModel extends StateNotifier<PermissionWizardState> {
       return;
     }
 
-    if (state.currentPage < 3) {
+    if (state.currentPage < 2) {
       final next = state.currentPage + 1;
       state = state.copyWith(currentPage: next);
-      await controller.animateToPage(next, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      await controller.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
-  bool get isAllGranted => state.hasUsageAccess && state.hasAccessibility && state.hasBatteryOptimization;
+  /// All required permissions granted (usage + battery).
+  /// Accessibility is intentionally excluded — removed from product scope.
+  bool get isAllGranted => state.hasUsageAccess && state.hasBatteryOptimization;
 }
 
-final permissionWizardProvider = StateNotifierProvider<PermissionWizardViewModel, PermissionWizardState>(
+final permissionWizardProvider =
+    StateNotifierProvider<PermissionWizardViewModel, PermissionWizardState>(
   (ref) => PermissionWizardViewModel(AppDependencies.prefs),
 );

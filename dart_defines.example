@@ -1,0 +1,18 @@
+# Copy this to dart_defines.json (which is .gitignored) and fill in real values.
+# Then pass it to flutter run / flutter build with:
+#
+#   flutter run --dart-define-from-file=dart_defines.json
+#
+# Or pass each value explicitly:
+#   flutter run \
+#     --dart-define=SUPABASE_URL=https://<ref>.supabase.co \
+#     --dart-define=SUPABASE_ANON_KEY=<anon-key> \
+#     --dart-define=BACKEND_URL=https://<render-host>
+#
+# Rotate keys immediately if you believe any were exposed.
+
+{
+  "SUPABASE_URL": "https://<your-project-ref>.supabase.co",
+  "SUPABASE_ANON_KEY": "<your-anon-key>",
+  "BACKEND_URL": "https://<your-render-host>.onrender.com"
+}

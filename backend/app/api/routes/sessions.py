@@ -1,8 +1,9 @@
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from supabase import create_client
 
+from ..auth import require_auth
 from ...schemas.focus_session import FocusSessionCreate, FocusSessionUpdate
 
 router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
@@ -19,7 +20,12 @@ def _client():
 
 
 @router.post("/")
-def create_session(payload: FocusSessionCreate) -> dict[str, Any]:
+def create_session(
+    payload: FocusSessionCreate,
+    authed_user: Annotated[str, Depends(require_auth)],
+) -> dict[str, Any]:
+    if authed_user != payload.user_id:
+        raise HTTPException(status_code=403, detail="Access denied: user_id mismatch.")
     _client().table("focus_sessions").upsert(payload.model_dump(mode="json")).execute()
     return {"id": payload.id}
 
@@ -27,6 +33,7 @@ def create_session(payload: FocusSessionCreate) -> dict[str, Any]:
 @router.patch("/{session_id}")
 def update_session(
     session_id: str,
+    authed_user: Annotated[str, Depends(require_auth)],
     payload: FocusSessionUpdate = Body(
         ...,
         description="Partial focus session update object (JSON object, not an array).",
@@ -39,5 +46,22 @@ def update_session(
         },
     ),
 ) -> dict[str, Any]:
-    _client().table("focus_sessions").update(payload.model_dump(exclude_none=True, mode="json")).eq("id", session_id).execute()
+    client = _client()
+    # Verify ownership before updating.
+    session = (
+        client.table("focus_sessions")
+        .select("user_id")
+        .eq("id", session_id)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found.")
+    if session["user_id"] != authed_user:
+        raise HTTPException(status_code=403, detail="Access denied.")
+
+    client.table("focus_sessions").update(
+        payload.model_dump(exclude_none=True, mode="json")
+    ).eq("id", session_id).execute()
     return {"updated": True}

@@ -35,9 +35,9 @@ class AppRouter {
       redirect: (context, state) {
         final consentGiven = prefs.getBool(AppKeys.consentGiven) ?? false;
         final usage = prefs.getBool('has_usage_access') ?? false;
-        final accessibility = prefs.getBool('has_accessibility') ?? false;
         final battery = prefs.getBool('has_battery_optimization') ?? false;
-        final permissionsReady = kIsWeb || (usage && accessibility && battery);
+        // Accessibility service removed — only Usage Access + Battery required.
+        final permissionsReady = kIsWeb || (usage && battery);
         final path = state.uri.path;
 
         // Allow splash and consent screens unconditionally
@@ -55,6 +55,7 @@ class AppRouter {
         }
         return null;
       },
+
       routes: [
         GoRoute(
           name: 'splash',
