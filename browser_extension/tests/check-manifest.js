@@ -96,6 +96,20 @@ if (manifest.icons) {
   }
 }
 
+// Referenced HTML script tags
+const htmlFiles = [manifest.action?.default_popup, manifest.options_page, manifest.options_ui?.page].filter(Boolean);
+for (const htmlRel of htmlFiles) {
+  const htmlAbs = join(EXT_ROOT, htmlRel);
+  if (existsSync(htmlAbs)) {
+    const htmlContent = readFileSync(htmlAbs, 'utf8');
+    const scriptMatches = [...htmlContent.matchAll(/<script\s+[^>]*src=["']([^"']+)["']/gi)];
+    for (const match of scriptMatches) {
+      const scriptRel = join(dirname(htmlRel), match[1]).replace(/\\/g, '/');
+      check(scriptRel, `${htmlRel} -> script src`);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Report
 // ---------------------------------------------------------------------------

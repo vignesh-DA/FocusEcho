@@ -94,14 +94,21 @@ export function transition(currentState, event, ctx, now = Date.now()) {
     return { nextState: STATE.IDLE, actions: ['HIDE_OVERLAY', 'CLEAR_SESSION', 'LOG_SESSION_ENDED'] };
   }
 
+  // ------------------------------------------------------------------
+  // Global: SESSION_STARTED starts or restarts session in any state
+  // ------------------------------------------------------------------
+  if (type === EV.SESSION_STARTED) {
+    return {
+      nextState: STATE.MONITORING,
+      actions: ['HIDE_OVERLAY', 'CLEAR_DISTRACTION', 'RESET_SESSION', 'START_HEARTBEAT'],
+    };
+  }
+
   switch (currentState) {
 
     // ----------------------------------------------------------------
     case STATE.IDLE:
     // ----------------------------------------------------------------
-      if (type === EV.SESSION_STARTED) {
-        return { nextState: STATE.MONITORING, actions: ['RESET_SESSION', 'START_HEARTBEAT'] };
-      }
       return { nextState: STATE.IDLE, actions: [] };
 
     // ----------------------------------------------------------------
@@ -386,9 +393,9 @@ function _isResumeEvent(type) {
 }
 
 /**
- * On HEARTBEAT, check whether the grace period has elapsed.
- * (Phase 1 fallback since there is no content-script timer yet.)
+ * Check whether the grace period has elapsed.
+ * Evaluates true if >= 3 000 ms elapsed since entering grace (timestamp catch-up).
  */
 function _graceElapsed(type, graceEnteredAt, now) {
-  return type === EV.HEARTBEAT && graceEnteredAt !== null && (now - graceEnteredAt) >= GRACE.THRESHOLD_MS;
+  return graceEnteredAt !== null && (now - graceEnteredAt) >= GRACE.THRESHOLD_MS;
 }

@@ -57,6 +57,52 @@ self.addEventListener('activate', (event) => {
 });
 
 // ---------------------------------------------------------------------------
+// Grace timer management (dedicated 3-second timer with timestamp catch-up)
+// ---------------------------------------------------------------------------
+let _graceTimer = null;
+
+// ---------------------------------------------------------------------------
+// Navigation deduplication (onUpdated + onCommitted both fire; drop duplicate)
+// ---------------------------------------------------------------------------
+/** @type {string|null} last dispatched nav key — cleared after 500 ms */
+let _lastNavKey = null;
+let _lastNavClearTimer = null;
+
+function _deduplicateNav(tabId, host) {
+  const key = `${tabId}|${host}`;
+  if (_lastNavKey === key) return true; // duplicate — suppress
+  _lastNavKey = key;
+  if (_lastNavClearTimer) clearTimeout(_lastNavClearTimer);
+  _lastNavClearTimer = setTimeout(() => { _lastNavKey = null; }, 500);
+  return false;
+}
+
+function scheduleGraceTimer(delayMs = 3000) {
+  clearGraceTimer();
+  if (self._disableGraceTimer) {
+    LOG.sw('grace timer suppressed by negative control flag');
+    return;
+  }
+  _graceTimer = setTimeout(async () => {
+    _graceTimer = null;
+    const session = await loadSession();
+    if (session?.active && session?.state === STATE.COUNTING_GRACE) {
+      LOG.sw('3s grace timer fired -> dispatching GRACE_ELAPSED');
+      await dispatch({ type: EV.GRACE_ELAPSED, payload: {} });
+    }
+  }, Math.max(0, delayMs));
+  LOG.sw(`scheduled dedicated grace timer for ${delayMs}ms`);
+}
+
+function clearGraceTimer() {
+  if (_graceTimer) {
+    clearTimeout(_graceTimer);
+    _graceTimer = null;
+    LOG.sw('cleared active grace timer');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // State reconstruction on SW wake-up
 // ---------------------------------------------------------------------------
 async function reconstructAndSync() {
@@ -66,7 +112,17 @@ async function reconstructAndSync() {
     return;
   }
   LOG.sw(`state on wake: ${session.state} | count: ${session.distraction_count}`);
-  // Future: send SYNC_STATE to any open distraction tabs so overlays reflect current state
+  if (session.state === STATE.COUNTING_GRACE) {
+    const distraction = await loadDistraction();
+    const now = Date.now();
+    const elapsed = now - (distraction?.grace_entered_at ?? now);
+    if (elapsed >= 3000) {
+      LOG.sw(`grace catch-up on wake: elapsed ${elapsed}ms >= 3000ms -> dispatching GRACE_ELAPSED`);
+      await dispatch({ type: EV.GRACE_ELAPSED, payload: {} });
+    } else {
+      scheduleGraceTimer(3000 - elapsed);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -197,6 +253,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
 
     case 'RESET_SESSION': {
       const { payload } = event; // SESSION_STARTED payload
+      clearGraceTimer();
       const newSession = {
         active:               true,
         mode:                 payload.mode ?? 'focus',
@@ -235,6 +292,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
         level:           0,
       };
       await saveDistraction(d);
+      scheduleGraceTimer(3000);
       LOG.act(`grace entry recorded for ${host} at ${new Date(now).toISOString()}`);
       break;
     }
@@ -247,11 +305,17 @@ async function _executeAction(name, param, { session, distraction, event, now })
     }
 
     case 'CONFIRM_GRACE': {
+      clearGraceTimer();
       if (distraction) {
         distraction.grace_confirmed = true;
-        distraction.started_at = now;
+        // Anchor started_at to grace_entered_at (first arrival), NOT to now
+        // (grace-elapsed moment). This matches the Android app which counts
+        // distraction time from first detection, so time_on_site_ms always
+        // includes the full 3 s grace period and any time spent before grace
+        // confirmation. Rule: time_on_site_ms = leave_time − grace_entered_at.
+        distraction.started_at = distraction.grace_entered_at ?? now;
         await saveDistraction(distraction);
-        LOG.act(`grace confirmed for ${distraction.host} | active since ${new Date(now).toISOString()}`);
+        LOG.act(`grace confirmed for ${distraction.host} | active since ${new Date(distraction.started_at).toISOString()}`);
       }
       break;
     }
@@ -301,9 +365,12 @@ async function _executeAction(name, param, { session, distraction, event, now })
       break;
 
     case 'CLEAR_DISTRACTION':
+      clearGraceTimer();
       await clearDistraction();
-      session.resume_to_state = null;
-      await saveSession(session);
+      if (session) {
+        session.resume_to_state = null;
+        await saveSession(session);
+      }
       break;
 
     case 'UPDATE_LAST_PRODUCTIVE_TAB': {
@@ -419,6 +486,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
       break;
 
     case 'CLEAR_SESSION':
+      clearGraceTimer();
       await chrome.storage.session.remove([SK.SESSION, SK.CURRENT_DISTRACTION]);
       LOG.act('session state cleared from storage');
       break;
@@ -479,6 +547,8 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status !== 'complete' || !tab.active) return;
   if (!isWebUrl(tab.url)) return;
   const host = normalizeHost(tab.url);
+  // Dedup: onCommitted fires ~simultaneously for the same navigation.
+  if (_deduplicateNav(tabId, host)) { LOG.sw(`onUpdated dedup skip for ${host}`); return; }
   const session = await loadSession();
   if (!session?.active) return;
   const distracting = isDistracting(host, session.distraction_list);
@@ -536,6 +606,8 @@ chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId, url, trans
   if (!isActiveTab) return;
 
   const host = normalizeHost(url);
+  // Dedup: onUpdated fires ~simultaneously for the same navigation.
+  if (_deduplicateNav(tabId, host)) { LOG.sw(`onCommitted dedup skip for ${host}`); return; }
   const distracting = isDistracting(host, session.distraction_list);
 
   await dispatch({
@@ -594,6 +666,8 @@ async function _handleMessage(message, sender) {
   // --- Debug / options page actions ---
   if (type === 'fe:debug_start_session') {
     const { intention, distraction_list } = message;
+    const currentSession = await loadSession();
+    const wasActive = currentSession?.active;
     await dispatch({
       type: EV.SESSION_STARTED,
       payload: {
@@ -603,7 +677,7 @@ async function _handleMessage(message, sender) {
         session_id: crypto.randomUUID(),
       },
     });
-    return { ok: true };
+    return { ok: true, restarted: !!wasActive };
   }
 
   if (type === 'fe:debug_stop_session') {
@@ -640,3 +714,15 @@ async function _handleMessage(message, sender) {
 
   return { ok: false, error: 'unknown message type' };
 }
+
+// ---------------------------------------------------------------------------
+// Test & Debug Exposure
+// ---------------------------------------------------------------------------
+self.__fe = {
+  dispatch,
+  loadSession,
+  loadDistraction,
+  reconstructAndSync,
+  handleMessage: _handleMessage,
+};
+

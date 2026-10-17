@@ -38,7 +38,11 @@ $('btn-start').addEventListener('click', async () => {
     intention,
     distraction_list: sites,
   });
-  addLog(`START SESSION | intention: "${intention}" | sites: [${sites.join(', ')}]`, 'act');
+  if (resp?.restarted) {
+    addLog(`RESTARTED ACTIVE SESSION | new intention: "${intention}" | sites: [${sites.join(', ')}]`, 'warn');
+  } else {
+    addLog(`START SESSION | intention: "${intention}" | sites: [${sites.join(', ')}]`, 'act');
+  }
   await refreshState();
 });
 

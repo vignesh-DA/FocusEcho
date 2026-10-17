@@ -1,0 +1,22 @@
+{
+  "name": "browser_extension",
+  "version": "1.0.0",
+  "description": "This Manifest V3 extension provides real-time browser monitoring for the FocusEcho Web app. It observes active tab changes and navigation, compares hosts only against the user-configured distracting-site list, and sends live events to the open FocusEcho tab.",
+  "main": "background.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "node tests/live-chrome-test.js",
+    "test:unit": "node tests/state-machine.test.js",
+    "test:manifest": "node tests/check-manifest.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "^25.14.0",
+    "selfsigned": "^5.5.0"
+  }
+}

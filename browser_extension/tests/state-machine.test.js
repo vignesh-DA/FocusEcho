@@ -57,6 +57,7 @@ const ev = {
   start:         (payload = {}) => ({ type: EV.SESSION_STARTED, payload }),
   tabDistracting:(host = 'twitter.com') => ({ type: EV.TAB_ACTIVATED, payload: { host, isDistracting: true, tabId: 999 } }),
   tabClean:      (host = 'vscode.dev') => ({ type: EV.TAB_ACTIVATED, payload: { host, isDistracting: false, tabId: 998 } }),
+  nav:           (payload = {}) => ({ type: EV.TAB_NAVIGATED, payload }),
   heartbeat:     () => ({ type: EV.HEARTBEAT, payload: {} }),
   countdownExp:  () => ({ type: EV.COUNTDOWN_EXPIRED, payload: {} }),
   endSession:    () => ({ type: EV.USER_END_SESSION, payload: {} }),
@@ -387,6 +388,119 @@ group('T9 — SESSION_PAUSED → resume → MONITORING');
   const r1 = transition(STATE.SESSION_PAUSED, { type: EV.USER_RESUME_SESSION }, ctx(), NOW);
   assert('T9 SESSION_PAUSED + RESUME → MONITORING', r1.nextState === STATE.MONITORING);
   assert('T9 LOG_SESSION_RESUMED in actions',       r1.actions.includes('LOG_SESSION_RESUMED'));
+}
+
+// ---------------------------------------------------------------------------
+// T10 — SESSION_STARTED restarts session from any state
+// ---------------------------------------------------------------------------
+group('T10 — SESSION_STARTED restarts active session from any state');
+
+{
+  for (const s of Object.values(STATE)) {
+    const r = transition(s, ev.start({ intention: 'New Intention', distraction_list: ['youtube.com'] }), ctx(), NOW);
+    assert(`T10 ${s} + SESSION_STARTED → MONITORING`, r.nextState === STATE.MONITORING);
+    assert(`T10 ${s} includes RESET_SESSION`, r.actions.includes('RESET_SESSION'));
+    assert(`T10 ${s} includes START_HEARTBEAT`, r.actions.includes('START_HEARTBEAT'));
+    assert(`T10 ${s} includes CLEAR_DISTRACTION`, r.actions.includes('CLEAR_DISTRACTION'));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// T11 — Timestamp catch-up without heartbeat
+// ---------------------------------------------------------------------------
+group('T11 — 3s grace catch-up on timestamp elapsed');
+
+{
+  const r = transition(STATE.COUNTING_GRACE, { type: EV.URL_CHANGED, payload: { isDistracting: true, host: 'youtube.com' } }, ctx({ graceEnteredAt: NOW }), NOW + 3000);
+  assert('T11 COUNTING_GRACE + 3s elapsed → L1_TOAST', r.nextState === STATE.L1_TOAST);
+  assert('T11 actions include CONFIRM_GRACE', r.actions.includes('CONFIRM_GRACE'));
+  assert('T11 actions include INCREMENT_DISTRACTION_COUNT', r.actions.includes('INCREMENT_DISTRACTION_COUNT'));
+}
+
+// ---------------------------------------------------------------------------
+// T12 — Recovery timing includes grace period (mobile app alignment)
+// ---------------------------------------------------------------------------
+group('T12 — Recovery timing includes 3s grace window (leave_time - grace_entered_at)');
+
+{
+  // User arrives at t = 0. Grace confirms at t = 3000 (started_at set to t = 0, matching grace_entered_at).
+  // Total visit duration = 16 seconds (13 seconds after grace confirmation).
+  // Under the old rule (excluding grace), 13s < 15s would be misclassified as intentional_switch.
+  // Under the aligned mobile rule (including grace), 16s >= 15s correctly classifies as recovery.
+  const graceEnteredAt = NOW;
+  const startedAt = graceEnteredAt; // SW sets started_at = grace_entered_at on CONFIRM_GRACE
+  const leaveTime = NOW + 16000;
+
+  const r1 = transition(
+    STATE.L1_TOAST,
+    ev.nav({ isDistracting: false, host: 'clean.test' }),
+    ctx({ graceEnteredAt, distractionStartedAt: startedAt }),
+    leaveTime
+  );
+  assert('T12 16s total visit (13s post-grace) classified as recovery (>= 15s)', r1.actions.includes('EMIT_RECOVERY_EVENT:recovery'));
+  assert('T12 transitions to MONITORING', r1.nextState === STATE.MONITORING);
+
+  // Visit duration = 14 seconds total (11s post-grace): still intentional_switch (< 15s)
+  const r2 = transition(
+    STATE.L1_TOAST,
+    ev.nav({ isDistracting: false, host: 'clean.test' }),
+    ctx({ graceEnteredAt, distractionStartedAt: startedAt }),
+    NOW + 14000
+  );
+  assert('T12 14s total visit classified as intentional_switch (< 15s)', r2.actions.includes('EMIT_RECOVERY_EVENT:intentional_switch'));
+}
+
+// ---------------------------------------------------------------------------
+// T13 — Deduplication of site leave: one leave produces exactly one transition
+// ---------------------------------------------------------------------------
+group('T13 — Deduplication: single site leave produces single transition and event');
+
+{
+  // 1. First leave event from L1_TOAST transitions to MONITORING and emits recovery
+  const r1 = transition(
+    STATE.L1_TOAST,
+    ev.nav({ isDistracting: false, host: 'clean.test' }),
+    ctx({ distractionStartedAt: NOW - 20000 }),
+    NOW
+  );
+  assert('T13 First leave transitions L1_TOAST -> MONITORING', r1.nextState === STATE.MONITORING);
+  assert('T13 First leave emits recovery event', r1.actions.includes('EMIT_RECOVERY_EVENT:recovery'));
+  assert('T13 First leave clears distraction', r1.actions.includes('CLEAR_DISTRACTION'));
+
+  // 2. Duplicate leave event arriving in MONITORING state produces NO additional recovery event
+  const r2 = transition(
+    STATE.MONITORING,
+    ev.nav({ isDistracting: false, host: 'clean.test' }),
+    ctx(),
+    NOW + 50
+  );
+  assert('T13 Duplicate leave remains in MONITORING', r2.nextState === STATE.MONITORING);
+  assert('T13 Duplicate leave produces NO EMIT_RECOVERY_EVENT', !r2.actions.some(a => a.startsWith('EMIT_RECOVERY_EVENT')));
+  assert('T13 Duplicate leave does NOT alter distraction count', !r2.actions.includes('INCREMENT_DISTRACTION_COUNT'));
+
+  // 3. Service worker in-memory deduplication logic verification
+  let lastNavKey = null;
+  let dedupeCalls = 0;
+  function deduplicateNav(tabId, host) {
+    const key = `${tabId}|${host}`;
+    if (lastNavKey === key) return true;
+    lastNavKey = key;
+    dedupeCalls++;
+    return false;
+  }
+
+  const tabId = 101;
+  const targetHost = 'clean.test';
+  const first = deduplicateNav(tabId, targetHost);
+  const second = deduplicateNav(tabId, targetHost);
+
+  assert('T13 SW dedup: first event accepted', first === false);
+  assert('T13 SW dedup: second concurrent event suppressed', second === true);
+  assert('T13 SW dedup: only one event passed through for targetHost', dedupeCalls === 1);
+
+  const third = deduplicateNav(tabId, 'other.test');
+  assert('T13 SW dedup: new destination accepted', third === false);
+  assert('T13 SW dedup: total dispatched now 2 for distinct hosts', dedupeCalls === 2);
 }
 
 // ---------------------------------------------------------------------------

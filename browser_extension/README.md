@@ -10,3 +10,12 @@ This Manifest V3 extension provides real-time browser monitoring for the FocusEc
 4. Open the FocusEcho web app, enable a focus session, and configure distracting sites such as `youtube.com` or `instagram.com`.
 
 The extension does not persist browsing history or transmit browsing data to FocusEcho servers. It only relays current configured-host activity to the open FocusEcho page. Browser extensions cannot monitor native Android applications; use the Android app for that scope.
+
+## Automated Live Chrome Test (EXT-1 Verification)
+
+Run the automated live Chrome E2E test suite (verifies active service worker, 3s grace timer, glance <3s, 20s recovery event, L2 re-entry, CDP SW termination and wake, options popup opening, and active session restart):
+
+```bash
+node browser_extension/tests/live-chrome-test.js
+```
+*(or run `npm test` from the `browser_extension/` directory)*

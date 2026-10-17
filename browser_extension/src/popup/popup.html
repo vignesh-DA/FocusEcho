@@ -12,11 +12,6 @@
 <body>
   <p>⚡ FocusEcho — Phase 1</p>
   <p>Popup UI ships in Phase 3. Use the <a href="#" id="opt-link">debug options page</a> to control sessions.</p>
-  <script>
-    document.getElementById('opt-link').addEventListener('click', (e) => {
-      e.preventDefault();
-      chrome.runtime.openOptionsPage();
-    });
-  </script>
+  <script src="popup.js"></script>
 </body>
 </html>

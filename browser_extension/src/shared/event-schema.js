@@ -53,8 +53,11 @@
  * @typedef {Object} RecoveryEvent
  * @property {RecoveryEventType} event_type
  * @property {string}            domain
- * @property {number}            time_on_site_ms  - wall-clock: leave_time − distraction.startedAt
- * @property {string}            distraction_started_at  - ISO 8601 UTC
+ * @property {number}            time_on_site_ms  - wall-clock: leave_time − grace_entered_at (first arrival).
+ *                                                  Includes the 3 s grace window. Matches the Android app rule
+ *                                                  which counts distraction time from first detection, not from
+ *                                                  escalation. Min meaningful value is 3 000 ms.
+ * @property {string}            distraction_started_at  - ISO 8601 UTC (= grace_entered_at, first arrival)
  * @property {string}            session_id
  * @property {string}            timestamp        - ISO 8601 UTC (= leave time)
  * @property {EscalationLevel}   [from_level]     - level that was active when user left

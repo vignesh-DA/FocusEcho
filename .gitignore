@@ -49,7 +49,14 @@ TODO.md
 Pods/
 *.xcworkspace/xcuserdata/
 
+# Node
+node_modules/
+**/node_modules/
+package-lock.json.bak
+browser_extension/test-results/profile/
+
 # General
 .DS_Store
 *.log
+!browser_extension/test-results/console.log
 _pptx_extracted/
