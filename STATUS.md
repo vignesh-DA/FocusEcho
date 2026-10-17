@@ -31,7 +31,7 @@
 | **MOB-4** | Local SQLite Database (`sqflite`) | `written but unverified` | 2026-10-18 | — | Write-first DAOs implemented; needs physical device validation. |
 | **MOB-5** | Local Notifications Engine | `written but unverified` | 2026-10-18 | — | Configured via `flutter_local_notifications`; remote Firebase removed per spec. |
 | **MOB-6** | GitHub Actions CI/CD Build Pipeline | `failed` | 2026-10-18 | GitHub Actions | Run #19 failed (exit code 1) due to Flutter 3.19 pinning vs Gradle 8.14/AGP 8.11 project config. |
-| **EXT-1** | Browser Extension Phase 1 (Service Worker & State Machine) | `done and verified` | 2026-10-18 | Live Chrome E2E | **Automated Live Chrome run passed all 8 checks + negative control.** Verified via real Chrome instance loading unpacked MV3 extension, DNS host-resolved `youtube.com`, dedicated 3s grace timer, 20s recovery event emission, L2 re-entry, CDP `ServiceWorker.stopWorker` termination/wake persistence, options page CSP navigation, active session restart, recovery timing aligned with mobile app (including 3s grace in `time_on_site_ms`), and duplicate navigation event deduplication. |
+| **EXT-1** | Browser Extension Phase 1 (Service Worker & State Machine) | `done and verified` | 2026-10-18 | Live Chrome E2E (Build `687ff36`) | **Automated Live Chrome run passed all 9 checks + negative control.** Verified via real Chrome instance loading unpacked MV3 extension, DNS host-resolved `youtube.com`, dedicated 3s grace timer, 20s recovery event emission, L2 re-entry, CDP `ServiceWorker.stopWorker` termination/wake persistence, options page CSP navigation, active session restart, rapid leave & re-entry (<500ms), recovery timing aligned with mobile app (including 3s grace in `time_on_site_ms`), and duplicate navigation event deduplication. |
 | **EXT-2** | Browser Extension Phase 2 (In-Page Overlays: Toast, L2 Modal, L3 Block) | `not started` | 2026-10-18 | — | Visual countdown modal (15s spec) and overlay content scripts unbuilt. |
 | **EXT-3** | Browser Extension Phase 3 (Popup UI) | `not started` | 2026-10-18 | — | Currently a static placeholder linking to options page. |
 | **EXT-4** | Browser Extension Phase 4 (Web Dashboard Bridge) | `not started` | 2026-10-18 | — | Bidirectional sync between extension and Web app unbuilt. |
@@ -40,11 +40,11 @@
 
 ---
 
-## 🧪 Automated Live Chrome E2E Test Suite (EXT-1 Verified) — 2026-10-18
+## 🧪 Automated Live Chrome E2E Test Suite (EXT-1 Verified) — 2026-10-18 (Commit `687ff36`)
 
 Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS mapped `youtube.com:8999`):
 - **Runner Script:** `node browser_extension/tests/live-chrome-test.js`
-- **Output Artifacts:** `browser_extension/test-results/` (8 screenshots, `console.log`)
+- **Output Artifacts:** `browser_extension/test-results/` (9 screenshots, `console.log`)
 - **Negative Control:** Passed (proves suppressing 3s grace timer causes Check 2 to fail; restoring it passes).
 
 | Test ID | Status | Test Title | Details |
@@ -52,11 +52,12 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | CHECK-1 | ✅ PASS | Extension loads with no manifest/icon errors and active SW | Extension ID: `ankgpcpicibcaahmbnidnlkianhcdpoo` |
 | CHECK-2 | ✅ PASS | Visit > 3s with no manual events reaches L1 & count=1 | State: `L1_TOAST`, count: 1 |
 | CHECK-3 | ✅ PASS | Glance < 3s leaves count at 0 | State: `MONITORING`, count: 0 |
-| CHECK-4 | ✅ PASS | 20s visit then switch away emits recovery event | Recovery logged with time_on_site: 18050ms (spec: $\ge$ 15s) |
+| CHECK-4 | ✅ PASS | 20s visit then switch away emits recovery event | Recovery logged with time_on_site: 21060ms (spec: $\ge$ 15s) |
 | CHECK-5 | ✅ PASS | Re-entry raises count to 2 and reaches L2 | State: `L2_OVERLAY`, count: 2 |
 | CHECK-6 | ✅ PASS | Stopping SW over debugging protocol and waking keeps count and state | Count preserved: 2, state: `L2_OVERLAY` |
 | CHECK-7 | ✅ PASS | Popup options link uses external script and opens options page | Options opened: `chrome-extension://.../options.html` |
 | CHECK-8 | ✅ PASS | Start Session while active restarts session cleanly | restarted: true, state: `MONITORING`, count: 0 |
+| CHECK-9 | ✅ PASS | Fast leave & re-enter (<500ms) resets grace cleanly to L1 | Round-trip: 81ms (<500ms); reset to `COUNTING_GRACE` then cleanly reached `L1_TOAST` count=1 |
 
 ---
 
