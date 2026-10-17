@@ -147,6 +147,38 @@ async function startSession(worker, intention = 'Deep Coding', sites = ['youtube
   }, intention, sites);
 }
 
+// Extension messaging helpers (immune to dead worker handles after CDP stop)
+async function sendExtMessage(browser, extId, msg) {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`chrome-extension://${extId}/src/options/options.html`, { waitUntil: 'domcontentloaded' });
+    return await page.evaluate(async (m) => {
+      return await chrome.runtime.sendMessage(m);
+    }, msg);
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
+async function getExtState(browser, extId) {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`chrome-extension://${extId}/src/options/options.html`, { waitUntil: 'domcontentloaded' });
+    return await page.evaluate(async () => {
+      const resp = await chrome.runtime.sendMessage({ type: 'fe:debug_get_state' });
+      const local = await chrome.storage.local.get(['fe_event_queue', 'fe_config']);
+      return {
+        session: resp?.session || null,
+        distraction: resp?.distraction || null,
+        event_queue: local?.fe_event_queue ?? [],
+        config: local?.fe_config ?? null,
+      };
+    });
+  } finally {
+    await page.close().catch(() => {});
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main Test Runner
 // ---------------------------------------------------------------------------
@@ -194,6 +226,13 @@ async function runTestSuite() {
     let worker = await swTarget.worker();
 
     worker.on('console', msg => log(`[SW Console] ${msg.type()}: ${msg.text()}`));
+
+    browser.on('targetcreated', async t => {
+      if (t.type() === 'service_worker' && t.url().includes('chrome-extension://')) {
+        const w = await t.worker().catch(() => null);
+        w?.on('console', msg => log(`[SW Console] ${msg.type()}: ${msg.text()}`));
+      }
+    });
 
     const swActive = await worker.evaluate(() => typeof chrome !== 'undefined' && !!chrome.runtime);
     const pages = await browser.pages();
@@ -356,6 +395,17 @@ async function runTestSuite() {
     await wakePage.screenshot({ path: join(RESULTS_DIR, '06_sw_restart_persistence.png') });
     await wakePage.close();
 
+    // Re-bind worker handle since previous worker execution context was stopped
+    try {
+      const revivedTarget = await getSWTarget(browser, 5000);
+      worker = await revivedTarget.worker();
+      if (worker) {
+        worker.on('console', msg => log(`[SW Console] ${msg.type()}: ${msg.text()}`));
+      }
+    } catch (e) {
+      log('Could not re-bind worker handle directly: ' + e.message);
+    }
+
     if (check6Data.session?.distraction_count === 2 && check6Data.session?.active === true) {
       record('CHECK-6', 'Stopping SW over debugging protocol and waking keeps count and state', 'PASS', `Count preserved: ${check6Data.session.distraction_count}, state: ${check6Data.session.state}`);
     } else {
@@ -428,6 +478,46 @@ async function runTestSuite() {
       record('CHECK-8', 'Start Session while active restarts session cleanly', 'PASS', `restarted: ${restartResp.restarted}, state: ${check8Data.session.state}, count: ${check8Data.session.distraction_count}`);
     } else {
       record('CHECK-8', 'Start Session while active restarts session cleanly', 'FAIL', `Restart failed: ${JSON.stringify(restartResp)}, count=${check8Data.session?.distraction_count}`);
+    }
+
+    // -----------------------------------------------------------------------
+    // CHECK 9: Fast leave and re-enter on same host within 500ms
+    // -----------------------------------------------------------------------
+    log('\n--- Running Check 9 (Fast leave and re-enter on same host within 500ms) ---');
+    await sendExtMessage(browser, extId, {
+      type: 'fe:debug_start_session',
+      intention: 'Fast Bounce Check',
+      distraction_list: ['youtube.com'],
+    });
+
+    await primaryPage.bringToFront();
+    await primaryPage.goto(`https://youtube.com:${PORT}/watch?v=bounce_start`, { waitUntil: 'domcontentloaded' });
+    log('On youtube.com for 1.2s. Executing rapid departure to clean.test and immediate re-entry to youtube.com...');
+    await new Promise(r => setTimeout(r, 1200));
+
+    const tStart = Date.now();
+    await primaryPage.goto(`https://clean.test:${PORT}/quick_bounce`, { waitUntil: 'domcontentloaded' });
+    await primaryPage.goto(`https://youtube.com:${PORT}/watch?v=bounce_return`, { waitUntil: 'domcontentloaded' });
+    const bounceElapsed = Date.now() - tStart;
+    log(`Rapid bounce round-trip completed in ${bounceElapsed}ms (< 500ms window)`);
+
+    const check9Immediate = await getExtState(browser, extId);
+    log(`State immediately after rapid re-entry: ${check9Immediate.session?.state}, count: ${check9Immediate.session?.distraction_count}`);
+
+    log('Waiting 3.8s to confirm fresh 3s grace timer fires without getting suppressed or dropped...');
+    await new Promise(r => setTimeout(r, 3800));
+
+    const check9Final = await getExtState(browser, extId);
+    await primaryPage.screenshot({ path: join(RESULTS_DIR, '09_fast_leave_reenter.png') });
+
+    if (
+      check9Immediate.session?.state === 'COUNTING_GRACE' &&
+      check9Final.session?.state === 'L1_TOAST' &&
+      check9Final.session?.distraction_count === 1
+    ) {
+      record('CHECK-9', 'Fast leave & re-enter (<500ms) resets grace cleanly to L1', 'PASS', `Round-trip: ${bounceElapsed}ms (<500ms); reset to COUNTING_GRACE then cleanly reached L1_TOAST count=1`);
+    } else {
+      record('CHECK-9', 'Fast leave & re-enter (<500ms) resets grace cleanly to L1', 'FAIL', `Immediate: ${check9Immediate.session?.state}, Final: ${check9Final.session?.state}, count=${check9Final.session?.distraction_count}`);
     }
 
   } finally {
