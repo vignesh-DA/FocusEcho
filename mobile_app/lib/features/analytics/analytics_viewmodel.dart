@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/models/distraction_event.dart';
 import '../../core/providers/app_dependencies.dart';
 import '../../local_db/distraction_event_dao.dart';
 import '../../local_db/focus_session_dao.dart';
+import '../../services/backend_analytics_service.dart';
 
 /// Feature 3 — Recovery Rate definition (primary, used everywhere):
 /// the % of distractions recovered within 30 seconds over a rolling window.
@@ -32,6 +36,12 @@ class AnalyticsState {
     this.recoveryRateTrend = 0,
     this.isLoading = false,
     this.errorMessage,
+    // MOB-3g — remote backend enrichment fields
+    this.remoteFocusScoreAverage,
+    this.remoteWeeklySessions,
+    this.remoteTopApps = const [],
+    this.remoteRiskTrend = const [],
+    this.isRemoteLoaded = false,
   });
 
   final List<double> weeklyFocusMinutes;
@@ -44,6 +54,13 @@ class AnalyticsState {
   final bool isLoading;
   final String? errorMessage;
 
+  // MOB-3g — enriched from FastAPI backend (null = not yet fetched / offline)
+  final double? remoteFocusScoreAverage;
+  final int? remoteWeeklySessions;
+  final List<TopApp> remoteTopApps;
+  final List<RiskDayEntry> remoteRiskTrend;
+  final bool isRemoteLoaded;
+
   AnalyticsState copyWith({
     List<double>? weeklyFocusMinutes,
     List<int>? dailyDistractions,
@@ -54,6 +71,11 @@ class AnalyticsState {
     double? recoveryRateTrend,
     bool? isLoading,
     String? errorMessage,
+    double? remoteFocusScoreAverage,
+    int? remoteWeeklySessions,
+    List<TopApp>? remoteTopApps,
+    List<RiskDayEntry>? remoteRiskTrend,
+    bool? isRemoteLoaded,
   }) {
     return AnalyticsState(
       weeklyFocusMinutes: weeklyFocusMinutes ?? this.weeklyFocusMinutes,
@@ -61,28 +83,44 @@ class AnalyticsState {
       appDistribution: appDistribution ?? this.appDistribution,
       sessionScores: sessionScores ?? this.sessionScores,
       recoveryRate: recoveryRate ?? this.recoveryRate,
-      medianRecoverySeconds: medianRecoverySeconds ?? this.medianRecoverySeconds,
+      medianRecoverySeconds:
+          medianRecoverySeconds ?? this.medianRecoverySeconds,
       recoveryRateTrend: recoveryRateTrend ?? this.recoveryRateTrend,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
+      remoteFocusScoreAverage:
+          remoteFocusScoreAverage ?? this.remoteFocusScoreAverage,
+      remoteWeeklySessions: remoteWeeklySessions ?? this.remoteWeeklySessions,
+      remoteTopApps: remoteTopApps ?? this.remoteTopApps,
+      remoteRiskTrend: remoteRiskTrend ?? this.remoteRiskTrend,
+      isRemoteLoaded: isRemoteLoaded ?? this.isRemoteLoaded,
     );
   }
 }
 
 class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
-  AnalyticsViewModel(this._sessionDao, this._eventDao) : super(const AnalyticsState()) {
+  AnalyticsViewModel(
+    this._sessionDao,
+    this._eventDao,
+    this._backendAnalytics,
+  ) : super(const AnalyticsState()) {
     loadAnalytics();
   }
 
   final FocusSessionDao _sessionDao;
   final DistractionEventDao _eventDao;
+  final BackendAnalyticsService _backendAnalytics;
 
   /// Primary Recovery Rate definition: % of distractions recovered < 30s.
   static const int _fastRecoveryThresholdSeconds = 30;
 
+  /// MOB-3g: loads local SQLite data first (fast), then fetches remote backend
+  /// data in parallel. The remote call is best-effort — failure is logged and
+  /// the screen stays fully functional with local data.
   Future<void> loadAnalytics() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
+      // ── Local SQLite (always available) ─────────────────────────────────
       final sessions = await _sessionDao.getSessionHistory(60);
       final now = DateTime.now();
       final weeklyFocus = List<double>.filled(7, 0);
@@ -92,16 +130,19 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       for (final s in sessions) {
         final dayIndex = 6 - now.difference(s.startTime).inDays;
         if (dayIndex >= 0 && dayIndex < 7) {
-          weeklyFocus[dayIndex] += (s.endTime ?? now).difference(s.startTime).inMinutes.toDouble();
+          weeklyFocus[dayIndex] +=
+              (s.endTime ?? now).difference(s.startTime).inMinutes.toDouble();
           dailyDistractions[dayIndex] += s.totalDistractions;
         }
-        appCount[s.productiveApp] = (appCount[s.productiveApp] ?? 0) + s.totalDistractions;
+        appCount[s.productiveApp] =
+            (appCount[s.productiveApp] ?? 0) + s.totalDistractions;
       }
 
       // Feature 3 — Recovery Rate: rolling week vs. previous week.
-      // 14 days of events covers both windows in a single query.
-      final recentEvents = await _eventDao.getRecentEvents(14 * 24 * 60, eventType: 'distraction');
-      final thisWeek = _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
+      final recentEvents =
+          await _eventDao.getRecentEvents(14 * 24 * 60, eventType: 'distraction');
+      final thisWeek =
+          _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
         recentEvents,
         now.subtract(const Duration(days: 7)),
@@ -113,12 +154,16 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         weeklyFocusMinutes: weeklyFocus,
         dailyDistractions: dailyDistractions,
         appDistribution: appCount,
-        sessionScores: sessions.take(10).map((s) => s.focusScore).toList().reversed.toList(),
+        sessionScores:
+            sessions.take(10).map((s) => s.focusScore).toList().reversed.toList(),
         recoveryRate: thisWeek.rate,
         medianRecoverySeconds: thisWeek.medianRecoverySeconds,
         recoveryRateTrend: trend,
         isLoading: false,
       );
+
+      // ── Remote backend (MOB-3g) — fire-and-forget enrichment ─────────────
+      unawaited(_loadRemote());
     } catch (e) {
       debugPrint('Analytics load error: $e');
       state = state.copyWith(
@@ -126,6 +171,44 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         errorMessage: 'Could not load analytics. Pull to retry.',
       );
     }
+  }
+
+  /// Fetches backend summary + risk-trend and merges into state.
+  /// Runs after local data is already displayed; failure is silent.
+  Future<void> _loadRemote() async {
+    // Retrieve Supabase session JWT as the Bearer token for the FastAPI backend.
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      // Guest / offline user — skip remote entirely.
+      debugPrint('[AnalyticsVM] No auth session; skipping remote backend.');
+      return;
+    }
+    _backendAnalytics.setToken(session.accessToken);
+    final userId = session.user.id;
+
+    // Parallel fetch — both calls are independent.
+    final results = await Future.wait<dynamic>([
+      _backendAnalytics.fetchSummary(userId),
+      _backendAnalytics.fetchRiskTrend(userId),
+    ]);
+
+    final summary = results[0] as AnalyticsSummary?;
+    final riskTrend = (results[1] as List).cast<RiskDayEntry>();
+
+    state = state.copyWith(
+      remoteFocusScoreAverage: summary?.focusScoreAverage,
+      remoteWeeklySessions: summary?.weeklySessions,
+      remoteTopApps: summary?.topDistractingApps ?? [],
+      remoteRiskTrend: riskTrend,
+      isRemoteLoaded: true,
+    );
+
+    debugPrint(
+      '[AnalyticsVM] Remote loaded: '
+      'focusAvg=${summary?.focusScoreAverage} '
+      'weeklySessions=${summary?.weeklySessions} '
+      'riskDays=${riskTrend.length}',
+    );
   }
 
   /// Computes RecoveryStats for distractions triggered within
@@ -152,9 +235,8 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     if (total == 0) {
       return const RecoveryStats(rate: 0, medianRecoverySeconds: 0, sampleSize: 0);
     }
-    final fast = recoveredSeconds
-        .where((s) => s < _fastRecoveryThresholdSeconds)
-        .length;
+    final fast =
+        recoveredSeconds.where((s) => s < _fastRecoveryThresholdSeconds).length;
     final rate = (fast / total) * 100;
     final median = _median(recoveredSeconds);
     return RecoveryStats(
@@ -173,6 +255,13 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   }
 }
 
-final analyticsProvider = StateNotifierProvider<AnalyticsViewModel, AnalyticsState>(
-  (ref) => AnalyticsViewModel(AppDependencies.sessionDao, AppDependencies.eventDao),
+final analyticsProvider =
+    StateNotifierProvider<AnalyticsViewModel, AnalyticsState>(
+  (ref) => AnalyticsViewModel(
+    AppDependencies.sessionDao,
+    AppDependencies.eventDao,
+    // MOB-3g: BackendAnalyticsService uses AppConfig.backendBaseUrl which is
+    // injected at build time via --dart-define=BACKEND_URL=<url>.
+    BackendAnalyticsService(),
+  ),
 );

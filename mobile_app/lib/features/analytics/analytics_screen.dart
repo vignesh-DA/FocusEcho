@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../services/backend_analytics_service.dart';
 import 'analytics_viewmodel.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
@@ -41,17 +42,26 @@ class AnalyticsScreen extends ConsumerWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.warning_amber_rounded, color: AppColors.accentRed, size: 20),
+                      const Icon(Icons.warning_amber_rounded,
+                          color: AppColors.accentRed, size: 20),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(state.errorMessage!,
-                            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.accentRed)),
+                            style: AppTextStyles.bodyMedium
+                                .copyWith(color: AppColors.accentRed)),
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(height: 12),
               ],
+
+              // MOB-3g — Remote backend summary card (shows only when loaded)
+              if (state.isRemoteLoaded) ...[
+                _RemoteSummaryCard(state: state),
+                const SizedBox(height: 16),
+              ],
+
               Text('Weekly Focus Time', style: AppTextStyles.displayMedium),
               SizedBox(
                 height: 220,
@@ -64,7 +74,10 @@ class AnalyticsScreen extends ConsumerWidget {
                           BarChartRodData(
                             toY: state.weeklyFocusMinutes[i],
                             gradient: LinearGradient(
-                              colors: [AppColors.accentBlue.withValues(alpha: 0.6), AppColors.accentBlue],
+                              colors: [
+                                AppColors.accentBlue.withValues(alpha: 0.6),
+                                AppColors.accentBlue
+                              ],
                             ),
                           ),
                         ],
@@ -83,7 +96,8 @@ class AnalyticsScreen extends ConsumerWidget {
                       LineChartBarData(
                         spots: List.generate(
                           7,
-                          (i) => FlSpot(i.toDouble(), state.dailyDistractions[i].toDouble()),
+                          (i) => FlSpot(
+                              i.toDouble(), state.dailyDistractions[i].toDouble()),
                         ),
                         color: AppColors.accentRed,
                         isCurved: true,
@@ -98,7 +112,8 @@ class AnalyticsScreen extends ConsumerWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Center(
-                    child: Text('No distraction data yet.', style: AppTextStyles.bodyMedium),
+                    child:
+                        Text('No distraction data yet.', style: AppTextStyles.bodyMedium),
                   ),
                 )
               else ...[
@@ -122,20 +137,31 @@ class AnalyticsScreen extends ConsumerWidget {
                   final e = appEntries[i];
                   return Row(
                     children: [
-                      Container(width: 10, height: 10, color: pieColors[i % pieColors.length]),
+                      Container(
+                          width: 10,
+                          height: 10,
+                          color: pieColors[i % pieColors.length]),
                       const SizedBox(width: 8),
                       Text(e.key),
                     ],
                   );
                 }),
               ],
+
+              // MOB-3g — Remote top apps (from backend, Supabase-sourced)
+              if (state.remoteTopApps.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _RemoteTopAppsSection(apps: state.remoteTopApps),
+              ],
+
               const SizedBox(height: 16),
               Text('Focus Score History', style: AppTextStyles.displayMedium),
               if (state.sessionScores.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Center(
-                    child: Text('Complete sessions to see your trend.', style: AppTextStyles.bodyMedium),
+                    child: Text('Complete sessions to see your trend.',
+                        style: AppTextStyles.bodyMedium),
                   ),
                 )
               else
@@ -147,7 +173,8 @@ class AnalyticsScreen extends ConsumerWidget {
                         LineChartBarData(
                           spots: List.generate(
                             state.sessionScores.length,
-                            (i) => FlSpot(i.toDouble(), state.sessionScores[i]),
+                            (i) =>
+                                FlSpot(i.toDouble(), state.sessionScores[i]),
                           ),
                           color: AppColors.accentGreen,
                           isCurved: true,
@@ -156,10 +183,177 @@ class AnalyticsScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+
+              // MOB-3g — Risk trend from backend (14-day, Supabase-sourced)
+              if (state.remoteRiskTrend.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                _RiskTrendSection(trend: state.remoteRiskTrend),
+              ],
+
+              const SizedBox(height: 24),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+// ── Remote backend widgets (MOB-3g) ──────────────────────────────────────────
+
+class _RemoteSummaryCard extends StatelessWidget {
+  const _RemoteSummaryCard({required this.state});
+  final AnalyticsState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.glassmorphismCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.cloud_done_outlined,
+                  size: 16, color: AppColors.accentGreen),
+              const SizedBox(width: 6),
+              Text('Backend Summary',
+                  style: AppTextStyles.bodyMedium
+                      .copyWith(color: AppColors.accentGreen)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _SummaryChip(
+                label: 'Avg Focus Score',
+                value: state.remoteFocusScoreAverage != null
+                    ? state.remoteFocusScoreAverage!.toStringAsFixed(1)
+                    : '—',
+              ),
+              _SummaryChip(
+                label: 'Synced Sessions',
+                value: state.remoteWeeklySessions?.toString() ?? '—',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SummaryChip extends StatelessWidget {
+  const _SummaryChip({required this.label, required this.value});
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(value, style: AppTextStyles.displayMedium),
+        Text(label,
+            style:
+                AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+      ],
+    );
+  }
+}
+
+class _RemoteTopAppsSection extends StatelessWidget {
+  const _RemoteTopAppsSection({required this.apps});
+  final List<TopApp> apps;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('Top Distractions (Synced)',
+                style: AppTextStyles.displayMedium),
+            const SizedBox(width: 6),
+            const Icon(Icons.cloud_outlined,
+                size: 14, color: AppColors.accentBlue),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...apps.map(
+          (app) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(
+              children: [
+                Expanded(child: Text(app.label)),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentRed.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('${app.count}×',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.accentRed)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RiskTrendSection extends StatelessWidget {
+  const _RiskTrendSection({required this.trend});
+  final List<RiskDayEntry> trend;
+
+  @override
+  Widget build(BuildContext context) {
+    // Count HIGH/CRITICAL per day for a simple sparkline-style display
+    final riskByDay = trend.map((d) {
+      final high = d.riskScores
+          .where((r) => r == 'HIGH' || r == 'CRITICAL')
+          .length;
+      return FlSpot(trend.indexOf(d).toDouble(), high.toDouble());
+    }).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text('14-Day Risk Trend (Synced)',
+                style: AppTextStyles.displayMedium),
+            const SizedBox(width: 6),
+            const Icon(Icons.cloud_outlined,
+                size: 14, color: AppColors.accentBlue),
+          ],
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 160,
+          child: LineChart(
+            LineChartData(
+              lineBarsData: [
+                LineChartBarData(
+                  spots: riskByDay,
+                  color: AppColors.accentYellow,
+                  isCurved: true,
+                  dotData: const FlDotData(show: false),
+                ),
+              ],
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
