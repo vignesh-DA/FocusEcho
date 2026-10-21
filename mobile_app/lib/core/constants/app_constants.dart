@@ -98,9 +98,17 @@ class AppXP {
   static const level3Min = 1500;
   static const level3Max = 3499;
   static const level4Min = 3500;
+  /// XP for recovering from a distraction within [AppRiskThresholds.mediumRecoverySeconds].
   static const recoveryXp = 25;
+  /// XP for recovering after [AppRiskThresholds.mediumRecoverySeconds] (slower recovery).
+  static const slowRecoveryXp = 10;
   static const failurePenalty = -10;
   static const streakBonus7Days = 100;
+  /// Base XP awarded when a session is stopped cleanly (MOB-3e).
+  static const sessionCompletionXp = 50;
+  /// Minimum session duration (minutes) before base completion XP is awarded.
+  /// Guards against 1-second accidental sessions earning points (MOB-3e).
+  static const minSessionMinutesForXp = 1;
 }
 
 class AppRiskThresholds {

@@ -362,7 +362,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       // returned_at (recovered_at) backfill even if the original event was
       // already synced before the user returned.
       await _eventDao.markAsUnsynced(eventId);
-      final gained = seconds < 10 ? AppXP.recoveryXp : 10;
+      final gained = seconds < AppRiskThresholds.mediumRecoverySeconds
+          ? AppXP.recoveryXp
+          : AppXP.slowRecoveryXp;
       state = state.copyWith(sessionXp: state.sessionXp + gained, showAlert: false);
       unawaited(_syncService.syncPendingEvents());
     } catch (e) {
@@ -392,11 +394,26 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       avgRecoverySeconds: avgRecoverySeconds,
       criticalDistractions: criticalDistractions,
     );
+
+    // MOB-3e — Award base completion XP for sessions that reached the minimum
+    // duration threshold. Recovery XP is already accumulated in state.sessionXp
+    // throughout the session; we add the flat completion bonus on top here so
+    // the final row stored in SQLite always contains the complete earned total.
+    var finalSessionXp = state.sessionXp;
+    if (minutes >= AppXP.minSessionMinutesForXp) {
+      finalSessionXp += AppXP.sessionCompletionXp;
+      debugPrint(
+        '[FocusSession] Awarded ${AppXP.sessionCompletionXp} completion XP '
+        '(session ${session.id}, ${minutes}min). '
+        'Total session XP: $finalSessionXp',
+      );
+    }
+
     await _sessionDao.updateSessionEnd(
       session.id,
       DateTime.now(),
       totalDistractions,
-      state.sessionXp,
+      finalSessionXp,
       focusScore,
       SessionStatus.completed.name,
     );
@@ -407,9 +424,32 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     }
     await _prefs.setBool(AppKeys.sessionActive, false);
     await _prefs.remove(AppKeys.sessionIntent);
+
+    // MOB-3f — Wire updateUserXP: accumulate running lifetime XP in prefs
+    // (offline-safe source of truth), then push to Supabase when signed in.
+    final prevTotalXp = _prefs.getInt(AppKeys.xpTotal) ?? 0;
+    final newTotalXp = prevTotalXp + finalSessionXp;
+    final streakDays = _prefs.getInt(AppKeys.streakDays) ?? 0;
+    await _prefs.setInt(AppKeys.xpTotal, newTotalXp);
+    debugPrint(
+      '[FocusSession] Updated local XP: $prevTotalXp -> $newTotalXp '
+      '(streak: $streakDays days)',
+    );
+    final userId = _prefs.getString(AppKeys.userId);
+    if (userId != null && userId.isNotEmpty) {
+      unawaited(
+        AppDependencies.supabaseService
+            .updateUserXP(userId, newTotalXp, streakDays)
+            .catchError((Object e) {
+          debugPrint('[FocusSession] updateUserXP remote sync failed (will retry on next sync): $e');
+        }),
+      );
+    }
+
     unawaited(_syncService.syncPendingEvents());
     _unsubscribeCrossSurface();
     _engine.reset();
+
     // Feature 1 — keep the completed session around so the session-complete
     // view can render intent + planned vs. actual duration.
     state = state.copyWith(
@@ -420,7 +460,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
         productiveApp: session.productiveApp,
         actualSeconds: state.elapsedSeconds,
         totalDistractions: totalDistractions,
-        sessionXp: state.sessionXp,
+        sessionXp: finalSessionXp,
         focusScore: focusScore,
       ),
       showAlert: false,

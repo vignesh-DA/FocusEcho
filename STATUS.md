@@ -25,8 +25,8 @@
 | **MOB-3b**| Mobile Gap: Session Resume on App Relaunch | `not started` | 2026-10-18 | — | Resume active session after app process death/relaunch when service is still running. |
 | **MOB-3c**| Mobile Gap: Streak Minimum Length & Grace Day | `not started` | 2026-10-18 | — | Require minimum session duration (e.g. 15 min) for streak increment; 1 grace day buffer before streak reset. |
 | **MOB-3d**| Mobile Gap: Cumulative Streak Counter | `not started` | 2026-10-18 | — | Lifetime total streak days counter separate from current consecutive streak. |
-| **MOB-3e**| Mobile Gap: XP for Completed Sessions | `not started` | 2026-10-18 | — | Award base XP upon clean session completion in addition to recovery bonus XP. |
-| **MOB-3f**| Mobile Gap: `updateUserXP` Wiring | `not started` | 2026-10-18 | — | Wire `updateUserXP` DAO/service call from session completion flow (currently orphaned). |
+| **MOB-3e**| Mobile Gap: XP for Completed Sessions | `written but unverified` | 2026-10-21 | — | `AppXP.sessionCompletionXp` (50 XP) awarded in `stopSession()` when session ≥ `AppXP.minSessionMinutesForXp` (1 min). Stored in SQLite `total_xp_earned` column and surfaced in `SessionSummary`. Needs physical device run. |
+| **MOB-3f**| Mobile Gap: `updateUserXP` Wiring | `written but unverified` | 2026-10-21 | — | `stopSession()` now accumulates lifetime XP in `SharedPreferences` (`xp_total` key) and calls `supabaseService.updateUserXP()` fire-and-forget when a user is signed in. Network failures log and do not block session end. Needs physical device + Supabase dashboard confirmation. |
 | **MOB-3g**| Mobile Gap: Analytics Remote Backend Integration | `not started` | 2026-10-18 | — | Connect Analytics UI screen to FastAPI `/api/v1/analytics` instead of reading local SQLite only. |
 | **MOB-4** | Local SQLite Database (`sqflite`) | `written but unverified` | 2026-10-18 | — | Write-first DAOs implemented; needs physical device validation. |
 | **MOB-5** | Local Notifications Engine | `written but unverified` | 2026-10-18 | — | Configured via `flutter_local_notifications`; remote Firebase removed per spec. |
