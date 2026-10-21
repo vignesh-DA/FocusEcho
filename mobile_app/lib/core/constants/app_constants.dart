@@ -24,6 +24,11 @@ class AppKeys {
   static const userId = 'user_id';
   static const xpTotal = 'xp_total';
   static const streakDays = 'streak_days';
+  /// Lifetime total of all streak days ever earned (MOB-3d).
+  static const cumulativeStreakDays = 'cumulative_streak_days';
+  /// ISO-8601 date (yyyy-MM-dd) of the last day a session was completed.
+  /// Used by streak logic to detect consecutive-day activity (MOB-3c).
+  static const lastSessionDate = 'last_session_date';
   static const consentGiven = 'consent_given';
   static const syncEnabled = 'sync_enabled';
   static const localOnlyMode = 'local_only_mode';
@@ -51,6 +56,9 @@ class AppDurations {
   static const notificationGraceMs = 30000;
   static const screenOnGraceMs = 5000;
   static const debounceMs = 500;
+  /// Number of missed days allowed before a streak resets (MOB-3c grace day).
+  /// 1 = the user may miss exactly one calendar day and still keep their streak.
+  static const streakGraceDays = 1;
 }
 
 /// Supabase + backend config — ALL values must be injected at build time:

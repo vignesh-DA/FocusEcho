@@ -231,6 +231,60 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     unawaited(_subscribeCrossSurface());
   }
 
+  // ── MOB-3b — Session Resume on App Relaunch ──────────────────────────────
+
+  /// Called by [SplashScreen._goNext] when it detects [AppKeys.sessionActive]
+  /// is true. Reads the in-progress session row from SQLite, rebuilds the
+  /// engine config, and restarts the elapsed-second timer so the UI shows the
+  /// correct running duration even after a process kill.
+  ///
+  /// Returns true when a session was successfully resumed, false if no active
+  /// session exists in the database (allows caller to fall back to dashboard).
+  Future<bool> resumeSession() async {
+    // Skip on web — web sessions don't survive full page reloads.
+    if (kIsWeb) return false;
+
+    final session = await _sessionDao.getActiveSession();
+    if (session == null) {
+      // Pref flag was stale — clean it up so we don't loop.
+      await _prefs.setBool(AppKeys.sessionActive, false);
+      debugPrint('[FocusSession] resumeSession: no active SQLite row found; cleared stale flag.');
+      return false;
+    }
+
+    // Compute how many seconds have elapsed since the session started,
+    // accounting for the time the process was dead.
+    final alreadyElapsed = DateTime.now().difference(session.startTime).inSeconds;
+
+    _engine.reset();
+    _engine.configure(_buildConfig(session.productiveApp));
+
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      state = state.copyWith(elapsedSeconds: state.elapsedSeconds + 1);
+    });
+
+    state = state.copyWith(
+      isActive: true,
+      session: session,
+      elapsedSeconds: alreadyElapsed,
+      distractionCount: 0,
+      sessionXp: 0,
+      intent: session.intent,
+      escalationLevel: 1,
+      sessionSummary: null,
+      crossSurfaceNudge: null,
+    );
+
+    debugPrint(
+      '[FocusSession] Resumed session ${session.id} '
+      '(${session.productiveApp}, already ${alreadyElapsed}s elapsed).',
+    );
+
+    unawaited(_subscribeCrossSurface());
+    return true;
+  }
+
   /// Web-demo distraction simulation — bypasses all DAO/SQLite calls that are
   /// unavailable on the web platform.  The event is tagged with
   /// [eventType: 'web_demo'] so it is **never** mixed with real distraction
@@ -429,17 +483,21 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     // (offline-safe source of truth), then push to Supabase when signed in.
     final prevTotalXp = _prefs.getInt(AppKeys.xpTotal) ?? 0;
     final newTotalXp = prevTotalXp + finalSessionXp;
-    final streakDays = _prefs.getInt(AppKeys.streakDays) ?? 0;
     await _prefs.setInt(AppKeys.xpTotal, newTotalXp);
+
+    // MOB-3c/3d — Update streak counters. Must run after XP so the Supabase
+    // push carries the already-updated streak value.
+    final newStreakDays = await _updateStreak();
+
     debugPrint(
       '[FocusSession] Updated local XP: $prevTotalXp -> $newTotalXp '
-      '(streak: $streakDays days)',
+      '(streak: $newStreakDays days)',
     );
     final userId = _prefs.getString(AppKeys.userId);
     if (userId != null && userId.isNotEmpty) {
       unawaited(
         AppDependencies.supabaseService
-            .updateUserXP(userId, newTotalXp, streakDays)
+            .updateUserXP(userId, newTotalXp, newStreakDays)
             .catchError((Object e) {
           debugPrint('[FocusSession] updateUserXP remote sync failed (will retry on next sync): $e');
         }),
@@ -466,6 +524,82 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       showAlert: false,
     );
     _loadAvailableApps(); // Reload for next session
+  }
+
+  // ── MOB-3c / MOB-3d — Streak Update ────────────────────────────────────
+
+  /// Computes and persists the updated consecutive streak and lifetime
+  /// cumulative streak counters after a session is completed.
+  ///
+  /// Rules (MOB-3c):
+  ///   - A session must be ≥ [AppXP.minSessionMinutesForXp] minutes to count
+  ///     toward the streak (same guard as XP, keeps the two in sync).
+  ///   - If the last completed session was on the SAME calendar day, the streak
+  ///     count does not increment again (prevents multiple sessions one day from
+  ///     double-counting).
+  ///   - If the gap since the last session date is within [AppDurations.streakGraceDays]
+  ///     missed calendar days the current streak is extended.
+  ///   - Otherwise the streak resets to 1.
+  ///
+  /// Rule (MOB-3d):
+  ///   - [AppKeys.cumulativeStreakDays] always increments by 1 for each
+  ///     qualifying session regardless of streak resets.
+  ///
+  /// Returns the new consecutive streak value so the caller can push it to
+  /// Supabase in the same [stopSession] call.
+  Future<int> _updateStreak() async {
+    final minutes = state.elapsedSeconds ~/ 60;
+    if (minutes < AppXP.minSessionMinutesForXp) {
+      // Session too short — do not touch streak counters.
+      return _prefs.getInt(AppKeys.streakDays) ?? 0;
+    }
+
+    final today = DateTime.now();
+    final todayLabel = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final lastDateRaw = _prefs.getString(AppKeys.lastSessionDate);
+    var currentStreak = _prefs.getInt(AppKeys.streakDays) ?? 0;
+
+    if (lastDateRaw != null) {
+      final lastDate = DateTime.tryParse(lastDateRaw);
+      if (lastDate != null) {
+        // Strip time component: compare calendar-day difference only.
+        final lastDay = DateTime(lastDate.year, lastDate.month, lastDate.day);
+        final todayDay = DateTime(today.year, today.month, today.day);
+        final gapDays = todayDay.difference(lastDay).inDays;
+
+        if (gapDays == 0) {
+          // Same calendar day — already counted; do not increment streak.
+          debugPrint('[Streak] Same day session — streak unchanged at $currentStreak.');
+          return currentStreak;
+        } else if (gapDays <= 1 + AppDurations.streakGraceDays) {
+          // Yesterday or within grace window — extend streak.
+          currentStreak += 1;
+        } else {
+          // Too many missed days — reset.
+          debugPrint('[Streak] Gap of $gapDays days exceeds grace. Resetting streak.');
+          currentStreak = 1;
+        }
+      } else {
+        currentStreak = 1; // Corrupt stored date — start fresh.
+      }
+    } else {
+      // First ever session.
+      currentStreak = 1;
+    }
+
+    // MOB-3d — lifetime cumulative counter.
+    final prevCumulative = _prefs.getInt(AppKeys.cumulativeStreakDays) ?? 0;
+    final newCumulative = prevCumulative + 1;
+
+    await _prefs.setInt(AppKeys.streakDays, currentStreak);
+    await _prefs.setInt(AppKeys.cumulativeStreakDays, newCumulative);
+    await _prefs.setString(AppKeys.lastSessionDate, todayLabel);
+
+    debugPrint(
+      '[Streak] consecutive=$currentStreak cumulative=$newCumulative '
+      'lastDate=$todayLabel',
+    );
+    return currentStreak;
   }
 
   /// Dismisses the session-complete summary and returns to the setup view.
