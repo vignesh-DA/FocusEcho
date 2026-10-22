@@ -14,7 +14,7 @@ const logBox   = $('log-box');
 async function refreshState() {
   const resp = await chrome.runtime.sendMessage({ type: 'fe:debug_get_state' });
   if (resp?.ok) {
-    stateBox.textContent = JSON.stringify({ session: resp.session, distraction: resp.distraction }, null, 2);
+    stateBox.textContent = JSON.stringify({ session: resp.session, distraction: resp.distraction, recent_events: resp.recent_events }, null, 2);
   } else {
     stateBox.textContent = 'Error: ' + (resp?.error ?? 'unknown');
   }

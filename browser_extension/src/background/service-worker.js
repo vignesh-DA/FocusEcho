@@ -232,6 +232,16 @@ async function _dispatchInner(event) {
 
   // Execute side effects
   await executeActions(actions, { session, distraction, event, now });
+
+  // Back from PAUSED (window refocus / idle ended) into the 3 s grace window:
+  // the user is on the site again right now, so give a fresh 3 s grace and re-arm the timer.
+  // (Before this, the timer had already fired while paused and was ignored, so the
+  //  session sat in COUNTING_GRACE until the 60 s heartbeat.)
+  if (currentState === STATE.PAUSED && nextState === STATE.COUNTING_GRACE) {
+    const d = await loadDistraction();
+    if (d) { d.grace_entered_at = now; await saveDistraction(d); }
+    scheduleGraceTimer(3000);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,22 +525,68 @@ async function _executeAction(name, param, { session, distraction, event, now })
 // ---------------------------------------------------------------------------
 // chrome.tabs events
 // ---------------------------------------------------------------------------
+/**
+ * Classify a tab URL.
+ *  web     - http(s) page, hostname is evaluated against the distraction list
+ *  own     - one of this extension's own pages (debug/options). Ignored so that
+ *            reading the debug page never changes the session being observed.
+ *  other   - New Tab page, chrome://, about:, file:// ... Counts as "not on a
+ *            distraction site", so it ends a distraction visit.
+ *  unknown - URL not available yet (tab still loading). Ignored; onUpdated
+ *            fires again when the real URL is committed.
+ * Hostname only: path, query and hash are never read beyond this point.
+ */
+function describeTab(url) {
+  if (!url) return { kind: 'unknown', host: '' };
+  if (isWebUrl(url)) return { kind: 'web', host: normalizeHost(url) };
+  if (url.startsWith(chrome.runtime.getURL(''))) return { kind: 'own', host: '' };
+  return { kind: 'other', host: '' };
+}
+
+/** Evaluate the tab the user is on right now (used when a session starts). */
+async function scanActiveTab() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab) return;
+    const session = await loadSession();
+    if (!session?.active) return;
+    const info = describeTab(tab.url);
+    if (info.kind !== 'web') return;
+    const distracting = isDistracting(info.host, session.distraction_list);
+    await markTabActive(tab.id, info.host, distracting);
+    await dispatch({
+      type: EV.TAB_ACTIVATED,
+      payload: { tabId: tab.id, host: info.host, isDistracting: distracting, windowId: tab.windowId },
+    });
+  } catch (e) {
+    LOG.err('scanActiveTab:', e.message);
+  }
+}
+
 chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
   try {
     const tab = await chrome.tabs.get(tabId);
-    if (!isWebUrl(tab.url)) return; // chrome://, about:, etc.
-
-    // Hostname only — path/query/hash are intentionally discarded here
-    const host = normalizeHost(tab.url);
     const session = await loadSession();
     if (!session?.active) return;
 
-    const distracting = isDistracting(host, session.distraction_list);
-    await markTabActive(tabId, host, distracting);
+    const info = describeTab(tab.url);
+    if (info.kind === 'unknown' || info.kind === 'own') return;
 
+    if (info.kind === 'other') {
+      // New Tab page / chrome:// / about: -> the user left whatever site they were on.
+      // tabId is null so this page is never remembered as the "productive tab" to return to.
+      await dispatch({
+        type: EV.TAB_ACTIVATED,
+        payload: { tabId: null, host: '', isDistracting: false, windowId },
+      });
+      return;
+    }
+
+    const distracting = isDistracting(info.host, session.distraction_list);
+    await markTabActive(tabId, info.host, distracting);
     await dispatch({
       type: EV.TAB_ACTIVATED,
-      payload: { tabId, host, isDistracting: distracting, windowId },
+      payload: { tabId, host: info.host, isDistracting: distracting, windowId },
     });
   } catch (e) {
     LOG.err('onActivated:', e.message);
@@ -545,12 +601,21 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Only care about URL changes on the active tab; SPA navigation is handled
   // via webNavigation.onHistoryStateUpdated which is more reliable.
   if (changeInfo.status !== 'complete' || !tab.active) return;
-  if (!isWebUrl(tab.url)) return;
-  const host = normalizeHost(tab.url);
+  const info = describeTab(tab.url);
+  if (info.kind === 'unknown' || info.kind === 'own') return;
+  const host = info.host;
   // Dedup: onCommitted fires ~simultaneously for the same navigation.
-  if (_deduplicateNav(tabId, host)) { LOG.sw(`onUpdated dedup skip for ${host}`); return; }
+  if (_deduplicateNav(tabId, host)) { LOG.sw(`onUpdated dedup skip for ${host || info.kind}`); return; }
   const session = await loadSession();
   if (!session?.active) return;
+  if (info.kind === 'other') {
+    // Active tab navigated to the New Tab page / chrome:// -> left the site.
+    await dispatch({
+      type: EV.TAB_NAVIGATED,
+      payload: { tabId: null, host: '', isDistracting: false },
+    });
+    return;
+  }
   const distracting = isDistracting(host, session.distraction_list);
   await markTabActive(tabId, host, distracting);
   await dispatch({
@@ -572,7 +637,7 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async ({ tabId, frameId, 
   // Check if this is the currently active tab
   let isActiveTab = false;
   try {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     isActiveTab = activeTab?.id === tabId;
   } catch (_) {}
   if (!isActiveTab) return;
@@ -600,7 +665,7 @@ chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId, url, trans
 
   let isActiveTab = false;
   try {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const [activeTab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     isActiveTab = activeTab?.id === tabId;
   } catch (_) {}
   if (!isActiveTab) return;
@@ -677,6 +742,8 @@ async function _handleMessage(message, sender) {
         session_id: crypto.randomUUID(),
       },
     });
+    // The user may already be on a distraction site when they press Start.
+    await scanActiveTab();
     return { ok: true, restarted: !!wasActive };
   }
 
@@ -688,7 +755,8 @@ async function _handleMessage(message, sender) {
   if (type === 'fe:debug_get_state') {
     const session    = await loadSession();
     const distraction = await loadDistraction();
-    return { ok: true, session, distraction };
+    const q = (await chrome.storage.local.get(SK.EVENT_QUEUE))[SK.EVENT_QUEUE] ?? [];
+    return { ok: true, session, distraction, recent_events: q.slice(-10).map(e => e.event) };
   }
 
   if (type === 'fe:debug_dispatch') {
