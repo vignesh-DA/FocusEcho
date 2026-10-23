@@ -22,7 +22,10 @@ class SupabaseService {
   }
 
   Future<void> upsertFocusSession(FocusSession session) async {
-    await _client.from('focus_sessions').upsert(session.toSqliteMap());
+    final authUserId = _client.auth.currentUser?.id;
+    if (authUserId == null) return;
+    final row = session.toSqliteMap()..['user_id'] = authUserId;
+    await _client.from('focus_sessions').upsert(row);
   }
 
   Future<void> upsertInterventionEvent(InterventionEvent event) async {
@@ -92,24 +95,19 @@ class SupabaseService {
 
   Future<UserProfile?> getUserProfile(String userId) async {
     final row =
-        await _client.from('users').select().eq('id', userId).maybeSingle();
+        await _client.from('users').select().maybeSingle();
     if (row == null) return null;
     return UserProfile.fromJson(row);
   }
 
   Future<void> updateUserXP(String userId, int totalXp, int streakDays) async {
+    final authUserId = _client.auth.currentUser?.id;
+    if (authUserId == null) return;
     await _client.from('user_xp').upsert({
-      'user_id': userId,
+      'user_id': authUserId,
       'total_xp': totalXp,
       'streak_days': streakDays,
     });
-  }
-
-  Future<bool> signInWithGoogle() {
-    return _client.auth.signInWithOAuth(
-      OAuthProvider.google,
-      redirectTo: kIsWeb ? null : 'com.focusecho.ai://login-callback',
-    );
   }
 
   Future<void> signOut() => _client.auth.signOut();

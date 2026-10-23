@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../constants/app_constants.dart';
 import '../theme/app_theme.dart';
@@ -34,22 +35,33 @@ class AppRouter {
       refreshListenable: refreshNotifier,
       redirect: (context, state) {
         final consentGiven = prefs.getBool(AppKeys.consentGiven) ?? false;
+        final hasSkipped = prefs.getBool(AppKeys.hasSkippedLogin) ?? false;
+        var isLoggedIn = false;
+        try {
+          isLoggedIn =
+              Supabase.instance.client.auth.currentUser != null;
+        } catch (_) {
+          // Supabase is unavailable; the offline app can still render.
+        }
         final usage = prefs.getBool('has_usage_access') ?? false;
         final battery = prefs.getBool('has_battery_optimization') ?? false;
-        // Accessibility service removed — only Usage Access + Battery required.
         final permissionsReady = kIsWeb || (usage && battery);
         final path = state.uri.path;
 
-        // Allow splash and consent screens unconditionally
         if (path == AppRoutes.splash) return null;
-
         if (!consentGiven && path != AppRoutes.consent) {
           return AppRoutes.consent;
         }
-
+        if (consentGiven &&
+            !isLoggedIn &&
+            !hasSkipped &&
+            path != AppRoutes.login) {
+          return AppRoutes.login;
+        }
         if (consentGiven &&
             !permissionsReady &&
             path != AppRoutes.permissionWizard &&
+            path != AppRoutes.login &&
             path != AppRoutes.consent) {
           return AppRoutes.permissionWizard;
         }

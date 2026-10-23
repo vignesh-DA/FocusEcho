@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/theme/app_theme.dart';
@@ -17,42 +15,26 @@ class LoginScreen extends ConsumerStatefulWidget {
 }
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
+  final _emailCtrl = TextEditingController();
+  final _otpCtrl = TextEditingController();
+  bool _otpSent = false;
+
   @override
-  void initState() {
-    super.initState();
-    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
-      if (data.event == AuthChangeEvent.signedIn) {
-        if (mounted) {
-          _proceed(context);
-        }
-      }
-    });
+  void dispose() {
+    _emailCtrl.dispose();
+    _otpCtrl.dispose();
+    super.dispose();
   }
 
-  Future<void> _proceed(BuildContext context) async {
-    final prefs = await SharedPreferences.getInstance();
-    final usage = prefs.getBool('has_usage_access') ?? false;
-    final accessibility = prefs.getBool('has_accessibility') ?? false;
-    final battery = prefs.getBool('has_battery_optimization') ?? false;
-
-    if (!context.mounted) return;
-
-    if (kIsWeb) {
-      context.go(AppRoutes.dashboard);
-      return;
-    }
-
-    if (!(usage && accessibility && battery)) {
-      context.go(AppRoutes.permissionWizard);
-      return;
-    }
-
-    context.go(AppRoutes.dashboard);
+  void _proceed() {
+    if (!mounted) return;
+    context.go(kIsWeb ? AppRoutes.dashboard : AppRoutes.permissionWizard);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isLoading = ref.watch(loginViewModelProvider);
+    final state = ref.watch(loginViewModelProvider);
+    final vm = ref.read(loginViewModelProvider.notifier);
 
     return Scaffold(
       body: Container(
@@ -66,54 +48,136 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              padding: const EdgeInsets.symmetric(horizontal: 32),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Icon(Icons.lock_person_rounded, size: 80, color: AppColors.accentBlue),
-                  const SizedBox(height: 32),
+                  const Icon(Icons.graphic_eq_rounded,
+                      size: 72, color: AppColors.accentBlue),
+                  const SizedBox(height: 24),
                   Text(
-                    'Sync Your Progress',
+                    'Focus Echo AI',
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.displayLarge,
+                    style: AppTextStyles.displayLarge
+                        .copyWith(color: AppColors.accentBlue),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 8),
                   Text(
-                    'Sign in to save your focus streaks, earn XP, and sync across all your devices.',
+                    _otpSent
+                        ? 'Enter the 6-digit code sent to\n${_emailCtrl.text}'
+                        : 'Create an account to sync your focus\nsessions across all devices.',
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyLarge.copyWith(color: AppColors.textSecondary),
+                    style: AppTextStyles.bodyLarge
+                        .copyWith(color: AppColors.textSecondary),
                   ),
-                  const SizedBox(height: 48),
-                  if (isLoading)
-                    const Center(child: CircularProgressIndicator())
-                  else
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      onPressed: () => ref.read(loginViewModelProvider.notifier).signInWithGoogle(),
-                      icon: const Icon(Icons.g_mobiledata_rounded, size: 32, color: Colors.black),
-                      label: const Text(
-                        'Continue with Google',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  const SizedBox(height: 40),
+                  if (!_otpSent) ...[
+                    TextField(
+                      controller: _emailCtrl,
+                      keyboardType: TextInputType.emailAddress,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'your@email.com',
+                        hintStyle: const TextStyle(color: Colors.white38),
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        prefixIcon: const Icon(Icons.email_outlined,
+                            color: AppColors.accentBlue),
                       ),
                     ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: state.isLoading
+                          ? null
+                          : () async {
+                              final email = _emailCtrl.text.trim();
+                              if (email.isEmpty) return;
+                              final ok = await vm.sendOtp(email);
+                              if (ok && mounted) {
+                                setState(() => _otpSent = true);
+                              }
+                            },
+                      child: state.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Send Code →'),
+                    ),
+                  ] else ...[
+                    TextField(
+                      controller: _otpCtrl,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 24,
+                          letterSpacing: 8),
+                      decoration: InputDecoration(
+                        hintText: '000000',
+                        counterText: '',
+                        filled: true,
+                        fillColor: AppColors.surface,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: state.isLoading
+                          ? null
+                          : () async {
+                              final ok = await vm.verifyOtp(
+                                _emailCtrl.text.trim(),
+                                _otpCtrl.text.trim(),
+                              );
+                              if (ok) _proceed();
+                            },
+                      child: state.isLoading
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Text('Verify & Sign In'),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _otpSent = false;
+                        _otpCtrl.clear();
+                      }),
+                      child: const Text('← Change Email'),
+                    ),
+                  ],
+                  if (state.errorMessage != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      state.errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.accentRed),
+                    ),
+                  ],
+                  const SizedBox(height: 24),
                   TextButton(
                     onPressed: () async {
-                      await ref.read(loginViewModelProvider.notifier).skipLogin();
-                      if (context.mounted) {
-                        _proceed(context);
-                      }
+                      await vm.skipLogin();
+                      _proceed();
                     },
-                    child: Text(
-                      'Continue as Guest',
-                      style: TextStyle(color: Colors.white.withValues(alpha: 0.6), fontSize: 16),
-                    ),
+                    child: const Text('Continue without account'),
                   ),
                 ],
               ),

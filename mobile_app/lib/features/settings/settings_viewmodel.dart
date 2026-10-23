@@ -146,33 +146,20 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
   /// Requires a signed-in account so both surfaces share the same channel.
   Future<String?> updateCrossSurfaceNudges(bool value) async {
     if (value && AppDependencies.supabaseService.currentUser == null) {
-      return 'Sign in with Google first — cross-device nudges need a linked account.';
+      return 'Link an email account first — cross-device nudges need a linked account.';
     }
     state = state.copyWith(crossSurfaceNudges: value);
     await _prefs.setBool(AppKeys.crossSurfaceNudges, value);
     return null;
   }
 
-  Future<bool> signInWithGoogle() async {
-    state = state.copyWith(isAuthenticating: false);
-    // OAuth opens a browser — the actual sign-in completes asynchronously
-    // via a deep-link redirect. The auth state listener in main.dart will
-    // save the userId and migrate guest data when signedIn fires.
-    final started = await AppDependencies.supabaseService.signInWithGoogle();
-    state = state.copyWith(isAuthenticating: false);
-    return started;
-  }
-
   Future<void> signOut() async {
     state = state.copyWith(isAuthenticating: true);
-    await AppDependencies.supabaseService.signOut();
-    final deviceId = _prefs.getString(AppKeys.deviceId);
-    if (deviceId != null && deviceId.isNotEmpty) {
-      await _prefs.setString(AppKeys.userId, deviceId);
-    } else {
-      await _prefs.remove(AppKeys.userId);
+    try {
+      await AppDependencies.supabaseService.signOut();
+    } finally {
+      state = state.copyWith(isAuthenticating: false, userEmail: null);
     }
-    state = state.copyWith(isAuthenticating: false, userEmail: null);
   }
 
   Future<void> updateAppLimit(String packageName, int seconds) async {
@@ -248,10 +235,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     await _prefs.remove(AppKeys.streakDays);
     await _prefs.setBool(AppKeys.sessionActive, false);
     await _prefs.setBool(AppKeys.consentGiven, false);
-    final deviceId = _prefs.getString(AppKeys.deviceId);
-    if (deviceId != null && deviceId.isNotEmpty) {
-      await _prefs.setString(AppKeys.userId, deviceId);
-    }
+    // Supabase auth listener issues a fresh anonymous identity after deletion.
   }
 }
 

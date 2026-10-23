@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/privacy_policy_sheet.dart';
 import 'settings_viewmodel.dart';
 
@@ -13,6 +15,8 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(settingsProvider);
     final vm = ref.read(settingsProvider.notifier);
+    final authUser = Supabase.instance.client.auth.currentUser;
+    final isAnonymous = authUser?.isAnonymous ?? true;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -94,7 +98,7 @@ class SettingsScreen extends ConsumerWidget {
           SwitchListTile(
             title: const Text('Cross-device nudges'),
             subtitle: const Text(
-              'Get a heads-up on this device when you drift on your other device. Requires sign-in.',
+              'Get a heads-up on this device when you drift on your other device. Requires a linked account.',
             ),
             value: state.crossSurfaceNudges,
             onChanged: (v) async {
@@ -110,38 +114,50 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const Divider(),
           const ListTile(title: Text('ACCOUNT')),
-          if (state.userEmail == null)
-            ListTile(
-              title: const Text('Sign in with Google'),
-              trailing: state.isAuthenticating
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : null,
-              onTap: state.isAuthenticating
-                  ? null
-                  : () async {
-                      final started = await vm.signInWithGoogle();
-                      if (!context.mounted) return;
-                      if (!started) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Google Sign-In could not be started.')),
-                        );
-                      }
-                    },
-            )
-          else ...[
-            ListTile(title: const Text('User Email'), subtitle: Text(state.userEmail!)),
-            ListTile(
-              title: const Text('Sign out'),
-              onTap: state.isAuthenticating
-                  ? null
-                  : () async {
-                      await vm.signOut();
-                      if (context.mounted) {
-                        context.go(AppRoutes.consent);
-                      }
-                    },
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: isAnonymous
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.person_outline,
+                              color: AppColors.accentYellow),
+                          const SizedBox(height: 8),
+                          const Text(
+                            'You are using an anonymous session. Link an email to sync your data across devices.',
+                          ),
+                          const SizedBox(height: 12),
+                          ElevatedButton(
+                            onPressed: () => context.go(AppRoutes.login),
+                            child: const Text('Link Email Account →'),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(Icons.verified_user,
+                              color: AppColors.accentGreen),
+                          const SizedBox(height: 8),
+                          Text('Signed in as ' + (authUser?.email ?? 'Unknown')),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: state.isAuthenticating
+                                ? null
+                                : () => vm.signOut(),
+                            child: const Text(
+                              'Sign Out',
+                              style: TextStyle(color: AppColors.accentRed),
+                            ),
+                          ),
+                        ],
+                      ),
+              ),
             ),
-          ],
+          ),
           const Divider(),
           const ListTile(title: Text('ABOUT')),
           const ListTile(title: Text('Version'), subtitle: Text('1.0.0')),

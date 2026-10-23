@@ -67,7 +67,7 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
       this._eventDao, this._userId)
       : super(const DashboardState()) {
     loadDashboard();
-    if (kIsWeb) _subscribeRealtimeDashboard();
+    _subscribeRealtimeDashboard();
   }
 
   final SupabaseService _supabaseService;
@@ -95,9 +95,7 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
         }
       }
 
-      final history = kIsWeb
-          ? await _loadWebSessions()
-          : await _focusSessionDao.getSessionHistory(50);
+      final history = await _loadSessionsFromCloud();
       final today = DateTime.now();
       final todaySessions = history
           .where((s) =>
@@ -117,10 +115,7 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
 
       // Feature 3 — headline Recovery Rate with week-over-week trend.
       final now = DateTime.now();
-      final recentEvents = kIsWeb
-          ? await _loadWebEvents(todaySessions)
-          : await _eventDao.getRecentEvents(14 * 24 * 60,
-              eventType: 'distraction');
+      final recentEvents = await _loadEventsFromCloud(todaySessions);
       final thisWeek =
           _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
@@ -148,14 +143,13 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
     }
   }
 
-  Future<List<FocusSession>> _loadWebSessions() async {
+  Future<List<FocusSession>> _loadSessionsFromCloud() async {
     try {
       final today = DateTime.now();
       final midnight = DateTime(today.year, today.month, today.day);
       final rows = await Supabase.instance.client
           .from('focus_sessions')
           .select()
-          .eq('user_id', _userId)
           .gte('start_time', midnight.toIso8601String())
           .order('start_time', ascending: false);
       return (rows as List)
@@ -169,7 +163,7 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
     }
   }
 
-  Future<List<DistractionEvent>> _loadWebEvents(
+  Future<List<DistractionEvent>> _loadEventsFromCloud(
       List<FocusSession> sessions) async {
     if (sessions.isEmpty) return const [];
     try {
@@ -255,8 +249,6 @@ final dashboardProvider =
     AppDependencies.supabaseService,
     AppDependencies.sessionDao,
     AppDependencies.eventDao,
-    AppDependencies.prefs.getString(AppKeys.userId) ??
-        AppDependencies.prefs.getString(AppKeys.deviceId) ??
-        '',
+    AppDependencies.prefs.getString(AppKeys.userId) ?? '',
   ),
 );

@@ -1,9 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:uuid/uuid.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'core/constants/app_constants.dart';
@@ -22,9 +23,11 @@ import 'services/sync_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+  var supabaseReady = false;
   try {
     await Supabase.initialize(
         url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
+    supabaseReady = true;
   } catch (e) {
     debugPrint('Supabase Init Failed: $e. Using offline mode.');
   }
@@ -59,8 +62,6 @@ Future<void> main() async {
     ));
   }
 
-  AppRouter.initialize(prefs);
-
   final sessionDao = FocusSessionDao(DatabaseHelper.instance);
   final eventDao = DistractionEventDao(DatabaseHelper.instance);
   final interventionDao = InterventionEventDao(DatabaseHelper.instance);
@@ -68,14 +69,31 @@ Future<void> main() async {
   final syncService = SyncService(
       eventDao, sessionDao, interventionDao, supabaseService, prefs);
 
-  final deviceId = await _ensureDeviceId(prefs);
-  final currentUser = Supabase.instance.client.auth.currentUser;
-  if (currentUser == null) {
-    await prefs.setString(AppKeys.userId, deviceId);
-    await _migrateLocalUserToDeviceId(sessionDao, eventDao, deviceId);
-  } else {
-    await prefs.setString(AppKeys.userId, currentUser.id);
+  // Every online launch gets a real Supabase identity, including guests.
+  // The local-only marker is retained only when Supabase is unreachable; it is
+  // never used as a cloud identity or sent to Supabase.
+  User? currentUser = supabaseReady ? Supabase.instance.client.auth.currentUser : null;
+  if (supabaseReady && currentUser == null) {
+    try {
+      final response = await Supabase.instance.client.auth.signInAnonymously();
+      currentUser = response.user;
+      debugPrint('[Auth] Anonymous sign-in: ${currentUser?.id}');
+    } catch (e) {
+      debugPrint('[Auth] Anonymous sign-in failed: $e — using offline mode');
+    }
   }
+  final previousId = prefs.getString(AppKeys.userId);
+  if (currentUser != null) {
+    await prefs.setString(AppKeys.userId, currentUser.id);
+    if (previousId != null && previousId != currentUser.id) {
+      await _migrateLocalUserToAuthId(
+          sessionDao, eventDao, previousId, currentUser.id);
+    }
+  } else {
+    await prefs.setString(AppKeys.userId, 'local-user');
+  }
+
+  AppRouter.initialize(prefs);
 
   if (!kIsWeb) {
     try {
@@ -99,29 +117,37 @@ Future<void> main() async {
   AppDependencies.syncServiceReady = true;
   syncService.startPeriodicSync();
 
-  // Listen for OAuth deep-link callback (signedIn fires after browser redirect)
-  Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
+  // Keep the local cache identity aligned with Supabase after OTP upgrades,
+  // anonymous re-issuance, refreshes, and sign-outs.
+  if (supabaseReady) {
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
     final event = data.event;
     final user = data.session?.user;
-    if (event == AuthChangeEvent.signedIn && user != null) {
-      final previousId =
-          prefs.getString(AppKeys.userId) ?? prefs.getString(AppKeys.deviceId);
-      // Persist the real userId so all screens pick it up
+    if ((event == AuthChangeEvent.signedIn ||
+            event == AuthChangeEvent.userUpdated) &&
+        user != null) {
+      final previousId = prefs.getString(AppKeys.userId);
       await prefs.setString(AppKeys.userId, user.id);
-      debugPrint('[Auth] Signed in as ${user.email} (${user.id})');
-      // Migrate any pre-login local data to the real account
       if (previousId != null && previousId != user.id) {
-        await syncService.migrateGuestDataToUser(previousId, user.id);
-      } else {
-        await syncService.syncPendingEvents();
+        await _migrateLocalUserToAuthId(sessionDao, eventDao, previousId, user.id);
       }
-      AppRouter.router.go(AppRoutes.dashboard);
+      unawaited(syncService.syncPendingEvents());
+      debugPrint('[Auth] Identity set: ${user.email ?? 'anonymous'} (${user.id})');
     } else if (event == AuthChangeEvent.signedOut) {
-      final fallbackDeviceId = await _ensureDeviceId(prefs);
-      await prefs.setString(AppKeys.userId, fallbackDeviceId);
-      debugPrint('[Auth] Signed out — reverted to device userId');
+      try {
+        final response = await Supabase.instance.client.auth.signInAnonymously();
+        final anonymousUser = response.user;
+        if (anonymousUser != null) {
+          await prefs.setString(AppKeys.userId, anonymousUser.id);
+          debugPrint('[Auth] Signed out — issued anonymous identity ${anonymousUser.id}');
+        }
+      } catch (e) {
+        await prefs.setString(AppKeys.userId, 'local-user');
+        debugPrint('[Auth] Anonymous re-issue failed: $e');
+      }
     }
-  });
+    });
+  }
 
   runApp(
     const ProviderScope(child: FocusEchoApp()),
@@ -142,24 +168,15 @@ class FocusEchoApp extends StatelessWidget {
   }
 }
 
-Future<String> _ensureDeviceId(SharedPreferences prefs) async {
-  final existing = prefs.getString(AppKeys.deviceId);
-  if (existing != null && existing.isNotEmpty) return existing;
-  final generated = const Uuid().v4();
-  await prefs.setString(AppKeys.deviceId, generated);
-  return generated;
-}
-
-Future<void> _migrateLocalUserToDeviceId(
+Future<void> _migrateLocalUserToAuthId(
   FocusSessionDao sessionDao,
   DistractionEventDao eventDao,
-  String deviceId,
+  String fromUserId,
+  String authUserId,
 ) async {
-  const legacyId = 'local-user';
-  final sessions = await sessionDao.getUnsyncedSessions();
-  final legacySessionIds =
-      sessions.where((s) => s.userId == legacyId).map((s) => s.id).toList();
-  if (legacySessionIds.isEmpty) return;
-  await sessionDao.reassignUserId(legacyId, deviceId);
-  await eventDao.markEventsUnsyncedForSessions(legacySessionIds);
+  final sessions = await sessionDao.getSessionHistory(10000);
+  final sessionIds = sessions.where((s) => s.userId == fromUserId).map((s) => s.id).toList();
+  if (sessionIds.isEmpty) return;
+  await sessionDao.reassignUserId(fromUserId, authUserId);
+  await eventDao.markEventsUnsyncedForSessions(sessionIds);
 }

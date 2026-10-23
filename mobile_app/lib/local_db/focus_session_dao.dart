@@ -137,8 +137,7 @@ class FocusSessionDao {
     if (kIsWeb) {
       var count = 0;
       for (final s in DatabaseHelper.webSessions) {
-        if (s['user_id'] == fromUserId &&
-            (s['is_synced'] == 0 || s['is_synced'] == false)) {
+        if (s['user_id'] == fromUserId) {
           s['user_id'] = toUserId;
           s['is_synced'] = 0;
           count++;
@@ -151,7 +150,7 @@ class FocusSessionDao {
     return db.update(
       'focus_sessions',
       {'user_id': toUserId, 'is_synced': 0},
-      where: 'user_id = ? AND is_synced = 0',
+      where: 'user_id = ?',
       whereArgs: [fromUserId],
     );
   }

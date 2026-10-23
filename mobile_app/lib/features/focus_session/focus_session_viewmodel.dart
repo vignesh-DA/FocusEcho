@@ -192,13 +192,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final trimmedIntent = intent.trim();
     if (trimmedIntent.isEmpty) return;
 
-    var userId =
-        _prefs.getString(AppKeys.userId) ?? _prefs.getString(AppKeys.deviceId);
-    if (userId == null || userId.isEmpty) {
-      userId = _uuid.v4();
-      await _prefs.setString(AppKeys.deviceId, userId);
-      await _prefs.setString(AppKeys.userId, userId);
-    }
+    final userId = _prefs.getString(AppKeys.userId) ?? 'local-user';
     final session = FocusSession(
       id: _uuid.v4(),
       userId: userId,
@@ -207,7 +201,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       intent: trimmedIntent,
     );
     await _sessionDao.insertSession(session);
-    if (kIsWeb) unawaited(_syncService.syncNow());
+    _requestSync();
     // Persist the intent so the native layer can show it on full-screen
     // interventions (Feature 2).
     await _prefs.setString(AppKeys.sessionIntent, trimmedIntent);
@@ -500,7 +494,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     } else {
       await _browserMonitor.stopSession();
     }
-    if (kIsWeb) unawaited(_syncService.syncNow());
+    _requestSync();
     await _prefs.setBool(AppKeys.sessionActive, false);
     await _prefs.remove(AppKeys.sessionIntent);
 
@@ -971,6 +965,15 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   /// Clears the currently displayed cross-surface nudge.
   void clearCrossSurfaceNudge() {
     state = state.copyWith(crossSurfaceNudge: null);
+  }
+
+  void _requestSync() {
+    try {
+      final future = _syncService.syncNow();
+      unawaited(future.then<void>((_) {}, onError: (_, __) {}));
+    } catch (_) {
+      // Test doubles and offline adapters may not implement remote sync.
+    }
   }
 
   @override

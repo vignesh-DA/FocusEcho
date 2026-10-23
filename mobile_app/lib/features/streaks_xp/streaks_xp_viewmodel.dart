@@ -60,8 +60,7 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
   StreaksXpViewModel(this._supabaseService, this._sessionDao, this._userId)
       : super(const StreaksXpState()) {
     loadStreaks();
-    if (kIsWeb) {
-      _xpChannel = Supabase.instance.client
+    _xpChannel = Supabase.instance.client
           .channel('user-xp-' + _userId)
           .onPostgresChanges(
               event: PostgresChangeEvent.all,
@@ -69,7 +68,6 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
               table: 'user_xp',
               callback: (_) => loadStreaks())
           .subscribe();
-    }
   }
 
   final SupabaseService _supabaseService;
@@ -94,7 +92,7 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
       var effectiveStreak = AppDependencies.prefs.getInt(AppKeys.streakDays) ??
           profile?.streakDays ??
           0;
-      if (kIsWeb && _userId.isNotEmpty) {
+      if (_userId.isNotEmpty) {
         try {
           final xpRow = await Supabase.instance.client
               .from('user_xp')
@@ -107,7 +105,7 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
                 (xpRow['streak_days'] as num?)?.toInt() ?? effectiveStreak;
           }
         } catch (e) {
-          debugPrint('Web XP query failed: ' + e.toString());
+          debugPrint('XP query failed: ' + e.toString());
         }
       }
       if (profile != null)
@@ -172,8 +170,6 @@ final streaksXpProvider =
   (ref) => StreaksXpViewModel(
     AppDependencies.supabaseService,
     AppDependencies.sessionDao,
-    AppDependencies.prefs.getString(AppKeys.userId) ??
-        AppDependencies.prefs.getString(AppKeys.deviceId) ??
-        '',
+    AppDependencies.prefs.getString(AppKeys.userId) ?? '',
   ),
 );

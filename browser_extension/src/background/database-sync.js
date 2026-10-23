@@ -71,7 +71,7 @@ export async function getSyncCredentials() {
     supabaseAnonKey: r.fe_supabase_anon_key || config.supabase_anon_key || DEFAULT_SUPABASE_ANON_KEY,
     backendUrl:      r.fe_backend_url || config.backend_url || DEFAULT_BACKEND_URL,
     authToken:       r.fe_auth_token || config.auth_token || null,
-    userId:          r.fe_user_id || config.user_id || '00000000-0000-0000-0000-000000000000',
+    userId:          r.fe_user_id || config.user_id || null,
   };
 }
 
@@ -156,15 +156,23 @@ async function ensureFocusSessionInCloud(session, creds) {
   if (!session?.session_id) return;
   const { supabaseUrl, supabaseAnonKey, authToken, userId } = creds;
 
+  if (!userId || !authToken) {
+    console.warn('[FE DB-SYNC] Waiting for a Supabase auth session before syncing.');
+    return;
+  }
+
   const sessionRow = {
-    id:                      session.session_id,
-    user_id:                 userId || '00000000-0000-0000-0000-000000000000',
-    started_at:              new Date(session.started_at || Date.now()).toISOString(),
-    target_duration_minutes: session.target_duration_minutes || 25,
-    status:                  session.active ? 'active' : 'completed',
-    mode:                    session.mode || 'focus',
-    intention:               session.intention || 'Focus Session',
-    is_synced:               1,
+    id:                 session.session_id,
+    user_id:            userId,
+    start_time:         new Date(session.started_at || Date.now()).toISOString(),
+    end_time:           session.active
+      ? null
+      : new Date(session.ended_at || Date.now()).toISOString(),
+    productive_app:     'Chrome',
+    intent:             session.intention || 'Web Focus Session',
+    total_distractions: session.distraction_count || 0,
+    status:             session.active ? 'active' : 'completed',
+    is_synced:          1,
   };
 
   try {
@@ -193,7 +201,8 @@ async function ensureFocusSessionInCloud(session, creds) {
  */
 async function broadcastCrossSurfaceIntervention(row, creds) {
   const { supabaseUrl, supabaseAnonKey, authToken, userId } = creds;
-  if (!userId || userId === '00000000-0000-0000-0000-000000000000') return;
+  if (!userId) return;
+
 
   const channel = `focusecho-interventions:${userId}`;
   const payload = {

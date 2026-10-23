@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../../core/constants/app_constants.dart';
 import '../../core/models/distraction_event.dart';
 import '../../core/models/focus_session.dart';
 import '../../core/providers/app_dependencies.dart';
@@ -123,9 +122,7 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       // ── Local SQLite (always available) ─────────────────────────────────
-      final sessions = kIsWeb
-          ? await _loadWebSessions()
-          : await _sessionDao.getSessionHistory(60);
+      final sessions = await _loadSessionsFromCloud();
       final now = DateTime.now();
       final weeklyFocus = List<double>.filled(7, 0);
       final dailyDistractions = List<int>.filled(7, 0);
@@ -143,10 +140,7 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       }
 
       // Feature 3 — Recovery Rate: rolling week vs. previous week.
-      final recentEvents = kIsWeb
-          ? await _loadWebEvents(sessions)
-          : await _eventDao.getRecentEvents(14 * 24 * 60,
-              eventType: 'distraction');
+      final recentEvents = await _loadEventsFromCloud(sessions);
       final thisWeek =
           _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
@@ -183,14 +177,14 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     }
   }
 
-  Future<List<FocusSession>> _loadWebSessions() async {
+  Future<List<FocusSession>> _loadSessionsFromCloud() async {
     try {
       final cutoff =
           DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
       final rows = await Supabase.instance.client
           .from('focus_sessions')
           .select()
-          .eq('user_id', AppDependencies.prefs.getString(AppKeys.userId) ?? '')
+
           .gte('start_time', cutoff)
           .order('start_time');
       return (rows as List)
@@ -203,7 +197,7 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     }
   }
 
-  Future<List<DistractionEvent>> _loadWebEvents(
+  Future<List<DistractionEvent>> _loadEventsFromCloud(
       List<FocusSession> sessions) async {
     if (sessions.isEmpty) return const [];
     try {
