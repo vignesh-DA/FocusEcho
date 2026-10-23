@@ -24,6 +24,7 @@ import { markTabActive, markTabInactive, removeTab } from './tab-tracker.js';
 import { normalizeHost, isDistracting, isWebUrl } from '../shared/host-utils.js';
 import { mkDistractionEvent, mkRecoveryEvent, mkEmergencyExitEvent } from '../shared/event-schema.js';
 import { defaultConfig } from '../shared/storage-schema.js';
+import { syncEventQueue, saveSyncCredentials } from './database-sync.js';
 
 // ---------------------------------------------------------------------------
 // Logging — structured, consistent prefix
@@ -245,6 +246,30 @@ async function _dispatchInner(event) {
 }
 
 // ---------------------------------------------------------------------------
+// Realtime Messaging & Overlay Communication Helpers
+// ---------------------------------------------------------------------------
+async function sendToActiveDistractionTab(msg) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab?.id) {
+      await chrome.tabs.sendMessage(tab.id, msg).catch(() => {});
+    }
+  } catch (err) {
+    LOG.err('sendToActiveDistractionTab error:', err?.message);
+  }
+}
+
+async function notifyDashboard(msg) {
+  try {
+    const r = await chrome.storage.local.get(SK.DASHBOARD_TAB_ID);
+    const tabId = r[SK.DASHBOARD_TAB_ID];
+    if (tabId !== undefined) {
+      await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
+    }
+  } catch (_) {}
+}
+
+// ---------------------------------------------------------------------------
 // Action executor
 // ---------------------------------------------------------------------------
 async function executeActions(actions, { session, distraction, event, now }) {
@@ -345,6 +370,20 @@ async function _executeAction(name, param, { session, distraction, event, now })
       distraction.level = level;
       await saveDistraction(distraction);
       LOG.act(`distraction event | host: ${distraction.host} | level: ${level} | count: ${session.distraction_count}`);
+
+      // Sync directly to Supabase cloud database & FastAPI backend (fire-and-forget)
+      syncEventQueue(session).catch(e => LOG.err('cloud db sync error:', e.message));
+
+      // Realtime notification to registered Web Dashboard tab
+      notifyDashboard({
+        type: 'fe:dashboard_activity',
+        kind: 'away',
+        host: distraction.host,
+        timestamp: ev.timestamp,
+        escalation_level: level,
+        intention: session.intention,
+        category: distraction.category,
+      });
       break;
     }
 
@@ -367,6 +406,19 @@ async function _executeAction(name, param, { session, distraction, event, now })
       });
       await enqueueEvent(ev);
       LOG.act(`recovery event: ${classification} | time_on_site: ${timeOnSiteMs} ms`);
+
+      // Sync recovery event to Supabase cloud database & FastAPI backend
+      syncEventQueue(session).catch(e => LOG.err('cloud db sync error:', e.message));
+
+      // Realtime notification to registered Web Dashboard tab
+      notifyDashboard({
+        type: 'fe:dashboard_activity',
+        kind: 'return',
+        host: distraction.host,
+        timestamp: ev.timestamp,
+        escalation_level: distraction.level || 1,
+        intention: session.intention,
+      });
       break;
     }
 
@@ -417,17 +469,24 @@ async function _executeAction(name, param, { session, distraction, event, now })
 
     case 'SHOW_OVERLAY': {
       const level = parseInt(param, 10);
-      // Phase 1: log only. Phase 2 will send message to content script.
       LOG.act(`▶ SHOW_OVERLAY level ${level} | intention: "${session?.intention}"`);
-      // Phase 2 stub:
-      // await sendToActiveDistractionTab({ type: MSG.SHOW_OVERLAY, level,
-      //   intention: session?.intention, endsAt: level === 2 ? now + countdown_ms : null });
+      await sendToActiveDistractionTab({
+        type: MSG.SHOW_OVERLAY,
+        level,
+        intention: session?.intention || 'Focus Session',
+      });
+      await notifyDashboard({
+        type: MSG.SHOW_OVERLAY,
+        level,
+        intention: session?.intention || 'Focus Session',
+      });
       break;
     }
 
     case 'HIDE_OVERLAY':
       LOG.act('▼ HIDE_OVERLAY');
-      // Phase 2 stub: await sendToActiveDistractionTab({ type: MSG.HIDE_OVERLAY });
+      await sendToActiveDistractionTab({ type: MSG.HIDE_OVERLAY });
+      await notifyDashboard({ type: MSG.HIDE_OVERLAY });
       break;
 
     case 'SET_RESUME_TO': {
@@ -488,6 +547,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
       });
       await enqueueEvent(ev);
       LOG.act(`⚠ EMERGENCY EXIT | from level ${distraction.level}`);
+      syncEventQueue(session).catch(e => LOG.err('cloud sync error:', e.message));
       break;
     }
 
@@ -710,6 +770,9 @@ chrome.idle.onStateChanged.addListener(async (idleState) => {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === ALARM.HEARTBEAT) {
     LOG.sw('heartbeat ♥');
+    const session = await loadSession();
+    // Flush queued events to cloud database on heartbeat
+    syncEventQueue(session).catch(() => {});
     await dispatch({ type: EV.HEARTBEAT });
   }
 });
@@ -727,6 +790,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function _handleMessage(message, sender) {
   const { type } = message;
+
+  // --- Production & Web Bridge session start ---
+  if (type === 'fe:start_session') {
+    const { intention, distraction_list, session_id, user_id } = message;
+    const currentSession = await loadSession();
+    const wasActive = currentSession?.active;
+    await dispatch({
+      type: EV.SESSION_STARTED,
+      payload: {
+        intention: intention || 'Focus Session',
+        distraction_list: (distraction_list || []).map(h => normalizeHost(h)).filter(Boolean),
+        mode: 'focus',
+        session_id: session_id || crypto.randomUUID(),
+        user_id,
+      },
+    });
+    await scanActiveTab();
+    return { ok: true, restarted: !!wasActive };
+  }
+
+  // --- Cloud credentials sync from Web dashboard ---
+  if (type === 'fe:save_credentials') {
+    await saveSyncCredentials(message);
+    return { ok: true, saved: true };
+  }
+
+  // --- Manual cloud sync trigger ---
+  if (type === 'fe:sync_now') {
+    const session = await loadSession();
+    const res = await syncEventQueue(session);
+    return { ok: true, ...res };
+  }
 
   // --- Debug / options page actions ---
   if (type === 'fe:debug_start_session') {

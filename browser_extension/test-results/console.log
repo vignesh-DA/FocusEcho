@@ -1,113 +1,113 @@
-[2026-10-17T21:08:50.427Z] Mock HTTPS server listening on https://127.0.0.1:8999 
-[2026-10-17T21:08:50.428Z] Launching Chrome with clean persistent profile & unpacked extension... 
-[2026-10-17T21:08:51.849Z] Waiting for Extension Service Worker target... 
-[2026-10-17T21:08:52.534Z] [SW Console] log: [FE SW]  installed — skipping waiting 
-[2026-10-17T21:08:52.554Z] [SW Console] log: [FocusEcho AM] heartbeat alarm created (period: 1 min) 
-[2026-10-17T21:08:52.554Z] [SW Console] log: [FE SW]  activated — reconstructing state from storage 
-[2026-10-17T21:08:52.556Z] [SW Console] log: [FE SW]  no active session — staying IDLE 
-[2026-10-17T21:08:52.628Z] ✅ [PASS] CHECK-1: Extension loads with no manifest/icon errors and active SW — Extension ID: ankgpcpicibcaahmbnidnlkianhcdpoo 
-[2026-10-17T21:08:52.628Z] 
+[2026-10-23T13:43:57.109Z] Mock HTTPS server listening on https://127.0.0.1:8999 
+[2026-10-23T13:43:57.122Z] Launching Chrome with clean persistent profile & unpacked extension... 
+[2026-10-23T13:44:07.775Z] Waiting for Extension Service Worker target... 
+[2026-10-23T13:44:09.378Z] [SW Console] log: [FE SW]  installed — skipping waiting 
+[2026-10-23T13:44:09.411Z] [SW Console] log: [FocusEcho AM] heartbeat alarm created (period: 1 min) 
+[2026-10-23T13:44:09.411Z] [SW Console] log: [FE SW]  activated — reconstructing state from storage 
+[2026-10-23T13:44:09.423Z] [SW Console] log: [FE SW]  no active session — staying IDLE 
+[2026-10-23T13:44:09.612Z] ✅ [PASS] CHECK-1: Extension loads with no manifest/icon errors and active SW — Extension ID: ankgpcpicibcaahmbnidnlkianhcdpoo 
+[2026-10-23T13:44:09.613Z] 
 --- Running Negative Control (Proving 3s Timer Bug is Caught) --- 
-[2026-10-17T21:08:52.634Z] [SW Console] log: [FE SM]  IDLE --[SESSION_STARTED]--> MONITORING | actions: [HIDE_OVERLAY, CLEAR_DISTRACTION, RESET_SESSION, START_HEARTBEAT] 
-[2026-10-17T21:08:52.636Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
-[2026-10-17T21:08:52.638Z] [SW Console] log: [FE ACT] session started | intention: "Negative Control Task" | sites: [youtube.com] 
-[2026-10-17T21:08:52.639Z] Navigating to youtube.com with timer disabled... 
-[2026-10-17T21:08:52.689Z] Waiting 3.8s with timer disabled (simulating legacy bug without manual heartbeat)... 
-[2026-10-17T21:08:52.701Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
-[2026-10-17T21:08:52.704Z] [SW Console] log: [FE SW]  onUpdated dedup skip for youtube.com 
-[2026-10-17T21:08:53.191Z] [SW Console] log: [FE SW]  grace timer suppressed by negative control flag 
-[2026-10-17T21:08:53.191Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-17T21:08:52.699Z 
-[2026-10-17T21:08:56.493Z] [Negative Control result]: State="COUNTING_GRACE", count=0 
-[2026-10-17T21:08:56.493Z] ✅ NEGATIVE CONTROL PASS: Without the 3s timer, state remains stuck in COUNTING_GRACE after 3.8s (proves Check 2 would fail). 
-[2026-10-17T21:08:56.494Z] Restored 3-second grace timer for positive control execution. 
-[2026-10-17T21:08:56.494Z] 
+[2026-10-23T13:44:09.648Z] [SW Console] log: [FE SM]  IDLE --[SESSION_STARTED]--> MONITORING | actions: [HIDE_OVERLAY, CLEAR_DISTRACTION, RESET_SESSION, START_HEARTBEAT] 
+[2026-10-23T13:44:09.652Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
+[2026-10-23T13:44:09.668Z] [SW Console] log: [FE ACT] session started | intention: "Negative Control Task" | sites: [youtube.com] 
+[2026-10-23T13:44:09.677Z] Navigating to youtube.com with timer disabled... 
+[2026-10-23T13:44:09.956Z] Waiting 3.8s with timer disabled (simulating legacy bug without manual heartbeat)... 
+[2026-10-23T13:44:09.983Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
+[2026-10-23T13:44:10.002Z] [SW Console] log: [FE SW]  onUpdated dedup skip for youtube.com 
+[2026-10-23T13:44:10.145Z] [SW Console] log: [FE SW]  grace timer suppressed by negative control flag 
+[2026-10-23T13:44:10.158Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-23T13:44:09.979Z 
+[2026-10-23T13:44:13.807Z] [Negative Control result]: State="COUNTING_GRACE", count=0 
+[2026-10-23T13:44:13.807Z] ✅ NEGATIVE CONTROL PASS: Without the 3s timer, state remains stuck in COUNTING_GRACE after 3.8s (proves Check 2 would fail). 
+[2026-10-23T13:44:13.808Z] Restored 3-second grace timer for positive control execution. 
+[2026-10-23T13:44:13.808Z] 
 --- Running Check 2 (Automatic 3s Grace Timer) --- 
-[2026-10-17T21:08:56.496Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[SESSION_STARTED]--> MONITORING | actions: [HIDE_OVERLAY, CLEAR_DISTRACTION, RESET_SESSION, START_HEARTBEAT] 
-[2026-10-17T21:08:56.496Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
-[2026-10-17T21:08:56.498Z] [SW Console] log: [FE ACT] session started | intention: "Study Coding" | sites: [youtube.com] 
-[2026-10-17T21:08:56.530Z] Navigated to youtube.com. Waiting 3.8s for automatic 3s timer to fire without any manual heartbeat... 
-[2026-10-17T21:08:56.541Z] [SW Console] log: [FE SW]  onCommitted dedup skip for youtube.com 
-[2026-10-17T21:08:56.549Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
-[2026-10-17T21:08:56.551Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
-[2026-10-17T21:08:56.552Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-17T21:08:56.548Z 
-[2026-10-17T21:08:59.564Z] [SW Console] log: [FE SW]  3s grace timer fired -> dispatching GRACE_ELAPSED 
-[2026-10-17T21:08:59.565Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[GRACE_ELAPSED]--> L1_TOAST | actions: [INCREMENT_DISTRACTION_COUNT, CONFIRM_GRACE, SHOW_OVERLAY:1, EMIT_DISTRACTION_EVENT:1] 
-[2026-10-17T21:08:59.566Z] [SW Console] log: [FE ACT] distractionCount → 1 
-[2026-10-17T21:08:59.566Z] [SW Console] log: [FE ACT] grace confirmed for youtube.com | active since 2026-10-17T21:08:56.548Z 
-[2026-10-17T21:08:59.566Z] [SW Console] log: [FE ACT] ▶ SHOW_OVERLAY level 1 | intention: "Study Coding" 
-[2026-10-17T21:08:59.569Z] [SW Console] log: [FE ACT] queued event: distraction | queue size: 1 
-[2026-10-17T21:08:59.569Z] [SW Console] log: [FE ACT] distraction event | host: youtube.com | level: 1 | count: 1 
-[2026-10-17T21:09:00.415Z] ✅ [PASS] CHECK-2: Visit > 3s with no manual events reaches L1 & count=1 — State: L1_TOAST, count: 1 
-[2026-10-17T21:09:00.415Z] 
+[2026-10-23T13:44:13.855Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[SESSION_STARTED]--> MONITORING | actions: [HIDE_OVERLAY, CLEAR_DISTRACTION, RESET_SESSION, START_HEARTBEAT] 
+[2026-10-23T13:44:13.878Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
+[2026-10-23T13:44:13.883Z] [SW Console] log: [FE ACT] session started | intention: "Study Coding" | sites: [youtube.com] 
+[2026-10-23T13:44:13.891Z] [SW Console] log: [FE SM]  MONITORING --[TAB_ACTIVATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
+[2026-10-23T13:44:13.892Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
+[2026-10-23T13:44:13.892Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-23T13:44:13.889Z 
+[2026-10-23T13:44:13.948Z] Navigated to youtube.com. Waiting 3.8s for automatic 3s timer to fire without any manual heartbeat... 
+[2026-10-23T13:44:13.967Z] [SW Console] log: [FE SW]  onCommitted dedup skip for youtube.com 
+[2026-10-23T13:44:16.900Z] [SW Console] log: [FE SW]  3s grace timer fired -> dispatching GRACE_ELAPSED 
+[2026-10-23T13:44:16.904Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[GRACE_ELAPSED]--> L1_TOAST | actions: [INCREMENT_DISTRACTION_COUNT, CONFIRM_GRACE, SHOW_OVERLAY:1, EMIT_DISTRACTION_EVENT:1] 
+[2026-10-23T13:44:16.906Z] [SW Console] log: [FE ACT] distractionCount → 1 
+[2026-10-23T13:44:16.906Z] [SW Console] log: [FE ACT] grace confirmed for youtube.com | active since 2026-10-23T13:44:13.889Z 
+[2026-10-23T13:44:16.911Z] [SW Console] log: [FE ACT] ▶ SHOW_OVERLAY level 1 | intention: "Study Coding" 
+[2026-10-23T13:44:16.918Z] [SW Console] log: [FE ACT] queued event: distraction | queue size: 1 
+[2026-10-23T13:44:16.918Z] [SW Console] log: [FE ACT] distraction event | host: youtube.com | level: 1 | count: 1 
+[2026-10-23T13:44:17.886Z] ✅ [PASS] CHECK-2: Visit > 3s with no manual events reaches L1 & count=1 — State: L1_TOAST, count: 1 
+[2026-10-23T13:44:17.886Z] 
 --- Running Check 3 (Glance < 3s) --- 
-[2026-10-17T21:09:00.420Z] [SW Console] log: [FE SM]  L1_TOAST --[SESSION_STARTED]--> MONITORING | actions: [HIDE_OVERLAY, CLEAR_DISTRACTION, RESET_SESSION, START_HEARTBEAT] 
-[2026-10-17T21:09:00.420Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
-[2026-10-17T21:09:00.422Z] [SW Console] log: [FE ACT] session started | intention: "Clean Session" | sites: [youtube.com] 
-[2026-10-17T21:09:00.452Z] On youtube.com for 1.0 second (< 3s)... 
-[2026-10-17T21:09:00.464Z] [SW Console] log: [FE SW]  onCommitted dedup skip for youtube.com 
-[2026-10-17T21:09:00.470Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
-[2026-10-17T21:09:00.471Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
-[2026-10-17T21:09:00.472Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-17T21:09:00.470Z 
-[2026-10-17T21:09:01.463Z] Leaving site to clean.test... 
-[2026-10-17T21:09:01.508Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[TAB_NAVIGATED:clean.test]--> MONITORING | actions: [CLEAR_DISTRACTION, LOG_GRACE_IGNORED] 
-[2026-10-17T21:09:01.508Z] [SW Console] log: [FE SW]  cleared active grace timer 
-[2026-10-17T21:09:01.509Z] [SW Console] log: [FE ACT] grace ignored: visit < 3 000 ms | no count, no overlay 
-[2026-10-17T21:09:01.515Z] [SW Console] log: [FE SW]  onUpdated dedup skip for clean.test 
-[2026-10-17T21:09:02.082Z] ✅ [PASS] CHECK-3: Glance < 3s leaves count at 0 — State: MONITORING, count: 0 
-[2026-10-17T21:09:02.082Z] 
+[2026-10-23T13:44:17.893Z] [SW Console] log: [FE SM]  L1_TOAST --[SESSION_STARTED]--> MONITORING | actions: [HIDE_OVERLAY, CLEAR_DISTRACTION, RESET_SESSION, START_HEARTBEAT] 
+[2026-10-23T13:44:17.894Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
+[2026-10-23T13:44:17.895Z] [SW Console] log: [FE ACT] session started | intention: "Clean Session" | sites: [youtube.com] 
+[2026-10-23T13:44:17.899Z] [SW Console] log: [FE SM]  MONITORING --[TAB_ACTIVATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
+[2026-10-23T13:44:17.900Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
+[2026-10-23T13:44:17.900Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-23T13:44:17.899Z 
+[2026-10-23T13:44:17.959Z] On youtube.com for 1.0 second (< 3s)... 
+[2026-10-23T13:44:17.971Z] [SW Console] log: [FE SW]  onCommitted dedup skip for youtube.com 
+[2026-10-23T13:44:18.961Z] Leaving site to clean.test... 
+[2026-10-23T13:44:19.037Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[TAB_NAVIGATED:clean.test]--> MONITORING | actions: [CLEAR_DISTRACTION, LOG_GRACE_IGNORED] 
+[2026-10-23T13:44:19.041Z] [SW Console] log: [FE SW]  cleared active grace timer 
+[2026-10-23T13:44:19.047Z] [SW Console] log: [FE ACT] grace ignored: visit < 3 000 ms | no count, no overlay 
+[2026-10-23T13:44:19.047Z] [SW Console] log: [FE SW]  onUpdated dedup skip for clean.test 
+[2026-10-23T13:44:19.883Z] ✅ [PASS] CHECK-3: Glance < 3s leaves count at 0 — State: MONITORING, count: 0 
+[2026-10-23T13:44:19.883Z] 
 --- Running Check 4 (20s visit + recovery switch) --- 
-[2026-10-17T21:09:02.124Z] Waiting 21 seconds for full 20s+ visit (recovery threshold is >= 15s active)... 
-[2026-10-17T21:09:02.137Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
-[2026-10-17T21:09:02.143Z] [SW Console] log: [FE SW]  onUpdated dedup skip for youtube.com 
-[2026-10-17T21:09:02.144Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
-[2026-10-17T21:09:02.145Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-17T21:09:02.136Z 
-[2026-10-17T21:09:05.159Z] [SW Console] log: [FE SW]  3s grace timer fired -> dispatching GRACE_ELAPSED 
-[2026-10-17T21:09:05.160Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[GRACE_ELAPSED]--> L1_TOAST | actions: [INCREMENT_DISTRACTION_COUNT, CONFIRM_GRACE, SHOW_OVERLAY:1, EMIT_DISTRACTION_EVENT:1] 
-[2026-10-17T21:09:05.162Z] [SW Console] log: [FE ACT] distractionCount → 1 
-[2026-10-17T21:09:05.163Z] [SW Console] log: [FE ACT] grace confirmed for youtube.com | active since 2026-10-17T21:09:02.136Z 
-[2026-10-17T21:09:05.163Z] [SW Console] log: [FE ACT] ▶ SHOW_OVERLAY level 1 | intention: "Clean Session" 
-[2026-10-17T21:09:05.166Z] [SW Console] log: [FE ACT] queued event: distraction | queue size: 2 
-[2026-10-17T21:09:05.167Z] [SW Console] log: [FE ACT] distraction event | host: youtube.com | level: 1 | count: 1 
-[2026-10-17T21:09:23.138Z] Switching away to clean.test to trigger recovery event... 
-[2026-10-17T21:09:23.193Z] [SW Console] log: [FE SW]  onUpdated dedup skip for clean.test 
-[2026-10-17T21:09:23.198Z] [SW Console] log: [FE SM]  L1_TOAST --[TAB_NAVIGATED:clean.test]--> MONITORING | actions: [HIDE_OVERLAY, EMIT_RECOVERY_EVENT:recovery, CLEAR_DISTRACTION, UPDATE_LAST_PRODUCTIVE_TAB] 
-[2026-10-17T21:09:23.202Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
-[2026-10-17T21:09:23.205Z] [SW Console] log: [FE ACT] queued event: recovery | queue size: 3 
-[2026-10-17T21:09:23.206Z] [SW Console] log: [FE ACT] recovery event: recovery | time_on_site: 21060 ms 
-[2026-10-17T21:09:23.207Z] [SW Console] log: [FE ACT] lastProductiveTab → 53568400 
-[2026-10-17T21:09:24.083Z] ✅ [PASS] CHECK-4: 20s visit then switch away emits recovery event — Recovery logged with time_on_site: 21060ms 
-[2026-10-17T21:09:24.083Z] 
+[2026-10-23T13:44:19.964Z] Waiting 21 seconds for full 20s+ visit (recovery threshold is >= 15s active)... 
+[2026-10-23T13:44:19.971Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
+[2026-10-23T13:44:20.000Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
+[2026-10-23T13:44:20.009Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-23T13:44:19.969Z 
+[2026-10-23T13:44:20.012Z] [SW Console] log: [FE SW]  onUpdated dedup skip for youtube.com 
+[2026-10-23T13:44:22.992Z] [SW Console] log: [FE SW]  3s grace timer fired -> dispatching GRACE_ELAPSED 
+[2026-10-23T13:44:22.995Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[GRACE_ELAPSED]--> L1_TOAST | actions: [INCREMENT_DISTRACTION_COUNT, CONFIRM_GRACE, SHOW_OVERLAY:1, EMIT_DISTRACTION_EVENT:1] 
+[2026-10-23T13:44:22.996Z] [SW Console] log: [FE ACT] distractionCount → 1 
+[2026-10-23T13:44:22.997Z] [SW Console] log: [FE ACT] grace confirmed for youtube.com | active since 2026-10-23T13:44:19.969Z 
+[2026-10-23T13:44:22.997Z] [SW Console] log: [FE ACT] ▶ SHOW_OVERLAY level 1 | intention: "Clean Session" 
+[2026-10-23T13:44:23.177Z] [SW Console] log: [FE ACT] queued event: distraction | queue size: 2 
+[2026-10-23T13:44:23.177Z] [SW Console] log: [FE ACT] distraction event | host: youtube.com | level: 1 | count: 1 
+[2026-10-23T13:44:40.993Z] Switching away to clean.test to trigger recovery event... 
+[2026-10-23T13:44:41.145Z] [SW Console] log: [FE SW]  onCommitted dedup skip for clean.test 
+[2026-10-23T13:44:41.145Z] [SW Console] log: [FE SM]  L1_TOAST --[TAB_NAVIGATED:clean.test]--> MONITORING | actions: [HIDE_OVERLAY, EMIT_RECOVERY_EVENT:recovery, CLEAR_DISTRACTION, UPDATE_LAST_PRODUCTIVE_TAB] 
+[2026-10-23T13:44:41.145Z] [SW Console] log: [FE ACT] ▼ HIDE_OVERLAY 
+[2026-10-23T13:44:41.145Z] [SW Console] log: [FE ACT] queued event: recovery | queue size: 3 
+[2026-10-23T13:44:41.145Z] [SW Console] log: [FE ACT] recovery event: recovery | time_on_site: 21131 ms 
+[2026-10-23T13:44:41.145Z] [SW Console] log: [FE ACT] lastProductiveTab → 1966143344 
+[2026-10-23T13:44:42.048Z] ✅ [PASS] CHECK-4: 20s visit then switch away emits recovery event — Recovery logged with time_on_site: 21131ms 
+[2026-10-23T13:44:42.049Z] 
 --- Running Check 5 (Re-entry to L2) --- 
-[2026-10-17T21:09:24.121Z] Waiting 3.8s for grace timer to escalate to Level 2... 
-[2026-10-17T21:09:24.132Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
-[2026-10-17T21:09:24.135Z] [SW Console] log: [FE SW]  onUpdated dedup skip for youtube.com 
-[2026-10-17T21:09:24.135Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
-[2026-10-17T21:09:24.136Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-17T21:09:24.132Z 
-[2026-10-17T21:09:27.142Z] [SW Console] log: [FE SW]  3s grace timer fired -> dispatching GRACE_ELAPSED 
-[2026-10-17T21:09:27.144Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[GRACE_ELAPSED]--> L2_OVERLAY | actions: [INCREMENT_DISTRACTION_COUNT, CONFIRM_GRACE, SHOW_OVERLAY:2, EMIT_DISTRACTION_EVENT:2] 
-[2026-10-17T21:09:27.145Z] [SW Console] log: [FE ACT] distractionCount → 2 
-[2026-10-17T21:09:27.146Z] [SW Console] log: [FE ACT] grace confirmed for youtube.com | active since 2026-10-17T21:09:24.132Z 
-[2026-10-17T21:09:27.146Z] [SW Console] log: [FE ACT] ▶ SHOW_OVERLAY level 2 | intention: "Clean Session" 
-[2026-10-17T21:09:27.148Z] [SW Console] log: [FE ACT] queued event: distraction | queue size: 4 
-[2026-10-17T21:09:27.149Z] [SW Console] log: [FE ACT] distraction event | host: youtube.com | level: 2 | count: 2 
-[2026-10-17T21:09:28.017Z] ✅ [PASS] CHECK-5: Re-entry raises count to 2 and reaches L2 — State: L2_OVERLAY, count: 2 
-[2026-10-17T21:09:28.017Z] 
+[2026-10-23T13:44:42.092Z] Waiting 3.8s for grace timer to escalate to Level 2... 
+[2026-10-23T13:44:42.099Z] [SW Console] log: [FE SM]  MONITORING --[TAB_NAVIGATED:youtube.com]--> COUNTING_GRACE | actions: [RECORD_GRACE_ENTRY, UPDATE_LAST_PRODUCTIVE_TAB_CLEAR] 
+[2026-10-23T13:44:42.101Z] [SW Console] log: [FE SW]  scheduled dedicated grace timer for 3000ms 
+[2026-10-23T13:44:42.101Z] [SW Console] log: [FE ACT] grace entry recorded for youtube.com at 2026-10-23T13:44:42.099Z 
+[2026-10-23T13:44:42.110Z] [SW Console] log: [FE SW]  onUpdated dedup skip for youtube.com 
+[2026-10-23T13:44:45.104Z] [SW Console] log: [FE SW]  3s grace timer fired -> dispatching GRACE_ELAPSED 
+[2026-10-23T13:44:45.106Z] [SW Console] log: [FE SM]  COUNTING_GRACE --[GRACE_ELAPSED]--> L2_OVERLAY | actions: [INCREMENT_DISTRACTION_COUNT, CONFIRM_GRACE, SHOW_OVERLAY:2, EMIT_DISTRACTION_EVENT:2] 
+[2026-10-23T13:44:45.107Z] [SW Console] log: [FE ACT] distractionCount → 2 
+[2026-10-23T13:44:45.108Z] [SW Console] log: [FE ACT] grace confirmed for youtube.com | active since 2026-10-23T13:44:42.099Z 
+[2026-10-23T13:44:45.109Z] [SW Console] log: [FE ACT] ▶ SHOW_OVERLAY level 2 | intention: "Clean Session" 
+[2026-10-23T13:44:45.111Z] [SW Console] log: [FE ACT] queued event: distraction | queue size: 4 
+[2026-10-23T13:44:45.112Z] [SW Console] log: [FE ACT] distraction event | host: youtube.com | level: 2 | count: 2 
+[2026-10-23T13:44:46.000Z] ✅ [PASS] CHECK-5: Re-entry raises count to 2 and reaches L2 — State: L2_OVERLAY, count: 2 
+[2026-10-23T13:44:46.000Z] 
 --- Running Check 6 (CDP Service Worker Termination & Persistence) --- 
-[2026-10-17T21:09:28.624Z] Stopping Service Worker over CDP (ServiceWorker.stopWorker version: 0)... 
-[2026-10-17T21:09:28.626Z] Service worker stopped over debugging protocol. 
-[2026-10-17T21:09:29.837Z] Waking service worker via extension options page... 
-[2026-10-17T21:09:31.263Z] ✅ [PASS] CHECK-6: Stopping SW over debugging protocol and waking keeps count and state — Count preserved: 2, state: L2_OVERLAY 
-[2026-10-17T21:09:31.263Z] 
+[2026-10-23T13:44:46.616Z] Stopping Service Worker over CDP (ServiceWorker.stopWorker version: 0)... 
+[2026-10-23T13:44:46.619Z] Service worker stopped over debugging protocol. 
+[2026-10-23T13:44:47.824Z] Waking service worker via extension options page... 
+[2026-10-23T13:44:50.653Z] ✅ [PASS] CHECK-6: Stopping SW over debugging protocol and waking keeps count and state — Count preserved: 2, state: MONITORING 
+[2026-10-23T13:44:50.653Z] 
 --- Running Check 7 (Popup link opens options page) --- 
-[2026-10-17T21:09:31.891Z] ✅ [PASS] CHECK-7: Popup options link uses external script and opens options page — Options opened: chrome-extension://ankgpcpicibcaahmbnidnlkianhcdpoo/src/options/options.html 
-[2026-10-17T21:09:31.891Z] 
+[2026-10-23T13:44:51.029Z] ✅ [PASS] CHECK-7: Popup options link uses external script and opens options page — Options opened: chrome-extension://ankgpcpicibcaahmbnidnlkianhcdpoo/src/options/options.html 
+[2026-10-23T13:44:51.029Z] 
 --- Running Check 8 (Start Session while active restarts cleanly) --- 
-[2026-10-17T21:09:32.709Z] ✅ [PASS] CHECK-8: Start Session while active restarts session cleanly — restarted: true, state: MONITORING, count: 0 
-[2026-10-17T21:09:32.709Z] 
+[2026-10-23T13:44:51.869Z] ✅ [PASS] CHECK-8: Start Session while active restarts session cleanly — restarted: true, state: MONITORING, count: 0 
+[2026-10-23T13:44:51.869Z] 
 --- Running Check 9 (Fast leave and re-enter on same host within 500ms) --- 
-[2026-10-17T21:09:32.900Z] On youtube.com for 1.2s. Executing rapid departure to clean.test and immediate re-entry to youtube.com... 
-[2026-10-17T21:09:34.191Z] Rapid bounce round-trip completed in 81ms (< 500ms window) 
-[2026-10-17T21:09:34.362Z] State immediately after rapid re-entry: COUNTING_GRACE, count: 0 
-[2026-10-17T21:09:34.362Z] Waiting 3.8s to confirm fresh 3s grace timer fires without getting suppressed or dropped... 
-[2026-10-17T21:09:38.389Z] ✅ [PASS] CHECK-9: Fast leave & re-enter (<500ms) resets grace cleanly to L1 — Round-trip: 81ms (<500ms); reset to COUNTING_GRACE then cleanly reached L1_TOAST count=1 
-[2026-10-17T21:09:38.389Z] Cleaning up browser and mock server... 
+[2026-10-23T13:44:52.120Z] On youtube.com for 1.2s. Executing rapid departure to clean.test and immediate re-entry to youtube.com... 
+[2026-10-23T13:44:53.394Z] Rapid bounce round-trip completed in 73ms (< 500ms window) 
+[2026-10-23T13:44:53.715Z] State immediately after rapid re-entry: COUNTING_GRACE, count: 0 
+[2026-10-23T13:44:53.715Z] Waiting 3.8s to confirm fresh 3s grace timer fires without getting suppressed or dropped... 
+[2026-10-23T13:44:57.758Z] ❌ [FAIL] CHECK-9: Fast leave & re-enter (<500ms) resets grace cleanly to L1 — Immediate: COUNTING_GRACE, Final: MONITORING, count=1 
+[2026-10-23T13:44:57.758Z] Cleaning up browser and mock server... 

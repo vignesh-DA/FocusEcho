@@ -4,14 +4,183 @@
   <meta charset="UTF-8">
   <title>FocusEcho</title>
   <style>
-    body { font-family: monospace; background: #0d1117; color: #c9d1d9; padding: 16px; width: 280px; }
-    p { font-size: 0.8rem; color: #8b949e; }
-    a { color: #58a6ff; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      padding: 16px;
+      width: 320px;
+      font-size: 13px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #21262d;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      color: #58a6ff;
+    }
+    .status-badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .status-idle { background: rgba(139, 148, 158, 0.15); color: #8b949e; }
+    .status-active { background: rgba(46, 160, 67, 0.2); color: #3fb950; border: 1px solid rgba(46, 160, 67, 0.4); }
+    .status-distracted { background: rgba(248, 81, 73, 0.2); color: #f85149; border: 1px solid rgba(248, 81, 73, 0.4); }
+
+    .card {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+    }
+    .label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #8b949e;
+      margin-bottom: 6px;
+      display: block;
+    }
+    .intention-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ffffff;
+      word-break: break-word;
+      margin-bottom: 8px;
+    }
+    .stats-row {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #21262d;
+      font-size: 12px;
+    }
+    .stats-val {
+      font-weight: 700;
+      color: #58a6ff;
+    }
+
+    input[type=text] {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 8px 10px;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    input[type=text]:focus {
+      outline: none;
+      border-color: #58a6ff;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: none;
+      transition: all 0.15s;
+    }
+    .btn-primary {
+      background: #238636;
+      color: #ffffff;
+    }
+    .btn-primary:hover { background: #2ea043; }
+    .btn-danger {
+      background: #da3633;
+      color: #ffffff;
+    }
+    .btn-danger:hover { background: #b62324; }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 12px;
+      font-size: 11px;
+      color: #8b949e;
+    }
+    .footer a {
+      color: #58a6ff;
+      text-decoration: none;
+    }
+    .footer a:hover { text-decoration: underline; }
+    .cloud-pill {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      color: #3fb950;
+      font-size: 11px;
+    }
   </style>
 </head>
 <body>
-  <p>⚡ FocusEcho — Phase 1</p>
-  <p>Popup UI ships in Phase 3. Use the <a href="#" id="opt-link">debug options page</a> to control sessions.</p>
+  <div class="header">
+    <div class="brand">
+      <span>⚡</span> FocusEcho
+    </div>
+    <span class="status-badge status-idle" id="badge-status">IDLE</span>
+  </div>
+
+  <!-- Idle State View -->
+  <div id="view-idle">
+    <div class="card">
+      <label class="label">What are you working on?</label>
+      <input type="text" id="input-intention" placeholder="e.g. Design Architecture or Write Report" />
+      <button class="btn btn-primary" id="btn-start">
+        ▶ Start Focus Session
+      </button>
+    </div>
+  </div>
+
+  <!-- Active Session View -->
+  <div id="view-active" style="display: none;">
+    <div class="card">
+      <label class="label">Current Target Intention</label>
+      <div class="intention-text" id="txt-intention">Deep Coding</div>
+      <div class="stats-row">
+        <span>Distractions caught</span>
+        <span class="stats-val" id="val-count">0</span>
+      </div>
+      <div class="stats-row">
+        <span>Current state</span>
+        <span class="stats-val" id="val-state">MONITORING</span>
+      </div>
+      <button class="btn btn-danger" id="btn-stop" style="margin-top: 12px;">
+        ■ End Session
+      </button>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="cloud-pill" title="Events write to Supabase & Backend">
+      <span>☁️</span> Cloud Synced
+    </div>
+    <a href="#" id="opt-link">Options & Debug ⚙️</a>
+  </div>
+
   <script src="popup.js"></script>
 </body>
 </html>

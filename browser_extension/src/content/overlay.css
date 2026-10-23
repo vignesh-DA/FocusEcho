@@ -1,0 +1,310 @@
+/**
+ * FocusEcho In-Page Interventions CSS
+ * Cleanly isolated inside Shadow DOM.
+ */
+
+:host {
+  all: initial;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color-scheme: dark;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* ==========================================================================
+   Level 1 — Top-Right Nudge Toast
+   ========================================================================== */
+.fe-toast {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 2147483647;
+  width: 360px;
+  max-width: calc(100vw - 48px);
+  background: rgba(18, 22, 34, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 20px rgba(245, 158, 11, 0.15);
+  padding: 16px 18px;
+  color: #f3f4f6;
+  animation: fe-slide-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.fe-toast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.fe-badge-l1 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.fe-close-btn {
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.fe-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.fe-toast-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  margin-bottom: 4px;
+}
+
+.fe-intention-quote {
+  font-size: 12px;
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 2px solid #f59e0b;
+  padding: 6px 10px;
+  border-radius: 4px;
+  margin: 8px 0 12px;
+  word-break: break-word;
+}
+
+.fe-btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+
+.fe-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.45);
+  filter: brightness(1.08);
+}
+
+.fe-btn-primary:active {
+  transform: translateY(0);
+}
+
+/* ==========================================================================
+   Level 2 — Friction Countdown Modal
+   ========================================================================== */
+.fe-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483646;
+  background: rgba(8, 11, 20, 0.78);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fe-fade-in 0.3s ease forwards;
+}
+
+.fe-modal {
+  background: #111827;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 18px;
+  box-shadow: 0 24px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(239, 68, 68, 0.15);
+  width: 440px;
+  max-width: 100%;
+  padding: 28px 24px;
+  text-align: center;
+  color: #e5e7eb;
+  animation: fe-scale-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.fe-countdown-circle {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 3px solid rgba(239, 68, 68, 0.25);
+  border-top-color: #ef4444;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+  color: #ef4444;
+  animation: fe-spin-glow 1.5s infinite linear;
+}
+
+.fe-modal-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #ffffff;
+  margin-bottom: 6px;
+}
+
+.fe-modal-desc {
+  font-size: 13px;
+  color: #9ca3af;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.fe-btn-secondary {
+  margin-top: 10px;
+  background: transparent;
+  color: #9ca3af;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s;
+}
+
+.fe-btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.fe-btn-secondary:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Level 3 — Full Screen Blocker / Shield
+   ========================================================================== */
+.fe-blocker-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  background: radial-gradient(circle at center, #1e1b4b 0%, #09090b 80%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  color: #ffffff;
+  animation: fe-fade-in 0.25s ease forwards;
+}
+
+.fe-shield-icon {
+  width: 80px;
+  height: 80px;
+  border-radius: 20px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 38px;
+  margin-bottom: 20px;
+  box-shadow: 0 0 35px rgba(239, 68, 68, 0.25);
+}
+
+.fe-blocker-title {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #ffffff;
+  margin-bottom: 10px;
+}
+
+.fe-blocker-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px 20px;
+  max-width: 460px;
+  width: 100%;
+  margin: 16px 0 24px;
+  text-align: center;
+}
+
+.fe-emergency-wrap {
+  margin-top: 24px;
+  text-align: center;
+  width: 100%;
+  max-width: 340px;
+}
+
+.fe-emergency-btn {
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px dashed rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  color: #9ca3af;
+  font-size: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  width: 100%;
+  user-select: none;
+}
+
+.fe-emergency-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: rgba(239, 68, 68, 0.35);
+  transition: width 0.05s linear;
+}
+
+/* Animations */
+@keyframes fe-slide-in {
+  from { opacity: 0; transform: translateY(-16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fe-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fe-scale-up {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fe-spin-glow {
+  0%   { filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.3)); }
+  50%  { filter: drop-shadow(0 0 12px rgba(239, 68, 68, 0.6)); }
+  100% { filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.3)); }
+}

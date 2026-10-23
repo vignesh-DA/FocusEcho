@@ -138,6 +138,7 @@ export const SK = /** @type {const} */ ({
   // local storage — persists across restarts
   CONFIG:               'fe_config',
   EVENT_QUEUE:          'fe_event_queue',
+  DASHBOARD_TAB_ID:     'fe_dashboard_tab_id',
 });
 
 // ---------------------------------------------------------------------------
