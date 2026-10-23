@@ -23,7 +23,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   try {
-    await Supabase.initialize(url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
+    await Supabase.initialize(
+        url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
   } catch (e) {
     debugPrint('Supabase Init Failed: $e. Using offline mode.');
   }
@@ -64,7 +65,8 @@ Future<void> main() async {
   final eventDao = DistractionEventDao(DatabaseHelper.instance);
   final interventionDao = InterventionEventDao(DatabaseHelper.instance);
   final supabaseService = SupabaseService();
-  final syncService = SyncService(eventDao, sessionDao, interventionDao, supabaseService, prefs);
+  final syncService = SyncService(
+      eventDao, sessionDao, interventionDao, supabaseService, prefs);
 
   final deviceId = await _ensureDeviceId(prefs);
   final currentUser = Supabase.instance.client.auth.currentUser;
@@ -94,6 +96,7 @@ Future<void> main() async {
   AppDependencies.interventionDao = interventionDao;
   AppDependencies.supabaseService = supabaseService;
   AppDependencies.syncService = syncService;
+  AppDependencies.syncServiceReady = true;
   syncService.startPeriodicSync();
 
   // Listen for OAuth deep-link callback (signedIn fires after browser redirect)
@@ -101,14 +104,18 @@ Future<void> main() async {
     final event = data.event;
     final user = data.session?.user;
     if (event == AuthChangeEvent.signedIn && user != null) {
-      final previousId = prefs.getString(AppKeys.userId) ?? prefs.getString(AppKeys.deviceId);
+      final previousId =
+          prefs.getString(AppKeys.userId) ?? prefs.getString(AppKeys.deviceId);
       // Persist the real userId so all screens pick it up
       await prefs.setString(AppKeys.userId, user.id);
       debugPrint('[Auth] Signed in as ${user.email} (${user.id})');
       // Migrate any pre-login local data to the real account
       if (previousId != null && previousId != user.id) {
         await syncService.migrateGuestDataToUser(previousId, user.id);
+      } else {
+        await syncService.syncPendingEvents();
       }
+      AppRouter.router.go(AppRoutes.dashboard);
     } else if (event == AuthChangeEvent.signedOut) {
       final fallbackDeviceId = await _ensureDeviceId(prefs);
       await prefs.setString(AppKeys.userId, fallbackDeviceId);
@@ -150,7 +157,8 @@ Future<void> _migrateLocalUserToDeviceId(
 ) async {
   const legacyId = 'local-user';
   final sessions = await sessionDao.getUnsyncedSessions();
-  final legacySessionIds = sessions.where((s) => s.userId == legacyId).map((s) => s.id).toList();
+  final legacySessionIds =
+      sessions.where((s) => s.userId == legacyId).map((s) => s.id).toList();
   if (legacySessionIds.isEmpty) return;
   await sessionDao.reassignUserId(legacyId, deviceId);
   await eventDao.markEventsUnsyncedForSessions(legacySessionIds);

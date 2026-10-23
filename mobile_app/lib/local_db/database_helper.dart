@@ -55,15 +55,35 @@ class DatabaseHelper {
     try {
       await _webPrefs!.setString(_sessionsKey, jsonEncode(webSessions));
       await _webPrefs!.setString(_eventsKey, jsonEncode(webEvents));
-      await _webPrefs!.setString(_interventionsKey, jsonEncode(webInterventions));
+      await _webPrefs!
+          .setString(_interventionsKey, jsonEncode(webInterventions));
     } catch (e) {
       debugPrint('[WebStorage] Failed to persist to localStorage: $e');
     }
   }
 
+  /// Marks a web session as uploaded without touching the local cache shape.
+  static Future<void> markWebSessionSynced(String id) async {
+    final index = webSessions.indexWhere((row) => row['id'] == id);
+    if (index >= 0) {
+      webSessions[index]['is_synced'] = 1;
+      await persistWeb();
+    }
+  }
+
+  /// Marks a web event as uploaded without touching the local cache shape.
+  static Future<void> markWebEventSynced(String id) async {
+    final index = webEvents.indexWhere((row) => row['id'] == id);
+    if (index >= 0) {
+      webEvents[index]['is_synced'] = 1;
+      await persistWeb();
+    }
+  }
+
   Future<Database> getDatabase() async {
     if (kIsWeb) {
-      throw UnsupportedError('SQLite is not supported on web. Use webSessions/webEvents instead.');
+      throw UnsupportedError(
+          'SQLite is not supported on web. Use webSessions/webEvents instead.');
     }
     if (_database != null) return _database!;
     final dir = await getApplicationDocumentsDirectory();
@@ -104,7 +124,7 @@ class DatabaseHelper {
       )
     ''');
 
-  await db.execute('''
+    await db.execute('''
       CREATE TABLE focus_sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
@@ -134,24 +154,33 @@ class DatabaseHelper {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
-      await db.execute("ALTER TABLE distraction_events ADD COLUMN event_type TEXT NOT NULL DEFAULT 'distraction'");
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN app_category TEXT');
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN time_away_seconds INTEGER');
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN risk_score_numeric REAL');
+      await db.execute(
+          "ALTER TABLE distraction_events ADD COLUMN event_type TEXT NOT NULL DEFAULT 'distraction'");
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN app_category TEXT');
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN time_away_seconds INTEGER');
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN risk_score_numeric REAL');
       await db.execute(
         'ALTER TABLE distraction_events ADD COLUMN was_notification_triggered INTEGER NOT NULL DEFAULT 0',
       );
       await db.execute(
         'ALTER TABLE distraction_events ADD COLUMN returned_to_origin INTEGER NOT NULL DEFAULT 0',
       );
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN switch_stack_depth INTEGER');
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN time_of_day_hour INTEGER');
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN day_of_week INTEGER');
-      await db.execute('ALTER TABLE distraction_events ADD COLUMN session_minute_when_occurred INTEGER');
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN switch_stack_depth INTEGER');
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN time_of_day_hour INTEGER');
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN day_of_week INTEGER');
+      await db.execute(
+          'ALTER TABLE distraction_events ADD COLUMN session_minute_when_occurred INTEGER');
     }
     if (oldVersion < 3) {
       // Feature 1 — Focus Intent: every session carries a stated goal.
-      await db.execute("ALTER TABLE focus_sessions ADD COLUMN intent TEXT NOT NULL DEFAULT ''");
+      await db.execute(
+          "ALTER TABLE focus_sessions ADD COLUMN intent TEXT NOT NULL DEFAULT ''");
       // Feature 2 — Escalating Intervention log.
       await db.execute('''
         CREATE TABLE IF NOT EXISTS intervention_events (

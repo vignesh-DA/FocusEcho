@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../core/models/focus_session.dart';
+import '../core/providers/app_dependencies.dart';
 import 'database_helper.dart';
 
 class FocusSessionDao {
@@ -9,8 +10,10 @@ class FocusSessionDao {
 
   Future<void> insertSession(FocusSession session) async {
     if (kIsWeb) {
-      DatabaseHelper.webSessions.add(Map<String, dynamic>.from(session.toSqliteMap()));
+      DatabaseHelper.webSessions
+          .add(Map<String, dynamic>.from(session.toSqliteMap()));
       await DatabaseHelper.persistWeb();
+      AppDependencies.triggerWebSync();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -26,13 +29,17 @@ class FocusSessionDao {
     String status,
   ) async {
     if (kIsWeb) {
-      final index = DatabaseHelper.webSessions.indexWhere((s) => s['id'] == sessionId);
+      final index =
+          DatabaseHelper.webSessions.indexWhere((s) => s['id'] == sessionId);
       if (index != -1) {
-        DatabaseHelper.webSessions[index]['end_time'] = endTime.toIso8601String();
-        DatabaseHelper.webSessions[index]['total_distractions'] = totalDistractions;
+        DatabaseHelper.webSessions[index]['end_time'] =
+            endTime.toIso8601String();
+        DatabaseHelper.webSessions[index]['total_distractions'] =
+            totalDistractions;
         DatabaseHelper.webSessions[index]['total_xp_earned'] = totalXp;
         DatabaseHelper.webSessions[index]['focus_score'] = focusScore;
         DatabaseHelper.webSessions[index]['status'] = status;
+        DatabaseHelper.webSessions[index]['is_synced'] = 0;
       }
       await DatabaseHelper.persistWeb();
       return;
@@ -62,7 +69,8 @@ class FocusSessionDao {
       return FocusSession.fromSqliteMap(active);
     }
     final db = await _databaseHelper.getDatabase();
-    final maps = await db.query('focus_sessions', where: "status = 'active'", limit: 1);
+    final maps =
+        await db.query('focus_sessions', where: "status = 'active'", limit: 1);
     if (maps.isEmpty) return null;
     return FocusSession.fromSqliteMap(maps.first);
   }
@@ -71,21 +79,26 @@ class FocusSessionDao {
     if (kIsWeb) {
       final sorted = List<Map<String, dynamic>>.from(DatabaseHelper.webSessions)
         ..sort((a, b) {
-          final aTime = DateTime.tryParse(a['start_time'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
-          final bTime = DateTime.tryParse(b['start_time'] ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
+          final aTime = DateTime.tryParse(a['start_time'] ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final bTime = DateTime.tryParse(b['start_time'] ?? '') ??
+              DateTime.fromMillisecondsSinceEpoch(0);
           return bTime.compareTo(aTime);
         });
       final limited = sorted.take(limit).toList();
       return limited.map(FocusSession.fromSqliteMap).toList();
     }
     final db = await _databaseHelper.getDatabase();
-    final maps = await db.query('focus_sessions', orderBy: 'start_time DESC', limit: limit);
+    final maps = await db.query('focus_sessions',
+        orderBy: 'start_time DESC', limit: limit);
     return maps.map(FocusSession.fromSqliteMap).toList();
   }
 
   Future<List<FocusSession>> getUnsyncedSessions() async {
     if (kIsWeb) {
-      final unsynced = DatabaseHelper.webSessions.where((s) => s['is_synced'] == 0 || s['is_synced'] == false).toList();
+      final unsynced = DatabaseHelper.webSessions
+          .where((s) => s['is_synced'] == 0 || s['is_synced'] == false)
+          .toList();
       return unsynced.map(FocusSession.fromSqliteMap).toList();
     }
     final db = await _databaseHelper.getDatabase();
@@ -95,7 +108,8 @@ class FocusSessionDao {
 
   Future<void> markAsSynced(String sessionId) async {
     if (kIsWeb) {
-      final index = DatabaseHelper.webSessions.indexWhere((s) => s['id'] == sessionId);
+      final index =
+          DatabaseHelper.webSessions.indexWhere((s) => s['id'] == sessionId);
       if (index != -1) {
         DatabaseHelper.webSessions[index]['is_synced'] = 1;
       }
@@ -103,7 +117,8 @@ class FocusSessionDao {
       return;
     }
     final db = await _databaseHelper.getDatabase();
-    await db.update('focus_sessions', {'is_synced': 1}, where: 'id = ?', whereArgs: [sessionId]);
+    await db.update('focus_sessions', {'is_synced': 1},
+        where: 'id = ?', whereArgs: [sessionId]);
   }
 
   Future<void> clearAllSessions() async {
@@ -122,7 +137,8 @@ class FocusSessionDao {
     if (kIsWeb) {
       var count = 0;
       for (final s in DatabaseHelper.webSessions) {
-        if (s['user_id'] == fromUserId && (s['is_synced'] == 0 || s['is_synced'] == false)) {
+        if (s['user_id'] == fromUserId &&
+            (s['is_synced'] == 0 || s['is_synced'] == false)) {
           s['user_id'] = toUserId;
           s['is_synced'] = 0;
           count++;

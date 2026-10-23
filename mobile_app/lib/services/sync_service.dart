@@ -53,11 +53,10 @@ class SyncService {
       final localOnly = _prefs.getBool(AppKeys.localOnlyMode) ?? false;
       final cloudSyncEnabled = _prefs.getBool(AppKeys.syncEnabled) ?? true;
       if (localOnly || !cloudSyncEnabled) {
-        return const SyncResult(synced: 0, failed: 0, skipped: 0, noConnection: false);
+        return const SyncResult(
+            synced: 0, failed: 0, skipped: 0, noConnection: false);
       }
-      if (_supabaseService.currentUser == null) {
-        return const SyncResult(synced: 0, failed: 0, skipped: 0, noConnection: false);
-      }
+      // Signed-in users and stable device-id guests share this sync path; Supabase RLS scopes writes.
       final connectivity = await Connectivity().checkConnectivity();
       if (connectivity.contains(ConnectivityResult.none)) {
         return SyncResult.noConnection();
@@ -123,12 +122,12 @@ class SyncService {
 
   /// Called after a user signs in. Re-assigns all guest data to the real
   /// Supabase UUID in SQLite, then triggers an immediate sync.
-  Future<void> migrateGuestDataToUser(String fromUserId, String realUserId) async {
-
+  Future<void> migrateGuestDataToUser(
+      String fromUserId, String realUserId) async {
     // 1. Find sessions that belong to the guest ID before reassigning
     final guestSessions = await _sessionDao.getUnsyncedSessions();
     final guestSessionIds = guestSessions
-      .where((s) => s.userId == fromUserId)
+        .where((s) => s.userId == fromUserId)
         .map((s) => s.id)
         .toList();
 
@@ -158,9 +157,11 @@ class SyncService {
       } on TimeoutException {
         return false;
       } on PostgrestException catch (e) {
-        debugPrint('Supabase sync error (attempt ${attempt + 1}): ${e.message}');
+        debugPrint(
+            'Supabase sync error (attempt ${attempt + 1}): ${e.message}');
         if (attempt == _maxRetries - 1) return false;
-        await Future<void>.delayed(Duration(milliseconds: 500 * pow(2, attempt).toInt()));
+        await Future<void>.delayed(
+            Duration(milliseconds: 500 * pow(2, attempt).toInt()));
       } on AuthException catch (e) {
         debugPrint('Auth error during sync: ${e.message}');
         return false; // Auth errors won't resolve with retry
@@ -168,6 +169,8 @@ class SyncService {
     }
     return false;
   }
+
+  Future<SyncResult> syncNow() => syncPendingEvents();
 
   void startPeriodicSync() {
     _timer?.cancel();

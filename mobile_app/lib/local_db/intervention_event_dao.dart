@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../core/models/intervention_event.dart';
+import '../core/providers/app_dependencies.dart';
 import 'database_helper.dart';
 
 class InterventionEventDao {
@@ -10,8 +11,10 @@ class InterventionEventDao {
 
   Future<void> insertEvent(InterventionEvent event) async {
     if (kIsWeb) {
-      DatabaseHelper.webInterventions.add(Map<String, dynamic>.from(event.toSqliteMap()));
+      DatabaseHelper.webInterventions
+          .add(Map<String, dynamic>.from(event.toSqliteMap()));
       await DatabaseHelper.persistWeb();
+      AppDependencies.triggerWebSync();
       return;
     }
     final db = await _databaseHelper.getDatabase();
@@ -32,7 +35,8 @@ class InterventionEventDao {
 
   Future<void> markAsSynced(String eventId) async {
     if (kIsWeb) {
-      final index = DatabaseHelper.webInterventions.indexWhere((e) => e['id'] == eventId);
+      final index =
+          DatabaseHelper.webInterventions.indexWhere((e) => e['id'] == eventId);
       if (index != -1) {
         DatabaseHelper.webInterventions[index]['is_synced'] = 1;
       }
@@ -40,7 +44,8 @@ class InterventionEventDao {
       return;
     }
     final db = await _databaseHelper.getDatabase();
-    await db.update('intervention_events', {'is_synced': 1}, where: 'id = ?', whereArgs: [eventId]);
+    await db.update('intervention_events', {'is_synced': 1},
+        where: 'id = ?', whereArgs: [eventId]);
   }
 
   Future<List<InterventionEvent>> getEventsForSession(String sessionId) async {

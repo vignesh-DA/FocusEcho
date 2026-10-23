@@ -38,7 +38,7 @@ window.addEventListener('message', async (event) => {
   if (type === 'register') {
     registerDashboard();
     window.postMessage(
-      { source: 'focusecho-extension', type: 'connection', connected: true, version: '2.0.0' },
+      { source: 'focusecho-extension', type: 'registered', version: '2.0.0' },
       '*'
     );
     return;

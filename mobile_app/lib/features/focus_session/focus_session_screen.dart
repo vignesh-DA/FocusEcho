@@ -19,12 +19,17 @@ class FocusSessionScreen extends ConsumerWidget {
     // Feature 2 — level-1 relapses keep the existing heads-up modal.
     ref.listen(focusSessionProvider, (previous, next) {
       final wasAlerting = previous?.showAlert ?? false;
-      if (!wasAlerting && next.showAlert && next.lastEventId != null && next.escalationLevel <= 1) {
+      if (!wasAlerting &&
+          next.showAlert &&
+          next.lastEventId != null &&
+          next.escalationLevel <= 1) {
         showDialog<void>(
           context: context,
           barrierDismissible: false,
           builder: (_) => DistractionAlertModal(
-            appName: next.lastDistractionLabel ?? next.lastDistractionPackage ?? 'Unknown app',
+            appName: next.lastDistractionLabel ??
+                next.lastDistractionPackage ??
+                'Unknown app',
             packageName: next.lastDistractionPackage ?? 'unknown',
             riskScore: next.currentRiskScore,
             onRecovery: () => vm.onRecovery(next.lastEventId!),
@@ -46,7 +51,8 @@ class FocusSessionScreen extends ConsumerWidget {
             SnackBar(
               content: Row(
                 children: [
-                  const Icon(Icons.devices_other, size: 18, color: AppColors.accentYellow),
+                  const Icon(Icons.devices_other,
+                      size: 18, color: AppColors.accentYellow),
                   const SizedBox(width: 8),
                   Expanded(child: Text(nudge)),
                 ],
@@ -62,7 +68,8 @@ class FocusSessionScreen extends ConsumerWidget {
 
     // Feature 1 — session-complete summary view.
     if (!state.isActive && state.sessionSummary != null) {
-      return _SessionSummaryView(summary: state.sessionSummary!, onDismiss: vm.dismissSummary);
+      return _SessionSummaryView(
+          summary: state.sessionSummary!, onDismiss: vm.dismissSummary);
     }
 
     if (!state.isActive) {
@@ -74,7 +81,8 @@ class FocusSessionScreen extends ConsumerWidget {
         '${elapsed.inHours.toString().padLeft(2, '0')}:${(elapsed.inMinutes % 60).toString().padLeft(2, '0')}:${(elapsed.inSeconds % 60).toString().padLeft(2, '0')}';
 
     // Feature 2 — level 2+ renders as a full-screen intervention state.
-    final showFullScreenIntervention = state.showAlert && state.escalationLevel >= 2;
+    final showFullScreenIntervention =
+        state.showAlert && state.escalationLevel >= 2;
 
     return Scaffold(
       body: Stack(
@@ -90,7 +98,8 @@ class FocusSessionScreen extends ConsumerWidget {
                     fit: BoxFit.scaleDown,
                     child: Text(
                       timer,
-                      style: AppTextStyles.displayLarge.copyWith(color: AppColors.accentGreen),
+                      style: AppTextStyles.displayLarge
+                          .copyWith(color: AppColors.accentGreen),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -99,7 +108,8 @@ class FocusSessionScreen extends ConsumerWidget {
                     tween: Tween(begin: 0.98, end: 1.02),
                     duration: const Duration(seconds: 2),
                     curve: Curves.easeInOut,
-                    builder: (context, scale, child) => Transform.scale(scale: scale, child: child),
+                    builder: (context, scale, child) =>
+                        Transform.scale(scale: scale, child: child),
                     onEnd: () {},
                     child: Container(
                       padding: const EdgeInsets.all(20),
@@ -107,8 +117,10 @@ class FocusSessionScreen extends ConsumerWidget {
                       child: Column(
                         children: [
                           const Icon(Icons.apps_rounded, size: 48),
-                          Text(state.session?.productiveApp ?? 'App', style: AppTextStyles.displayMedium),
-                          if (state.session?.intent.trim().isNotEmpty ?? false) ...[
+                          Text(state.session?.productiveApp ?? 'App',
+                              style: AppTextStyles.displayMedium),
+                          if (state.session?.intent.trim().isNotEmpty ??
+                              false) ...[
                             const SizedBox(height: 6),
                             Text(
                               '"${state.session!.intent.trim()}"',
@@ -132,7 +144,8 @@ class FocusSessionScreen extends ConsumerWidget {
                       Flexible(
                         child: Text(
                           'Distractions: ${state.distractionCount}',
-                          style: AppTextStyles.bodyLarge.copyWith(color: AppColors.accentRed),
+                          style: AppTextStyles.bodyLarge
+                              .copyWith(color: AppColors.accentRed),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
@@ -140,33 +153,39 @@ class FocusSessionScreen extends ConsumerWidget {
                       Flexible(
                         child: Text(
                           'XP: ${state.sessionXp}',
-                          style: AppTextStyles.bodyLarge.copyWith(color: AppColors.accentYellow),
+                          style: AppTextStyles.bodyLarge
+                              .copyWith(color: AppColors.accentYellow),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
-                  if (kIsWeb) ...[
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.accentRed.withValues(alpha: 0.2),
-                        foregroundColor: AppColors.accentRed,
-                        side: const BorderSide(color: AppColors.accentRed),
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  if (kIsWeb && !state.extensionConnected) ...[
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      color: AppColors.accentYellow.withValues(alpha: 0.15),
+                      padding: const EdgeInsets.all(10),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.extension_off,
+                              color: AppColors.accentYellow, size: 16),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Install the FocusEcho Chrome extension for real-time monitoring.',
+                              style: const TextStyle(
+                                  color: AppColors.accentYellow, fontSize: 12),
+                            ),
+                          ),
+                        ],
                       ),
-                      // Bug 1 fix — simulateWebDistraction bypasses sqflite
-                      // DAO calls that throw MissingPluginException on web,
-                      // directly calling _registerDistraction so the counter
-                      // and escalation ladder fire correctly.
-                      onPressed: () => vm.simulateWebDistraction('com.instagram.android', 'Instagram'),
-                      icon: const Icon(Icons.warning_amber_rounded),
-                      label: const Text('Simulate Distraction (Web Demo)'),
                     ),
                   ],
                   const Spacer(),
                   OutlinedButton(
-                    style: OutlinedButton.styleFrom(side: const BorderSide(color: AppColors.accentRed)),
+                    style: OutlinedButton.styleFrom(
+                        side: const BorderSide(color: AppColors.accentRed)),
                     onPressed: vm.stopSession,
                     child: const Text('STOP SESSION'),
                   ),
@@ -178,7 +197,9 @@ class FocusSessionScreen extends ConsumerWidget {
             InterventionOverlay(
               level: state.escalationLevel,
               distractionCount: state.distractionCount,
-              appName: state.lastDistractionLabel ?? state.lastDistractionPackage ?? 'Unknown app',
+              appName: state.lastDistractionLabel ??
+                  state.lastDistractionPackage ??
+                  'Unknown app',
               sessionIntent: state.session?.intent ?? state.intent,
               onReturnToFocus: vm.returnToFocusFromIntervention,
               onTakeBreak: vm.takeBreakFromIntervention,
@@ -200,7 +221,8 @@ class _SessionSetupView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final intent = state.intent;
-    final canStart = state.selectedProductiveApp != null && intent.trim().isNotEmpty;
+    final canStart =
+        state.selectedProductiveApp != null && intent.trim().isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -217,20 +239,24 @@ class _SessionSetupView extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text('Ready to Focus?', style: AppTextStyles.displayLarge.copyWith(fontSize: 28)),
+                Text('Ready to Focus?',
+                    style: AppTextStyles.displayLarge.copyWith(fontSize: 28)),
                 const SizedBox(height: 16),
-                Text('Select your productive app', style: AppTextStyles.bodyMedium),
+                Text('Select your productive app',
+                    style: AppTextStyles.bodyMedium),
                 const SizedBox(height: 8),
                 if (state.availableProductiveApps.isEmpty)
                   Text('No apps selected. Go to Settings > App Selector.',
-                      style: AppTextStyles.bodyMedium.copyWith(color: AppColors.accentRed))
+                      style: AppTextStyles.bodyMedium
+                          .copyWith(color: AppColors.accentRed))
                 else
                   DropdownButton<String>(
                     value: state.selectedProductiveApp,
                     dropdownColor: AppColors.card,
                     isExpanded: true,
                     items: state.availableProductiveApps
-                        .map((app) => DropdownMenuItem(value: app, child: Text(app)))
+                        .map((app) =>
+                            DropdownMenuItem(value: app, child: Text(app)))
                         .toList(),
                     onChanged: (v) {
                       if (v != null) vm.selectProductiveApp(v);
@@ -238,7 +264,8 @@ class _SessionSetupView extends StatelessWidget {
                   ),
                 const SizedBox(height: 20),
                 // Feature 1 — required Focus Intent (max ~80 chars).
-                Text('What is your focus intent?', style: AppTextStyles.bodyLarge),
+                Text('What is your focus intent?',
+                    style: AppTextStyles.bodyLarge),
                 const SizedBox(height: 6),
                 TextField(
                   maxLength: 80,
@@ -263,11 +290,14 @@ class _SessionSetupView extends StatelessWidget {
                     height: 140,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: canStart ? AppColors.accentBlue : AppColors.textSecondary,
+                      color: canStart
+                          ? AppColors.accentBlue
+                          : AppColors.textSecondary,
                       boxShadow: canStart
                           ? [
                               BoxShadow(
-                                color: AppColors.accentBlue.withValues(alpha: 0.4),
+                                color:
+                                    AppColors.accentBlue.withValues(alpha: 0.4),
                                 blurRadius: 24,
                               ),
                             ]
@@ -275,7 +305,8 @@ class _SessionSetupView extends StatelessWidget {
                     ),
                     child: Center(
                       child: Text('START',
-                          style: AppTextStyles.displayMedium.copyWith(color: Colors.white)),
+                          style: AppTextStyles.displayMedium
+                              .copyWith(color: Colors.white)),
                     ),
                   ),
                 ),
@@ -286,7 +317,8 @@ class _SessionSetupView extends StatelessWidget {
                         ? 'Pick a productive app to begin.'
                         : 'Enter your intent above to unlock the start button.',
                     textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyMedium.copyWith(color: AppColors.accentYellow),
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: AppColors.accentYellow),
                   ),
                 ],
               ],
@@ -321,9 +353,11 @@ class _SessionSummaryView extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.emoji_events_outlined, size: 56, color: AppColors.accentYellow),
+              const Icon(Icons.emoji_events_outlined,
+                  size: 56, color: AppColors.accentYellow),
               const SizedBox(height: 12),
-              Text('Session Complete', textAlign: TextAlign.center,
+              Text('Session Complete',
+                  textAlign: TextAlign.center,
                   style: AppTextStyles.displayLarge.copyWith(fontSize: 26)),
               const SizedBox(height: 16),
               if (summary.intent.trim().isNotEmpty) ...[
@@ -350,14 +384,16 @@ class _SessionSummaryView extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Planned focus', style: AppTextStyles.bodyMedium),
-                        Text(summary.productiveApp, style: AppTextStyles.bodyLarge),
+                        Text(summary.productiveApp,
+                            style: AppTextStyles.bodyLarge),
                       ],
                     ),
                     const SizedBox(height: 6),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('Actual duration', style: AppTextStyles.bodyMedium),
+                        Text('Actual duration',
+                            style: AppTextStyles.bodyMedium),
                         Text(actualText, style: AppTextStyles.bodyLarge),
                       ],
                     ),
@@ -368,8 +404,10 @@ class _SessionSummaryView extends StatelessWidget {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _summaryStat('${summary.totalDistractions}', 'Distractions', AppColors.accentRed),
-                  _summaryStat('${summary.sessionXp}', 'XP', AppColors.accentYellow),
+                  _summaryStat('${summary.totalDistractions}', 'Distractions',
+                      AppColors.accentRed),
+                  _summaryStat(
+                      '${summary.sessionXp}', 'XP', AppColors.accentYellow),
                   _summaryStat(
                     summary.focusScore.toStringAsFixed(0),
                     'Focus Score',

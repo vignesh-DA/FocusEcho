@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../core/constants/app_constants.dart';
 import '../../core/models/distraction_event.dart';
+import '../../core/models/focus_session.dart';
 import '../../core/providers/app_dependencies.dart';
 import '../../local_db/distraction_event_dao.dart';
 import '../../local_db/focus_session_dao.dart';
@@ -121,7 +123,9 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
     try {
       // ── Local SQLite (always available) ─────────────────────────────────
-      final sessions = await _sessionDao.getSessionHistory(60);
+      final sessions = kIsWeb
+          ? await _loadWebSessions()
+          : await _sessionDao.getSessionHistory(60);
       final now = DateTime.now();
       final weeklyFocus = List<double>.filled(7, 0);
       final dailyDistractions = List<int>.filled(7, 0);
@@ -139,8 +143,10 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       }
 
       // Feature 3 — Recovery Rate: rolling week vs. previous week.
-      final recentEvents =
-          await _eventDao.getRecentEvents(14 * 24 * 60, eventType: 'distraction');
+      final recentEvents = kIsWeb
+          ? await _loadWebEvents(sessions)
+          : await _eventDao.getRecentEvents(14 * 24 * 60,
+              eventType: 'distraction');
       final thisWeek =
           _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
@@ -154,8 +160,12 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         weeklyFocusMinutes: weeklyFocus,
         dailyDistractions: dailyDistractions,
         appDistribution: appCount,
-        sessionScores:
-            sessions.take(10).map((s) => s.focusScore).toList().reversed.toList(),
+        sessionScores: sessions
+            .take(10)
+            .map((s) => s.focusScore)
+            .toList()
+            .reversed
+            .toList(),
         recoveryRate: thisWeek.rate,
         medianRecoverySeconds: thisWeek.medianRecoverySeconds,
         recoveryRateTrend: trend,
@@ -170,6 +180,50 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         isLoading: false,
         errorMessage: 'Could not load analytics. Pull to retry.',
       );
+    }
+  }
+
+  Future<List<FocusSession>> _loadWebSessions() async {
+    try {
+      final cutoff =
+          DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
+      final rows = await Supabase.instance.client
+          .from('focus_sessions')
+          .select()
+          .eq('user_id', AppDependencies.prefs.getString(AppKeys.userId) ?? '')
+          .gte('start_time', cutoff)
+          .order('start_time');
+      return (rows as List)
+          .map((row) =>
+              FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
+          .toList();
+    } catch (e) {
+      debugPrint('Web analytics session query failed: ' + e.toString());
+      return _sessionDao.getSessionHistory(60);
+    }
+  }
+
+  Future<List<DistractionEvent>> _loadWebEvents(
+      List<FocusSession> sessions) async {
+    if (sessions.isEmpty) return const [];
+    try {
+      final rows = await Supabase.instance.client
+          .from('distraction_events')
+          .select()
+          .inFilter('session_id', sessions.map((s) => s.id).toList())
+          .order('triggered_at');
+      return (rows as List)
+          .map((row) => DistractionEvent.fromSqliteMap(
+              Map<String, dynamic>.from(row as Map)))
+          .where((e) => e.eventType == 'distraction')
+          .toList();
+    } catch (e) {
+      debugPrint('Web analytics event query failed: ' + e.toString());
+      final events = <DistractionEvent>[];
+      for (final session in sessions) {
+        events.addAll(await _eventDao.getEventsForSession(session.id));
+      }
+      return events.where((e) => e.eventType == 'distraction').toList();
     }
   }
 
@@ -233,7 +287,8 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     }
 
     if (total == 0) {
-      return const RecoveryStats(rate: 0, medianRecoverySeconds: 0, sampleSize: 0);
+      return const RecoveryStats(
+          rate: 0, medianRecoverySeconds: 0, sampleSize: 0);
     }
     final fast =
         recoveredSeconds.where((s) => s < _fastRecoveryThresholdSeconds).length;

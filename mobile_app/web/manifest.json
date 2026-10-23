@@ -1,11 +1,11 @@
 {
-    "name": "focus_echo_ai",
-    "short_name": "focus_echo_ai",
+    "name": "FocusEcho AI",
+    "short_name": "FocusEcho",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0D0D0D",
+    "theme_color": "#0D0D0D",
+    "description": "Stay in flow. Block distractions. Track progress.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

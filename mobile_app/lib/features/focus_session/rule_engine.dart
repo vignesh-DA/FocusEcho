@@ -77,16 +77,15 @@ class RuleEngine {
     required double avgRecoverySeconds,
     required int criticalDistractions,
   }) {
-    final countPenalty = totalDistractions > 0
-        ? 15 * log(totalDistractions + 1) / log(2)
-        : 0.0;
-    final distractionControl = (60 - countPenalty - criticalDistractions * 10)
-        .clamp(0, 60)
-        .toDouble();
-    final recovery = (20 - (avgRecoverySeconds / 60).clamp(0, 20))
-        .clamp(0, 20)
-        .toDouble();
-    const consistency = 20.0;
+    final countPenalty =
+        totalDistractions > 0 ? 15 * log(totalDistractions + 1) / log(2) : 0.0;
+    final distractionControl =
+        (60 - countPenalty - criticalDistractions * 10).clamp(0, 60).toDouble();
+    final recovery =
+        (20 - (avgRecoverySeconds / 30).clamp(0, 20)).clamp(0, 20).toDouble();
+    // Consistency is earned only when the session remains recoverable;
+    // severe repeated relapses should be able to drive the total score to 0.
+    final consistency = (20 - criticalDistractions * 4).clamp(0, 20).toDouble();
     final duration = ((sessionMinutes ~/ 10) * 2)
         .clamp(0, 20)
         .clamp(0, 100 - distractionControl - recovery - consistency)
@@ -97,16 +96,19 @@ class RuleEngine {
 
     final positive = <String>[];
     final negative = <String>[];
-    if (sessionMinutes >= 25) positive.add('Completed a $sessionMinutes-minute session');
+    if (sessionMinutes >= 25)
+      positive.add('Completed a $sessionMinutes-minute session');
     if (totalDistractions == 0) {
       positive.add('Maintained a distraction-free session');
     }
     if (totalDistractions > 0) {
-      negative.add('$totalDistractions distraction${totalDistractions == 1 ? '' : 's'}');
+      negative.add(
+          '$totalDistractions distraction${totalDistractions == 1 ? '' : 's'}');
     }
     if (avgRecoverySeconds >= 60) negative.add('Slow average recovery time');
     if (criticalDistractions > 0) {
-      negative.add('$criticalDistractions critical distraction${criticalDistractions == 1 ? '' : 's'}');
+      negative.add(
+          '$criticalDistractions critical distraction${criticalDistractions == 1 ? '' : 's'}');
     }
     return FocusScoreBreakdown(
       score: score,

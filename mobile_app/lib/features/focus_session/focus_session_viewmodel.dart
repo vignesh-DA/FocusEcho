@@ -35,8 +35,17 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _engine.setActionHandler(_handleEngineAction);
     _listenToDistractionStream();
     if (kIsWeb) {
-      unawaited(_browserMonitor.initialize());
-      _browserSubscription = _browserMonitor.activities.listen(_handleBrowserActivity);
+      unawaited(_browserMonitor.initialize().then((_) {
+        if (mounted)
+          state = state.copyWith(
+              extensionConnected: _browserMonitor.extensionConnected);
+      }));
+      _browserSubscription =
+          _browserMonitor.activities.listen(_handleBrowserActivity);
+      _browserStatusSubscription =
+          _browserMonitor.connectionStatus.listen((connected) {
+        if (mounted) state = state.copyWith(extensionConnected: connected);
+      });
     }
   }
 
@@ -53,6 +62,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   Timer? _timer;
   StreamSubscription<dynamic>? _subscription;
   StreamSubscription? _browserSubscription;
+  StreamSubscription<bool>? _browserStatusSubscription;
 
   static const Set<String> _defaultAlwaysAllowed = {
     'com.android.phone',
@@ -123,7 +133,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       final escalationLevel = (map['escalation_level'] as num?)?.toInt() ?? 1;
 
       // Feature 2 — intervention lifecycle events emitted by the native layer.
-      if (eventType == 'intervention_shown' || eventType == 'intervention_action') {
+      if (eventType == 'intervention_shown' ||
+          eventType == 'intervention_action') {
         unawaited(_handleNativeInterventionEvent(eventType, map));
         return;
       }
@@ -181,7 +192,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final trimmedIntent = intent.trim();
     if (trimmedIntent.isEmpty) return;
 
-    var userId = _prefs.getString(AppKeys.userId) ?? _prefs.getString(AppKeys.deviceId);
+    var userId =
+        _prefs.getString(AppKeys.userId) ?? _prefs.getString(AppKeys.deviceId);
     if (userId == null || userId.isEmpty) {
       userId = _uuid.v4();
       await _prefs.setString(AppKeys.deviceId, userId);
@@ -195,6 +207,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       intent: trimmedIntent,
     );
     await _sessionDao.insertSession(session);
+    if (kIsWeb) unawaited(_syncService.syncNow());
     // Persist the intent so the native layer can show it on full-screen
     // interventions (Feature 2).
     await _prefs.setString(AppKeys.sessionIntent, trimmedIntent);
@@ -204,7 +217,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     await _prefs.setBool(AppKeys.sessionActive, true);
     if (kIsWeb) {
       await _browserMonitor.startSession(
-        _decodeStringList(_prefs.getString(AppKeys.webDistractingSites) ?? '[]'),
+        _decodeStringList(
+            _prefs.getString(AppKeys.webDistractingSites) ?? '[]'),
       );
     }
 
@@ -248,13 +262,15 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     if (session == null) {
       // Pref flag was stale — clean it up so we don't loop.
       await _prefs.setBool(AppKeys.sessionActive, false);
-      debugPrint('[FocusSession] resumeSession: no active SQLite row found; cleared stale flag.');
+      debugPrint(
+          '[FocusSession] resumeSession: no active SQLite row found; cleared stale flag.');
       return false;
     }
 
     // Compute how many seconds have elapsed since the session started,
     // accounting for the time the process was dead.
-    final alreadyElapsed = DateTime.now().difference(session.startTime).inSeconds;
+    final alreadyElapsed =
+        DateTime.now().difference(session.startTime).inSeconds;
 
     _engine.reset();
     _engine.configure(_buildConfig(session.productiveApp));
@@ -285,9 +301,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     return true;
   }
 
-  /// Web-demo distraction simulation — bypasses all DAO/SQLite calls that are
+  /// Test-only distraction fixture — bypasses all DAO/SQLite calls that are
   /// unavailable on the web platform.  The event is tagged with
-  /// [eventType: 'web_demo'] so it is **never** mixed with real distraction
+  /// The test fixture event is kept out of production analytics
   /// analytics.  The distraction counter and escalation ladder still fire
   /// exactly as they do on mobile, making this a valid smoke target for
   /// TC_DISTRACT_001–006.
@@ -296,11 +312,13 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   /// enter the state machine.  It does NOT call [onDistractionDetected] and
   /// does NOT touch [FocusDetectionEngine] or the native EventChannel — it
   /// cannot be confused with real detection coverage.
-  Future<void> simulateWebDistraction(String packageName, String appLabel) async {
+  @visibleForTesting
+  Future<void> simulateWebDistraction(
+      String packageName, String appLabel) async {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
 
-    // Compute escalation level the same way native does, so the web demo
+    // Compute escalation level the same way native does, so the test fixture
     // ladder mirrors the real escalation ladder exactly.
     final level = _levelForRelapse(state.distractionCount + 1);
 
@@ -312,13 +330,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       triggeredAt: DateTime.now(),
       riskScore: 'MEDIUM',
       riskScoreNumeric: 0.4,
-      eventType: 'web_demo',
+      eventType: 'test_fixture',
       escalationLevel: level,
     );
 
     await _registerDistraction(event);
   }
-
 
   Future<void> onDistractionDetected(
     String packageName,
@@ -328,7 +345,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
 
-    final recent = await _eventDao.getRecentEvents(30, eventType: 'distraction');
+    final recent =
+        await _eventDao.getRecentEvents(30, eventType: 'distraction');
     final distractionsInWindow = recent.length;
     final riskScore = RuleEngine.computeRiskScore(
       category: AppCategory.unknown,
@@ -360,11 +378,11 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   ///     Flutter trusts that value directly — no recomputation.
   ///   - For web / simulation (escalationLevel == 1 at default AND
   ///     distractionCount > 0): Flutter's own [_levelForRelapse] is used as a
-  ///     fallback so the web demo escalation ladder still works.
+  ///     fallback so the test fixture escalation ladder still works.
   Future<void> _registerDistraction(DistractionEvent event) async {
     final newCount = state.distractionCount + 1;
     // Use the native-computed level when present; fall back to local computation
-    // only for web demo / simulation (where native layer never runs).
+    // only for test fixture / simulation (where native layer never runs).
     final level = (event.escalationLevel > 1)
         ? event.escalationLevel
         : _levelForRelapse(newCount);
@@ -396,16 +414,19 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     return 3;
   }
 
-  Future<void> onRecovery(String eventId, {bool returnedToOrigin = false, int? timeAwaySeconds}) async {
+  Future<void> onRecovery(String eventId,
+      {bool returnedToOrigin = false, int? timeAwaySeconds}) async {
     try {
-      final events = await _eventDao.getEventsForSession(state.session?.id ?? '');
+      final events =
+          await _eventDao.getEventsForSession(state.session?.id ?? '');
       final event = events.where((e) => e.id == eventId).firstOrNull;
       if (event == null) {
         debugPrint('Recovery event $eventId not found, dismissing alert.');
         state = state.copyWith(showAlert: false);
         return;
       }
-      final seconds = timeAwaySeconds ?? DateTime.now().difference(event.triggeredAt).inSeconds;
+      final seconds = timeAwaySeconds ??
+          DateTime.now().difference(event.triggeredAt).inSeconds;
       await _eventDao.updateRecovery(
         eventId,
         DateTime.now(),
@@ -419,7 +440,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       final gained = seconds < AppRiskThresholds.mediumRecoverySeconds
           ? AppXP.recoveryXp
           : AppXP.slowRecoveryXp;
-      state = state.copyWith(sessionXp: state.sessionXp + gained, showAlert: false);
+      state =
+          state.copyWith(sessionXp: state.sessionXp + gained, showAlert: false);
       unawaited(_syncService.syncPendingEvents());
     } catch (e) {
       debugPrint('Error during recovery: $e');
@@ -433,7 +455,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _timer?.cancel();
     final minutes = state.elapsedSeconds ~/ 60;
     final events = await _eventDao.getEventsForSession(session.id);
-    final distractionEvents = events.where((e) => e.eventType == 'distraction').toList();
+    final distractionEvents =
+        events.where((e) => e.eventType == 'distraction').toList();
     final totalDistractions = distractionEvents.length;
     final avgRecoverySeconds = distractionEvents.isEmpty
         ? 0.0
@@ -441,7 +464,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
                 .map((e) => e.recoveryTimeSeconds ?? 0)
                 .reduce((a, b) => a + b) /
             distractionEvents.length;
-    final criticalDistractions = distractionEvents.where((e) => e.riskScore == 'CRITICAL').length;
+    final criticalDistractions =
+        distractionEvents.where((e) => e.riskScore == 'CRITICAL').length;
     final focusScore = RuleEngine.computeFocusScore(
       totalDistractions: totalDistractions,
       sessionMinutes: minutes,
@@ -476,6 +500,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     } else {
       await _browserMonitor.stopSession();
     }
+    if (kIsWeb) unawaited(_syncService.syncNow());
     await _prefs.setBool(AppKeys.sessionActive, false);
     await _prefs.remove(AppKeys.sessionIntent);
 
@@ -495,13 +520,18 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     );
     final userId = _prefs.getString(AppKeys.userId);
     if (userId != null && userId.isNotEmpty) {
-      unawaited(
-        AppDependencies.supabaseService
-            .updateUserXP(userId, newTotalXp, newStreakDays)
-            .catchError((Object e) {
-          debugPrint('[FocusSession] updateUserXP remote sync failed (will retry on next sync): $e');
-        }),
-      );
+      try {
+        unawaited(
+          AppDependencies.supabaseService
+              .updateUserXP(userId, newTotalXp, newStreakDays)
+              .catchError((Object e) {
+            debugPrint(
+                '[FocusSession] updateUserXP remote sync failed (will retry on next sync): $e');
+          }),
+        );
+      } catch (e) {
+        debugPrint('[FocusSession] updateUserXP unavailable: $e');
+      }
     }
 
     unawaited(_syncService.syncPendingEvents());
@@ -555,7 +585,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     }
 
     final today = DateTime.now();
-    final todayLabel = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    final todayLabel =
+        '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     final lastDateRaw = _prefs.getString(AppKeys.lastSessionDate);
     var currentStreak = _prefs.getInt(AppKeys.streakDays) ?? 0;
 
@@ -569,14 +600,16 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
 
         if (gapDays == 0) {
           // Same calendar day — already counted; do not increment streak.
-          debugPrint('[Streak] Same day session — streak unchanged at $currentStreak.');
+          debugPrint(
+              '[Streak] Same day session — streak unchanged at $currentStreak.');
           return currentStreak;
         } else if (gapDays <= 1 + AppDurations.streakGraceDays) {
           // Yesterday or within grace window — extend streak.
           currentStreak += 1;
         } else {
           // Too many missed days — reset.
-          debugPrint('[Streak] Gap of $gapDays days exceeds grace. Resetting streak.');
+          debugPrint(
+              '[Streak] Gap of $gapDays days exceeds grace. Resetting streak.');
           currentStreak = 1;
         }
       } else {
@@ -657,7 +690,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
 
   /// Handles intervention lifecycle events forwarded by the native layer
   /// (full-screen InterventionActivity shown / button pressed).
-  Future<void> _handleNativeInterventionEvent(String eventType, Map<String, dynamic> map) async {
+  Future<void> _handleNativeInterventionEvent(
+      String eventType, Map<String, dynamic> map) async {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
     final level = (map['level'] as num?)?.toInt() ?? 1;
@@ -714,8 +748,15 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final distractingApps = _decodeStringList(distractingRaw);
     final timeLimits = _decodeIntMap(limitsRaw);
 
-    final alwaysAllowed = {..._defaultAlwaysAllowed, ...productiveApps, focusApp};
-    final alwaysDistraction = {..._defaultAlwaysDistraction, ...distractingApps};
+    final alwaysAllowed = {
+      ..._defaultAlwaysAllowed,
+      ...productiveApps,
+      focusApp
+    };
+    final alwaysDistraction = {
+      ..._defaultAlwaysDistraction,
+      ...distractingApps
+    };
 
     return FocusDetectionConfig(
       focusApp: focusApp,
@@ -736,7 +777,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   List<String> _decodeStringList(String raw) {
     try {
       final decoded = jsonDecode(raw) as List<dynamic>;
-      return decoded.map((e) => e.toString()).where((e) => e.isNotEmpty).toList();
+      return decoded
+          .map((e) => e.toString())
+          .where((e) => e.isNotEmpty)
+          .toList();
     } catch (_) {
       return const [];
     }
@@ -758,7 +802,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final kind = activity.kind;
     if (kind == 'distraction') {
       await onDistractionDetected('web:${activity.host}', activity.host);
-    } else if (kind == 'return' && state.showAlert && state.lastEventId != null) {
+    } else if (kind == 'return' &&
+        state.showAlert &&
+        state.lastEventId != null) {
       await onRecovery(state.lastEventId!, returnedToOrigin: true);
     }
   }
@@ -775,7 +821,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
         final eventId = state.lastEventId;
         if (eventId != null) {
           final timeAway = action.payload['timeAwaySeconds'] as int? ?? 0;
-          await onRecovery(eventId, returnedToOrigin: true, timeAwaySeconds: timeAway);
+          await onRecovery(eventId,
+              returnedToOrigin: true, timeAwaySeconds: timeAway);
         }
         break;
     }
@@ -788,7 +835,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final packageName = payload['packageName'] as String? ?? 'unknown';
     final category = payload['category'] as AppCategory? ?? AppCategory.unknown;
     final timeAwaySeconds = payload['timeAwaySeconds'] as int? ?? 0;
-    final wasNotificationTriggered = payload['wasNotificationTriggered'] as bool? ?? false;
+    final wasNotificationTriggered =
+        payload['wasNotificationTriggered'] as bool? ?? false;
     final returnedToOrigin = payload['returnedToOrigin'] as bool? ?? false;
     final switchStackDepth = payload['switchStackDepth'] as int? ?? 0;
     final timestamp = payload['timestamp'] as DateTime? ?? DateTime.now();
@@ -796,7 +844,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     // (adb_fixture / usage_stats payloads); engine-only paths default to 1.
     final escalationLevel = payload['escalation_level'] as int? ?? 1;
 
-    final recent = await _eventDao.getRecentEvents(30, eventType: 'distraction');
+    final recent =
+        await _eventDao.getRecentEvents(30, eventType: 'distraction');
     final riskScore = RuleEngine.computeRiskScore(
       category: category,
       timeAwaySeconds: timeAwaySeconds,
@@ -837,7 +886,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final packageName = payload['packageName'] as String? ?? 'unknown';
     final category = payload['category'] as AppCategory? ?? AppCategory.unknown;
     final timeAwaySeconds = payload['timeAwaySeconds'] as int? ?? 0;
-    final wasNotificationTriggered = payload['wasNotificationTriggered'] as bool? ?? false;
+    final wasNotificationTriggered =
+        payload['wasNotificationTriggered'] as bool? ?? false;
     final returnedToOrigin = payload['returnedToOrigin'] as bool? ?? true;
     final switchStackDepth = payload['switchStackDepth'] as int? ?? 0;
     final timestamp = payload['timestamp'] as DateTime? ?? DateTime.now();
@@ -890,7 +940,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       (surface, label, level) {
         if (!state.isActive || !mounted) return;
         state = state.copyWith(
-          crossSurfaceNudge: 'You opened $label on your $surface — session still active.',
+          crossSurfaceNudge:
+              'You opened $label on your $surface — session still active.',
         );
       },
     );
@@ -927,12 +978,14 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _timer?.cancel();
     _subscription?.cancel();
     _browserSubscription?.cancel();
+    _browserStatusSubscription?.cancel();
     _unsubscribeCrossSurface();
     super.dispose();
   }
 }
 
-final focusSessionProvider = StateNotifierProvider<FocusSessionViewModel, FocusSessionState>(
+final focusSessionProvider =
+    StateNotifierProvider<FocusSessionViewModel, FocusSessionState>(
   (ref) => FocusSessionViewModel(
     AppDependencies.prefs,
     AppDependencies.sessionDao,

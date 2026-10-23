@@ -31,9 +31,13 @@ class DistractionEvent with _$DistractionEvent {
     @Default(false) bool isSynced,
   }) = _DistractionEvent;
 
-  factory DistractionEvent.fromJson(Map<String, dynamic> json) => _$DistractionEventFromJson(json);
+  factory DistractionEvent.fromJson(Map<String, dynamic> json) =>
+      _$DistractionEventFromJson(json);
 
   const DistractionEvent._();
+
+  static bool _readBool(dynamic value) =>
+      value is bool ? value : value is num && value == 1;
 
   Map<String, dynamic> toSqliteMap() {
     return {
@@ -68,22 +72,24 @@ class DistractionEvent with _$DistractionEvent {
       packageName: map['package_name'] as String,
       appLabel: map['app_label'] as String,
       triggeredAt: DateTime.parse(map['triggered_at'] as String),
-      recoveredAt: map['recovered_at'] == null ? null : DateTime.parse(map['recovered_at'] as String),
+      recoveredAt: map['recovered_at'] == null
+          ? null
+          : DateTime.parse(map['recovered_at'] as String),
       recoveryTimeSeconds: map['recovery_time_seconds'] as int?,
       riskScore: map['risk_score'] as String,
       eventType: map['event_type'] as String? ?? 'distraction',
       appCategory: map['app_category'] as String?,
       timeAwaySeconds: map['time_away_seconds'] as int?,
       riskScoreNumeric: (map['risk_score_numeric'] as num?)?.toDouble(),
-      wasNotificationTriggered: (map['was_notification_triggered'] as int?) == 1,
-      returnedToOrigin: (map['returned_to_origin'] as int?) == 1,
+      wasNotificationTriggered: _readBool(map['was_notification_triggered']),
+      returnedToOrigin: _readBool(map['returned_to_origin']),
       switchStackDepth: map['switch_stack_depth'] as int?,
       timeOfDayHour: map['time_of_day_hour'] as int?,
       dayOfWeek: map['day_of_week'] as int?,
       sessionMinuteWhenOccurred: map['session_minute_when_occurred'] as int?,
       escalationLevel: (map['escalation_level'] as int?) ?? 1,
-      isRecovered: (map['is_recovered'] as int? ?? 0) == 1,
-      isSynced: (map['is_synced'] as int? ?? 0) == 1,
+      isRecovered: _readBool(map['is_recovered']),
+      isSynced: _readBool(map['is_synced']),
     );
   }
 }

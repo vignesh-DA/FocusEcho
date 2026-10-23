@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../local_db/distraction_event_dao.dart';
@@ -16,6 +18,12 @@ class AppDependencies {
   static late InterventionEventDao interventionDao;
   static late SupabaseService supabaseService;
   static late SyncService syncService;
+  static bool syncServiceReady = false;
+
+  static void triggerWebSync() {
+    if (syncServiceReady) unawaited(syncService.syncPendingEvents());
+  }
+
   static FcmService? fcmService;
   static bool isFirebaseConfigured = false;
 }

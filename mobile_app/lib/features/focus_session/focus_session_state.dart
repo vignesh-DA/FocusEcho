@@ -41,5 +41,6 @@ class FocusSessionState with _$FocusSessionState {
     @Default(1) int escalationLevel,
     // Feature 4 — cross-surface nudge text (null = nothing to show)
     String? crossSurfaceNudge,
+    @Default(false) bool extensionConnected,
   }) = _FocusSessionState;
 }

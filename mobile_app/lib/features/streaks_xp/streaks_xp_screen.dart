@@ -10,7 +10,7 @@ class StreaksXpScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(streaksXpProvider);
-    final xp = state.userProfile?.totalXp ?? 0;
+    final xp = state.totalXp;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Streaks & XP')),
@@ -28,17 +28,21 @@ class StreaksXpScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 12),
-            _levelCard(state.userProfile?.computedLevelTitle ?? 'Focus Rookie'),
+            _levelCard(_levelTitle(state.totalXp)),
             const SizedBox(height: 12),
             Text('XP to next level: ${state.xpToNextLevel}'),
             const SizedBox(height: 8),
             LinearProgressIndicator(value: state.progressPercent),
             const SizedBox(height: 16),
             Text('Milestones', style: AppTextStyles.displayMedium),
-            const ListTile(leading: Icon(Icons.lock_open), title: Text('Level 1 • 0 XP')),
-            const ListTile(leading: Icon(Icons.lock), title: Text('Level 2 • 500 XP')),
-            const ListTile(leading: Icon(Icons.lock), title: Text('Level 3 • 1500 XP')),
-            const ListTile(leading: Icon(Icons.lock), title: Text('Level 4 • 3500 XP')),
+            const ListTile(
+                leading: Icon(Icons.lock_open), title: Text('Level 1 • 0 XP')),
+            const ListTile(
+                leading: Icon(Icons.lock), title: Text('Level 2 • 500 XP')),
+            const ListTile(
+                leading: Icon(Icons.lock), title: Text('Level 3 • 1500 XP')),
+            const ListTile(
+                leading: Icon(Icons.lock), title: Text('Level 4 • 3500 XP')),
             const SizedBox(height: 12),
             Text('7-Day Streak Calendar', style: AppTextStyles.displayMedium),
             const SizedBox(height: 8),
@@ -50,7 +54,9 @@ class StreaksXpScreen extends ConsumerWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 3),
                     height: 36,
                     decoration: BoxDecoration(
-                      color: active ? AppColors.accentGreen : AppColors.accentRed.withValues(alpha: 0.4),
+                      color: active
+                          ? AppColors.accentGreen
+                          : AppColors.accentRed.withValues(alpha: 0.4),
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
@@ -72,6 +78,13 @@ class StreaksXpScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  String _levelTitle(int xp) {
+    if (xp >= 3500) return 'Zen Monk';
+    if (xp >= 1500) return 'Flow Master';
+    if (xp >= 500) return 'Consistency Pro';
+    return 'Focus Rookie';
   }
 
   Widget _levelCard(String levelTitle) {

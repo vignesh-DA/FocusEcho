@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/models/user_profile.dart';
@@ -10,10 +11,20 @@ import '../../services/supabase_service.dart';
 class StreaksXpState {
   const StreaksXpState({
     this.userProfile,
-    this.weeklyActivity = const [false, false, false, false, false, false, false],
+    this.weeklyActivity = const [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
     this.xpToNextLevel = 0,
     this.progressPercent = 0,
     this.errorMessage,
+    this.totalXp = 0,
+    this.streakDays = 0,
   });
 
   final UserProfile? userProfile;
@@ -21,6 +32,8 @@ class StreaksXpState {
   final int xpToNextLevel;
   final double progressPercent;
   final String? errorMessage;
+  final int totalXp;
+  final int streakDays;
 
   StreaksXpState copyWith({
     UserProfile? userProfile,
@@ -28,6 +41,8 @@ class StreaksXpState {
     int? xpToNextLevel,
     double? progressPercent,
     String? errorMessage,
+    int? totalXp,
+    int? streakDays,
   }) {
     return StreaksXpState(
       userProfile: userProfile ?? this.userProfile,
@@ -35,6 +50,8 @@ class StreaksXpState {
       xpToNextLevel: xpToNextLevel ?? this.xpToNextLevel,
       progressPercent: progressPercent ?? this.progressPercent,
       errorMessage: errorMessage,
+      totalXp: totalXp ?? this.totalXp,
+      streakDays: streakDays ?? this.streakDays,
     );
   }
 }
@@ -43,11 +60,22 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
   StreaksXpViewModel(this._supabaseService, this._sessionDao, this._userId)
       : super(const StreaksXpState()) {
     loadStreaks();
+    if (kIsWeb) {
+      _xpChannel = Supabase.instance.client
+          .channel('user-xp-' + _userId)
+          .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'user_xp',
+              callback: (_) => loadStreaks())
+          .subscribe();
+    }
   }
 
   final SupabaseService _supabaseService;
   final FocusSessionDao _sessionDao;
   final String _userId;
+  RealtimeChannel? _xpChannel;
 
   Future<void> loadStreaks() async {
     try {
@@ -60,16 +88,49 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
         }
       }
 
+      var effectiveXp = AppDependencies.prefs.getInt(AppKeys.xpTotal) ??
+          profile?.totalXp ??
+          0;
+      var effectiveStreak = AppDependencies.prefs.getInt(AppKeys.streakDays) ??
+          profile?.streakDays ??
+          0;
+      if (kIsWeb && _userId.isNotEmpty) {
+        try {
+          final xpRow = await Supabase.instance.client
+              .from('user_xp')
+              .select()
+              .eq('user_id', _userId)
+              .maybeSingle();
+          if (xpRow != null) {
+            effectiveXp = (xpRow['total_xp'] as num?)?.toInt() ?? effectiveXp;
+            effectiveStreak =
+                (xpRow['streak_days'] as num?)?.toInt() ?? effectiveStreak;
+          }
+        } catch (e) {
+          debugPrint('Web XP query failed: ' + e.toString());
+        }
+      }
+      if (profile != null)
+        profile =
+            profile.copyWith(totalXp: effectiveXp, streakDays: effectiveStreak);
+
       final sessions = await _sessionDao.getSessionHistory(100);
       final now = DateTime.now();
       final weekly = List<bool>.generate(7, (idx) {
         final day = now.subtract(Duration(days: 6 - idx));
         return sessions.any(
           (s) =>
-              s.startTime.year == day.year && s.startTime.month == day.month && s.startTime.day == day.day,
+              s.startTime.year == day.year &&
+              s.startTime.month == day.month &&
+              s.startTime.day == day.day,
         );
       });
-      state = state.copyWith(userProfile: profile, weeklyActivity: weekly, errorMessage: null);
+      state = state.copyWith(
+          userProfile: profile,
+          weeklyActivity: weekly,
+          totalXp: effectiveXp,
+          streakDays: effectiveStreak,
+          errorMessage: null);
       computeXpProgress();
     } catch (e) {
       debugPrint('Streaks load error: $e');
@@ -78,7 +139,7 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
   }
 
   void computeXpProgress() {
-    final xp = state.userProfile?.totalXp ?? 0;
+    final xp = state.totalXp;
     int nextThreshold = AppXP.level2Min;
     int baseThreshold = 0;
     if (xp >= AppXP.level4Min) {
@@ -97,9 +158,17 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
       progressPercent: ((xp - baseThreshold) / span).clamp(0, 1),
     );
   }
+
+  @override
+  void dispose() {
+    final channel = _xpChannel;
+    if (channel != null) Supabase.instance.client.removeChannel(channel);
+    super.dispose();
+  }
 }
 
-final streaksXpProvider = StateNotifierProvider<StreaksXpViewModel, StreaksXpState>(
+final streaksXpProvider =
+    StateNotifierProvider<StreaksXpViewModel, StreaksXpState>(
   (ref) => StreaksXpViewModel(
     AppDependencies.supabaseService,
     AppDependencies.sessionDao,
