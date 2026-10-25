@@ -15,6 +15,7 @@ import 'local_db/database_helper.dart';
 import 'local_db/distraction_event_dao.dart';
 import 'local_db/focus_session_dao.dart';
 import 'local_db/intervention_event_dao.dart';
+import 'services/browser_monitor/browser_monitor.dart';
 import 'services/fcm_service.dart';
 import 'services/nightly_sync_worker.dart';
 import 'services/supabase_service.dart';
@@ -117,6 +118,10 @@ Future<void> main() async {
   AppDependencies.syncServiceReady = true;
   syncService.startPeriodicSync();
 
+  if (kIsWeb) {
+    BrowserMonitor.instance.syncCredentialsIfAvailable();
+  }
+
   // Keep the local cache identity aligned with Supabase after OTP upgrades,
   // anonymous re-issuance, refreshes, and sign-outs.
   if (supabaseReady) {
@@ -124,7 +129,8 @@ Future<void> main() async {
     final event = data.event;
     final user = data.session?.user;
     if ((event == AuthChangeEvent.signedIn ||
-            event == AuthChangeEvent.userUpdated) &&
+            event == AuthChangeEvent.userUpdated ||
+            event == AuthChangeEvent.tokenRefreshed) &&
         user != null) {
       final previousId = prefs.getString(AppKeys.userId);
       await prefs.setString(AppKeys.userId, user.id);
@@ -132,6 +138,9 @@ Future<void> main() async {
         await _migrateLocalUserToAuthId(sessionDao, eventDao, previousId, user.id);
       }
       unawaited(syncService.syncPendingEvents());
+      if (kIsWeb) {
+        BrowserMonitor.instance.syncCredentialsIfAvailable();
+      }
       debugPrint('[Auth] Identity set: ${user.email ?? 'anonymous'} (${user.id})');
     } else if (event == AuthChangeEvent.signedOut) {
       try {
@@ -139,6 +148,9 @@ Future<void> main() async {
         final anonymousUser = response.user;
         if (anonymousUser != null) {
           await prefs.setString(AppKeys.userId, anonymousUser.id);
+          if (kIsWeb) {
+            BrowserMonitor.instance.syncCredentialsIfAvailable();
+          }
           debugPrint('[Auth] Signed out — issued anonymous identity ${anonymousUser.id}');
         }
       } catch (e) {

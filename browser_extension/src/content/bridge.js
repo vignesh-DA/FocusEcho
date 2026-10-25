@@ -12,14 +12,24 @@
 
 // Register this tab as the active FocusEcho dashboard tab with the Service Worker
 function registerDashboard() {
-  chrome.runtime.sendMessage({ type: 'fe:register_dashboard' }, (response) => {
+  // First get current session state from service worker
+  chrome.runtime.sendMessage({ type: 'fe:debug_get_state' }, (stateResponse) => {
     if (chrome.runtime.lastError) return;
-    if (response?.connected) {
-      window.postMessage(
-        { source: 'focusecho-extension', type: 'connection', connected: true, version: '2.0.0' },
-        '*'
-      );
-    }
+    const activeSession = stateResponse?.session?.active ? stateResponse.session : null;
+
+    chrome.runtime.sendMessage({ type: 'fe:register_dashboard' }, (response) => {
+      if (chrome.runtime.lastError) return;
+      if (response?.connected) {
+        // Send connection + current session state in one message
+        window.postMessage({
+          source: 'focusecho-extension',
+          type: 'connection',
+          connected: true,
+          version: '2.0.0',
+          activeSession: activeSession,  // null if no session running
+        }, '*');
+      }
+    });
   });
 }
 
@@ -138,6 +148,15 @@ chrome.runtime.onMessage.addListener((message) => {
       type: message.type,
       level: message.level,
       intention: message.intention,
+    }, '*');
+  }
+
+  // Relay session lifecycle state changes
+  if (message.type === 'fe:session_started' || message.type === 'fe:session_stopped') {
+    window.postMessage({
+      source: 'focusecho-extension',
+      type: message.type,
+      session: message.session,
     }, '*');
   }
 });

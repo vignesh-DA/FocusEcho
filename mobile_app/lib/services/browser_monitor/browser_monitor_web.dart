@@ -1,6 +1,10 @@
 import 'dart:async';
 import 'dart:html';
 
+import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../core/constants/app_constants.dart';
 import 'browser_activity.dart';
 
 class BrowserMonitor {
@@ -9,16 +13,22 @@ class BrowserMonitor {
 
   final _activities = StreamController<BrowserActivity>.broadcast();
   final _connectionStatus = StreamController<bool>.broadcast();
+  final _activeSessionUpdates =
+      StreamController<Map<String, dynamic>?>.broadcast();
   StreamSubscription<MessageEvent>? _messageSubscription;
   StreamSubscription<Event>? _visibilitySubscription;
   Timer? _presenceTimer;
   bool _initialized = false;
   bool _extensionConnected = false;
+  Map<String, dynamic>? _activeExtensionSession;
 
   bool get isSupported => true;
   Stream<BrowserActivity> get activities => _activities.stream;
   bool get extensionConnected => _extensionConnected;
   Stream<bool> get connectionStatus => _connectionStatus.stream;
+  Map<String, dynamic>? get activeExtensionSession => _activeExtensionSession;
+  Stream<Map<String, dynamic>?> get activeSessionUpdates =>
+      _activeSessionUpdates.stream;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -35,13 +45,36 @@ class BrowserMonitor {
         _extensionConnected = data['connected'] != false;
         _presenceTimer?.cancel();
         _connectionStatus.add(_extensionConnected);
+
+        if (data['activeSession'] != null && data['activeSession'] is Map) {
+          _activeExtensionSession =
+              Map<String, dynamic>.from(data['activeSession'] as Map);
+          _activeSessionUpdates.add(_activeExtensionSession);
+        }
+
+        // Push credentials automatically upon connection
+        syncCredentialsIfAvailable();
         return;
       }
 
-      // Extension activity events — two message formats handled:
-      //   1. Legacy:  { source: 'focusecho-extension', type: 'activity', event: {...} }
-      //   2. Current: { source: 'focusecho-extension', type: 'fe:dashboard_activity', kind, host, ... }
       if (source == 'focusecho-extension') {
+        if (type == 'fe:session_started') {
+          if (data['session'] is Map) {
+            _activeExtensionSession =
+                Map<String, dynamic>.from(data['session'] as Map);
+            _activeSessionUpdates.add(_activeExtensionSession);
+          }
+          return;
+        }
+        if (type == 'fe:session_stopped') {
+          _activeExtensionSession = null;
+          _activeSessionUpdates.add(null);
+          return;
+        }
+
+        // Extension activity events — two message formats handled:
+        //   1. Legacy:  { source: 'focusecho-extension', type: 'activity', event: {...} }
+        //   2. Current: { source: 'focusecho-extension', type: 'fe:dashboard_activity', kind, host, ... }
         if (type == 'activity') {
           final event = data['event'];
           if (event is Map) {
@@ -100,12 +133,40 @@ class BrowserMonitor {
     }, '*');
   }
 
-  Future<void> startSession(List<String> distractingSites) async {
+  void syncCredentialsIfAvailable() {
+    try {
+      final session = Supabase.instance.client.auth.currentSession;
+      final user = Supabase.instance.client.auth.currentUser;
+      if (session != null && user != null) {
+        pushCredentialsToExtension(
+          authToken: session.accessToken,
+          userId: user.id,
+          supabaseUrl: AppConfig.supabaseUrl,
+          supabaseAnonKey: AppConfig.supabaseAnonKey,
+        );
+        debugPrint(
+            '[BrowserMonitor] Synced auth credentials to extension for user ${user.id}');
+      }
+    } catch (e) {
+      debugPrint('[BrowserMonitor] Could not sync credentials: $e');
+    }
+  }
+
+  Future<void> startSession(
+    List<String> distractingSites, {
+    String? sessionId,
+    String? intention,
+    String? userId,
+  }) async {
     await initialize();
+    syncCredentialsIfAvailable();
     window.postMessage({
       'source': 'focusecho-web',
       'type': 'configure',
       'active': true,
+      'sessionId': sessionId,
+      'intention': intention,
+      'userId': userId,
       'distractingSites': distractingSites,
     }, '*');
   }
@@ -135,5 +196,6 @@ class BrowserMonitor {
     await _visibilitySubscription?.cancel();
     await _activities.close();
     await _connectionStatus.close();
+    await _activeSessionUpdates.close();
   }
 }

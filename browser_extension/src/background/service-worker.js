@@ -304,6 +304,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
       await saveSession(newSession);
       await clearDistraction();
       LOG.act(`session started | intention: "${payload.intention}" | sites: [${payload.distraction_list.join(', ')}]`);
+      await notifyDashboard({ type: 'fe:session_started', session: newSession });
       break;
     }
 
@@ -555,11 +556,18 @@ async function _executeAction(name, param, { session, distraction, event, now })
       LOG.act(`session ended | total distractions: ${session?.distraction_count ?? 0}`);
       break;
 
-    case 'CLEAR_SESSION':
+    case 'CLEAR_SESSION': {
       clearGraceTimer();
+      if (session) {
+        session.active = false;
+        session.ended_at = now;
+        syncEventQueue(session).catch(e => LOG.err('cloud sync error on end:', e.message));
+        notifyDashboard({ type: 'fe:session_stopped', session }).catch(() => {});
+      }
       await chrome.storage.session.remove([SK.SESSION, SK.CURRENT_DISTRACTION]);
       LOG.act('session state cleared from storage');
       break;
+    }
 
     case 'LOG_SESSION_PAUSED':
       LOG.act('session paused by user');
@@ -813,6 +821,10 @@ async function _handleMessage(message, sender) {
   // --- Cloud credentials sync from Web dashboard ---
   if (type === 'fe:save_credentials') {
     await saveSyncCredentials(message);
+    const session = await loadSession();
+    if (session?.active) {
+      await syncEventQueue(session);
+    }
     return { ok: true, saved: true };
   }
 

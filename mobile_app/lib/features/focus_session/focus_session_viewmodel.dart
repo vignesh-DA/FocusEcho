@@ -46,15 +46,26 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _listenToDistractionStream();
     if (kIsWeb) {
       unawaited(_browserMonitor.initialize().then((_) {
-        if (mounted)
+        if (mounted) {
           state = state.copyWith(
               extensionConnected: _browserMonitor.extensionConnected);
+          if (_browserMonitor.activeExtensionSession != null) {
+            _adoptExtensionSession(_browserMonitor.activeExtensionSession!);
+          }
+        }
       }));
       _browserSubscription =
           _browserMonitor.activities.listen(_handleBrowserActivity);
       _browserStatusSubscription =
           _browserMonitor.connectionStatus.listen((connected) {
         if (mounted) state = state.copyWith(extensionConnected: connected);
+      });
+      _browserSessionSubscription =
+          _browserMonitor.activeSessionUpdates.listen((sessionMap) {
+        if (!mounted) return;
+        if (sessionMap != null) {
+          _adoptExtensionSession(sessionMap);
+        }
       });
     }
   }
@@ -74,6 +85,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   StreamSubscription<dynamic>? _subscription;
   StreamSubscription? _browserSubscription;
   StreamSubscription<bool>? _browserStatusSubscription;
+  StreamSubscription<Map<String, dynamic>?>? _browserSessionSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _feedSubscription;
 
   SupabaseService? get _supabaseService {
@@ -245,6 +257,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       await _browserMonitor.startSession(
         _decodeStringList(
             _prefs.getString(AppKeys.webDistractingSites) ?? '[]'),
+        sessionId: session.id,
+        intention: trimmedIntent,
+        userId: userId,
       );
     }
 
@@ -291,6 +306,63 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     } catch (error) {
       debugPrint('[FocusSession] Live distraction feed unavailable: $error');
     }
+  }
+
+  void _adoptExtensionSession(Map<String, dynamic> sessionMap) {
+    final sessionId = sessionMap['session_id']?.toString();
+    if (sessionId == null || sessionId.isEmpty) return;
+
+    if (state.isActive && state.session?.id == sessionId) return;
+
+    final intention = sessionMap['intention']?.toString() ?? 'Deep Work';
+    final startedAtRaw = sessionMap['started_at'];
+    DateTime startedAt;
+    if (startedAtRaw is int) {
+      startedAt = DateTime.fromMillisecondsSinceEpoch(startedAtRaw);
+    } else if (startedAtRaw is String) {
+      startedAt = DateTime.tryParse(startedAtRaw) ?? DateTime.now();
+    } else {
+      startedAt = DateTime.now();
+    }
+
+    final elapsed = DateTime.now().difference(startedAt).inSeconds;
+    final distractionCount =
+        (sessionMap['distraction_count'] as num?)?.toInt() ?? 0;
+    final userId = _prefs.getString(AppKeys.userId) ?? 'local-user';
+
+    final session = FocusSession(
+      id: sessionId,
+      userId: userId,
+      startTime: startedAt,
+      productiveApp: 'Chrome',
+      intent: intention,
+      totalDistractions: distractionCount,
+    );
+
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        state = state.copyWith(elapsedSeconds: state.elapsedSeconds + 1);
+      }
+    });
+
+    final level = (distractionCount <= 1)
+        ? 1
+        : (distractionCount <= 3 ? 2 : 3);
+
+    state = state.copyWith(
+      isActive: true,
+      session: session,
+      intent: intention,
+      selectedProductiveApp: 'Chrome',
+      elapsedSeconds: elapsed >= 0 ? elapsed : 0,
+      distractionCount: distractionCount,
+      escalationLevel: level,
+      sessionSummary: null,
+      liveDistractionFeed: const [],
+    );
+
+    unawaited(_subscribeToLiveFeed(sessionId));
   }
   // ── MOB-3b — Session Resume on App Relaunch ──────────────────────────────
 
@@ -1052,6 +1124,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _subscription?.cancel();
     _browserSubscription?.cancel();
     _browserStatusSubscription?.cancel();
+    _browserSessionSubscription?.cancel();
     _feedSubscription?.cancel();
     _unsubscribeCrossSurface();
     super.dispose();
