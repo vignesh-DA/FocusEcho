@@ -6,7 +6,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/models/distraction_event.dart';
@@ -17,19 +16,29 @@ import '../../local_db/distraction_event_dao.dart';
 import '../../local_db/focus_session_dao.dart';
 import '../../local_db/intervention_event_dao.dart';
 import '../../services/sync_service.dart';
+import '../../services/supabase_service.dart';
 import '../../services/browser_monitor/browser_monitor.dart';
 import 'focus_session_state.dart';
 import 'focus_detection_engine.dart';
 import 'rule_engine.dart';
 
+int medianRecoverySeconds(Iterable<Map<String, dynamic>> rows) {
+  final recoveryTimes = rows
+      .map((row) => row['recovery_time_seconds'])
+      .whereType<num>()
+      .map((value) => value.toInt())
+      .toList()
+    ..sort();
+  if (recoveryTimes.isEmpty) return 0;
+  return recoveryTimes[recoveryTimes.length ~/ 2];
+}
+
 class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
-  FocusSessionViewModel(
-    this._prefs,
-    this._sessionDao,
-    this._eventDao,
-    this._interventionDao,
-    this._syncService,
-  )   : _sessionChannel = const MethodChannel(AppChannels.session),
+  FocusSessionViewModel(this._prefs, this._sessionDao, this._eventDao,
+      this._interventionDao, this._syncService,
+      {SupabaseService? supabaseService})
+      : _supabaseServiceOverride = supabaseService,
+        _sessionChannel = const MethodChannel(AppChannels.session),
         _streamChannel = const EventChannel(AppChannels.distractionStream),
         super(const FocusSessionState()) {
     _loadAvailableApps();
@@ -55,6 +64,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   final DistractionEventDao _eventDao;
   final InterventionEventDao _interventionDao;
   final SyncService _syncService;
+  final SupabaseService? _supabaseServiceOverride;
   final MethodChannel _sessionChannel;
   final EventChannel _streamChannel;
   final Uuid _uuid = const Uuid();
@@ -64,6 +74,27 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   StreamSubscription<dynamic>? _subscription;
   StreamSubscription? _browserSubscription;
   StreamSubscription<bool>? _browserStatusSubscription;
+  StreamSubscription<List<Map<String, dynamic>>>? _feedSubscription;
+
+  SupabaseService? get _supabaseService {
+    if (_supabaseServiceOverride != null) return _supabaseServiceOverride;
+    try {
+      return AppDependencies.supabaseService;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool get _supabaseReady {
+    final service = _supabaseService;
+    if (service == null) return false;
+    if (_supabaseServiceOverride != null) return true;
+    try {
+      return service.currentUser != null;
+    } catch (_) {
+      return false;
+    }
+  }
 
   static const Set<String> _defaultAlwaysAllowed = {
     'com.android.phone',
@@ -233,13 +264,34 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       intent: trimmedIntent,
       escalationLevel: 1,
       sessionSummary: null,
+      liveDistractionFeed: const [],
+      sessionSummaryStats: null,
       crossSurfaceNudge: null,
     );
 
     // Feature 4 — subscribe to the cross-surface intervention channel.
+    unawaited(_subscribeToLiveFeed(session.id));
     unawaited(_subscribeCrossSurface());
   }
 
+  Future<void> _subscribeToLiveFeed(String sessionId) async {
+    if (!_supabaseReady) return;
+    final service = _supabaseService;
+    if (service == null) return;
+    await _feedSubscription?.cancel();
+    try {
+      _feedSubscription =
+          service.watchDistractionEvents(sessionId).listen((rows) {
+        if (mounted) {
+          state = state.copyWith(
+            liveDistractionFeed: List<Map<String, dynamic>>.unmodifiable(rows),
+          );
+        }
+      });
+    } catch (error) {
+      debugPrint('[FocusSession] Live distraction feed unavailable: $error');
+    }
+  }
   // ── MOB-3b — Session Resume on App Relaunch ──────────────────────────────
 
   /// Called by [SplashScreen._goNext] when it detects [AppKeys.sessionActive]
@@ -284,6 +336,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       intent: session.intent,
       escalationLevel: 1,
       sessionSummary: null,
+      liveDistractionFeed: const [],
+      sessionSummaryStats: null,
       crossSurfaceNudge: null,
     );
 
@@ -292,6 +346,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       '(${session.productiveApp}, already ${alreadyElapsed}s elapsed).',
     );
 
+    unawaited(_subscribeToLiveFeed(session.id));
     unawaited(_subscribeCrossSurface());
     return true;
   }
@@ -448,6 +503,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final session = state.session;
     if (session == null) return;
     _timer?.cancel();
+    final feed =
+        List<Map<String, dynamic>>.unmodifiable(state.liveDistractionFeed);
+    await _feedSubscription?.cancel();
+    _feedSubscription = null;
     final minutes = state.elapsedSeconds ~/ 60;
     final events = await _eventDao.getEventsForSession(session.id);
     final distractionEvents =
@@ -537,6 +596,16 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     // view can render intent + planned vs. actual duration.
     state = state.copyWith(
       isActive: false,
+      sessionSummaryStats: {
+        'duration_seconds': state.elapsedSeconds,
+        'distraction_count': state.distractionCount,
+        'median_recovery_seconds': medianRecoverySeconds(feed),
+        'focus_score': focusScore,
+        'session_xp': finalSessionXp,
+        'started_at': session.startTime.toIso8601String(),
+        'feed_snapshot': feed,
+      },
+      liveDistractionFeed: feed,
       sessionSummary: SessionSummary(
         sessionId: session.id,
         intent: session.intent,
@@ -983,6 +1052,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     _subscription?.cancel();
     _browserSubscription?.cancel();
     _browserStatusSubscription?.cancel();
+    _feedSubscription?.cancel();
     _unsubscribeCrossSurface();
     super.dispose();
   }
