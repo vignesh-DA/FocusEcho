@@ -25,22 +25,50 @@ class BrowserMonitor {
     _initialized = true;
     _messageSubscription = window.onMessage.listen((message) {
       final data = message.data;
-      if (data is! Map || data['source'] != 'focusecho-extension') return;
-      if (data['type'] == 'registered' || data['type'] == 'connection') {
+      if (data is! Map) return;
+      final source = data['source']?.toString() ?? '';
+      final type = data['type']?.toString() ?? '';
+
+      // Extension presence / registration handshake
+      if (source == 'focusecho-extension' &&
+          (type == 'registered' || type == 'connection')) {
         _extensionConnected = data['connected'] != false;
         _presenceTimer?.cancel();
         _connectionStatus.add(_extensionConnected);
         return;
       }
-      if (data['type'] != 'activity') return;
-      final event = data['event'];
-      if (event is! Map) return;
-      _emit(
-        event['kind']?.toString() ?? 'away',
-        event['host']?.toString() ?? 'unknown',
-        event['timestamp']?.toString(),
-        (event['escalation_level'] as num?)?.toInt() ?? 1,
-      );
+
+      // Extension activity events — two message formats handled:
+      //   1. Legacy:  { source: 'focusecho-extension', type: 'activity', event: {...} }
+      //   2. Current: { source: 'focusecho-extension', type: 'fe:dashboard_activity', kind, host, ... }
+      if (source == 'focusecho-extension') {
+        if (type == 'activity') {
+          final event = data['event'];
+          if (event is Map) {
+            // Map 'away' -> 'distraction' so viewmodel triggers alert
+            final rawKind = event['kind']?.toString() ?? 'away';
+            final kind = (rawKind == 'away') ? 'distraction' : rawKind;
+            _emit(
+              kind,
+              event['host']?.toString() ?? 'unknown',
+              event['timestamp']?.toString(),
+              (event['escalation_level'] as num?)?.toInt() ?? 1,
+            );
+          }
+          return;
+        }
+        if (type == 'fe:dashboard_activity') {
+          final rawKind = data['kind']?.toString() ?? 'away';
+          final kind = (rawKind == 'away') ? 'distraction' : rawKind;
+          _emit(
+            kind,
+            data['host']?.toString() ?? 'unknown',
+            data['timestamp']?.toString(),
+            (data['escalation_level'] as num?)?.toInt() ?? 1,
+          );
+          return;
+        }
+      }
     });
     _visibilitySubscription = document.onVisibilityChange.listen((_) {
       if (document.visibilityState == 'visible') {
@@ -53,6 +81,23 @@ class BrowserMonitor {
       _extensionConnected = false;
       _connectionStatus.add(false);
     });
+  }
+
+  /// Push Supabase JWT to the extension so it can write to the database.
+  void pushCredentialsToExtension({
+    required String authToken,
+    required String userId,
+    required String supabaseUrl,
+    required String supabaseAnonKey,
+  }) {
+    window.postMessage({
+      'source': 'focusecho-web',
+      'type': 'fe:save_credentials',
+      'authToken': authToken,
+      'userId': userId,
+      'supabaseUrl': supabaseUrl,
+      'supabaseAnonKey': supabaseAnonKey,
+    }, '*');
   }
 
   Future<void> startSession(List<String> distractingSites) async {

@@ -87,12 +87,12 @@ window.addEventListener('message', async (event) => {
   }
 
   // Credentials sync request
-  if (type === 'sync_credentials') {
+  if (type === 'sync_credentials' || type === 'fe:save_credentials') {
     chrome.runtime.sendMessage({
       type: 'fe:save_credentials',
       supabaseUrl:     data.supabaseUrl,
       supabaseAnonKey: data.supabaseAnonKey,
-      authToken:       data.token,
+      authToken:       data.authToken || data.token,
       userId:          data.userId,
       backendUrl:      data.backendUrl,
     }).catch(() => {});

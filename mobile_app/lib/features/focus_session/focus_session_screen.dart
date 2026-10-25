@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../distraction_alert/distraction_alert_modal.dart';
@@ -227,7 +228,13 @@ class _SessionSetupView extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Focus Session'),
-        leading: BackButton(onPressed: () => Navigator.of(context).maybePop()),
+        leading: BackButton(onPressed: () {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/dashboard');
+          }
+        }),
       ),
       body: Center(
         child: SingleChildScrollView(
