@@ -18,7 +18,8 @@ class SupabaseService {
   /// Previously used `event.toJson()` which produces camelCase (Freezed default),
   /// causing silent column mismatches.
   Future<void> upsertDistractionEvent(DistractionEvent event) async {
-    await _client.from('distraction_events').upsert(event.toSqliteMap());
+    final map = Map<String, dynamic>.from(event.toSqliteMap())..remove('escalation_level');
+    await _client.from('distraction_events').upsert(map);
   }
 
   Future<void> upsertFocusSession(FocusSession session) async {

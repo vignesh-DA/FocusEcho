@@ -124,7 +124,7 @@ export function formatDistractionEventRow(queuedEvent, activeSession) {
 
   return {
     id:                           ev.id || crypto.randomUUID(),
-    session_id:                   ev.session_id,
+    session_id:                   ev.session_id || activeSession?.session_id,
     package_name:                 ev.domain || 'unknown_site',
     app_label:                    getFriendlyAppLabel(ev.domain),
     triggered_at:                 triggeredAt,
@@ -246,10 +246,25 @@ export async function syncEventQueue(activeSession = null) {
   // 1. Ensure active focus_session exists in DB first
   if (activeSession) {
     await ensureFocusSessionInCloud(activeSession, creds);
+  } else if (queue.length > 0) {
+    const firstEv = queue[0].event || queue[0];
+    if (firstEv.session_id) {
+      await ensureFocusSessionInCloud({
+        session_id: firstEv.session_id,
+        started_at: firstEv.distraction_started_at || firstEv.timestamp,
+        active: false,
+        intention: 'Web Focus Session',
+        distraction_count: queue.length,
+      }, creds);
+    }
   }
 
-  // 2. Prepare payload rows
-  const rows = queue.map(item => formatDistractionEventRow(item, activeSession));
+  // 2. Prepare payload rows - strip escalation_level as Supabase schema does not have it
+  const rows = queue.map(item => {
+    const r = formatDistractionEventRow(item, activeSession);
+    const { escalation_level, ...sanitized } = r;
+    return sanitized;
+  });
 
   let writeSuccess = false;
 

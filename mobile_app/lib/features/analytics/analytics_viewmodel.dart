@@ -133,14 +133,19 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         if (dayIndex >= 0 && dayIndex < 7) {
           weeklyFocus[dayIndex] +=
               (s.endTime ?? now).difference(s.startTime).inMinutes.toDouble();
-          dailyDistractions[dayIndex] += s.totalDistractions;
         }
-        appCount[s.productiveApp] =
-            (appCount[s.productiveApp] ?? 0) + s.totalDistractions;
       }
 
-      // Feature 3 — Recovery Rate: rolling week vs. previous week.
+      // Feature 3 — Recovery Rate & Most Distracting Apps from actual distraction events:
       final recentEvents = await _loadEventsFromCloud(sessions);
+      for (final e in recentEvents) {
+        final dayIndex = 6 - now.difference(e.triggeredAt).inDays;
+        if (dayIndex >= 0 && dayIndex < 7) {
+          dailyDistractions[dayIndex] += 1;
+        }
+        final label = e.appLabel.isNotEmpty ? e.appLabel : e.packageName;
+        appCount[label] = (appCount[label] ?? 0) + 1;
+      }
       final thisWeek =
           _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
@@ -184,41 +189,51 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       final rows = await Supabase.instance.client
           .from('focus_sessions')
           .select()
-
           .gte('start_time', cutoff)
           .order('start_time');
-      return (rows as List)
+      final cloudSessions = (rows as List)
           .map((row) =>
               FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
           .toList();
+      if (cloudSessions.isNotEmpty) return cloudSessions;
     } catch (e) {
-      debugPrint('Web analytics session query failed: ' + e.toString());
-      return _sessionDao.getSessionHistory(60);
+      debugPrint('Web analytics session query failed: ');
     }
+    return _sessionDao.getSessionHistory(60);
   }
 
   Future<List<DistractionEvent>> _loadEventsFromCloud(
       List<FocusSession> sessions) async {
-    if (sessions.isEmpty) return const [];
-    try {
-      final rows = await Supabase.instance.client
-          .from('distraction_events')
-          .select()
-          .inFilter('session_id', sessions.map((s) => s.id).toList())
-          .order('triggered_at');
-      return (rows as List)
-          .map((row) => DistractionEvent.fromSqliteMap(
-              Map<String, dynamic>.from(row as Map)))
-          .where((e) => e.eventType == 'distraction')
-          .toList();
-    } catch (e) {
-      debugPrint('Web analytics event query failed: ' + e.toString());
-      final events = <DistractionEvent>[];
-      for (final session in sessions) {
-        events.addAll(await _eventDao.getEventsForSession(session.id));
+    final events = <DistractionEvent>[];
+    if (sessions.isNotEmpty) {
+      try {
+        final sessionIds = sessions.map((s) => s.id).toList();
+        final rows = await Supabase.instance.client
+            .from('distraction_events')
+            .select()
+            .inFilter('session_id', sessionIds)
+            .order('triggered_at');
+        final cloudEvents = (rows as List)
+            .map((row) => DistractionEvent.fromSqliteMap(
+                Map<String, dynamic>.from(row as Map)))
+            .where((e) => e.eventType == 'distraction')
+            .toList();
+        if (cloudEvents.isNotEmpty) return cloudEvents;
+      } catch (e) {
+        debugPrint('Web analytics event query failed: ');
       }
-      return events.where((e) => e.eventType == 'distraction').toList();
     }
+    for (final session in sessions) {
+      events.addAll(await _eventDao.getEventsForSession(session.id));
+    }
+    final recentLocal = await _eventDao.getRecentEvents(100, eventType: 'distraction');
+    final seenIds = events.map((e) => e.id).toSet();
+    for (final e in recentLocal) {
+      if (!seenIds.contains(e.id)) {
+        events.add(e);
+      }
+    }
+    return events.where((e) => e.eventType == 'distraction').toList();
   }
 
   /// Fetches backend summary + risk-trend and merges into state.
