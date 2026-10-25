@@ -42,5 +42,7 @@ class FocusSessionState with _$FocusSessionState {
     // Feature 4 — cross-surface nudge text (null = nothing to show)
     String? crossSurfaceNudge,
     @Default(false) bool extensionConnected,
+    @Default([]) List<Map<String, dynamic>> liveDistractionFeed,
+    Map<String, dynamic>? sessionSummaryStats,
   }) = _FocusSessionState;
 }
