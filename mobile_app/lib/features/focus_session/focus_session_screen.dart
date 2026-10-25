@@ -8,6 +8,8 @@ import '../distraction_alert/distraction_alert_modal.dart';
 import '../distraction_alert/intervention_overlay.dart';
 import 'focus_session_state.dart';
 import 'focus_session_viewmodel.dart';
+import 'session_summary_screen.dart';
+import 'widgets/live_distraction_feed.dart';
 
 class FocusSessionScreen extends ConsumerWidget {
   const FocusSessionScreen({super.key});
@@ -69,8 +71,11 @@ class FocusSessionScreen extends ConsumerWidget {
 
     // Feature 1 — session-complete summary view.
     if (!state.isActive && state.sessionSummary != null) {
-      return _SessionSummaryView(
-          summary: state.sessionSummary!, onDismiss: vm.dismissSummary);
+      return SessionSummaryScreen(
+        summary: state.sessionSummary!,
+        stats: state.sessionSummaryStats,
+        onDismiss: vm.dismissSummary,
+      );
     }
 
     if (!state.isActive) {
@@ -161,6 +166,15 @@ class FocusSessionScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  if (kIsWeb || state.liveDistractionFeed.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 220,
+                      child: LiveDistractionFeed(
+                        feed: state.liveDistractionFeed,
+                      ),
+                    ),
+                  ],
                   if (kIsWeb && !state.extensionConnected) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -333,118 +347,6 @@ class _SessionSetupView extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Feature 1 — session-complete view: intent + planned vs. actual duration.
-class _SessionSummaryView extends StatelessWidget {
-  const _SessionSummaryView({required this.summary, required this.onDismiss});
-
-  final SessionSummary summary;
-  final VoidCallback onDismiss;
-
-  @override
-  Widget build(BuildContext context) {
-    final actual = Duration(seconds: summary.actualSeconds);
-    final actualText = '${actual.inMinutes}m ${actual.inSeconds % 60}s';
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Session Complete')),
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.all(20),
-          padding: const EdgeInsets.all(20),
-          decoration: AppDecorations.glassmorphismCard(),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Icon(Icons.emoji_events_outlined,
-                  size: 56, color: AppColors.accentYellow),
-              const SizedBox(height: 12),
-              Text('Session Complete',
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.displayLarge.copyWith(fontSize: 26)),
-              const SizedBox(height: 16),
-              if (summary.intent.trim().isNotEmpty) ...[
-                Text('Your intent', style: AppTextStyles.bodyMedium),
-                const SizedBox(height: 4),
-                Text(
-                  '"${summary.intent}"',
-                  style: AppTextStyles.bodyLarge.copyWith(
-                    color: AppColors.accentBlue,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.card.withValues(alpha: 0.6),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Planned focus', style: AppTextStyles.bodyMedium),
-                        Text(summary.productiveApp,
-                            style: AppTextStyles.bodyLarge),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Actual duration',
-                            style: AppTextStyles.bodyMedium),
-                        Text(actualText, style: AppTextStyles.bodyLarge),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _summaryStat('${summary.totalDistractions}', 'Distractions',
-                      AppColors.accentRed),
-                  _summaryStat(
-                      '${summary.sessionXp}', 'XP', AppColors.accentYellow),
-                  _summaryStat(
-                    summary.focusScore.toStringAsFixed(0),
-                    'Focus Score',
-                    AppColors.accentGreen,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.accentBlue,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: onDismiss,
-                child: const Text('Done'),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _summaryStat(String value, String label, Color color) {
-    return Column(
-      children: [
-        Text(value, style: AppTextStyles.displayMedium.copyWith(color: color)),
-        Text(label, style: AppTextStyles.bodyMedium),
-      ],
     );
   }
 }
