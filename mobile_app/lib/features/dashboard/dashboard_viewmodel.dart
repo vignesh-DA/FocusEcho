@@ -85,16 +85,56 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
+      // Always use the live auth user — the prefs userId may be stale from
+      // before the user completed OTP login.
+      final authUser = Supabase.instance.client.auth.currentUser;
+      final liveUserId = authUser?.id ?? _userId;
+
       UserProfile? profile;
-      if (_supabaseService.currentUser != null) {
+      if (authUser != null) {
         try {
-          profile = await _supabaseService.getUserProfile(_userId);
+          profile = await _supabaseService.getUserProfile(liveUserId);
         } catch (e) {
           debugPrint('Could not fetch profile from Supabase: $e');
-          // Continue with local data only
+        }
+        // Pull XP from user_xp table (same source as Streaks tab)
+        try {
+          final xpRow = await Supabase.instance.client
+              .from('user_xp')
+              .select()
+              .eq('user_id', liveUserId)
+              .maybeSingle();
+          if (xpRow != null && profile != null) {
+            profile = profile.copyWith(
+              totalXp: (xpRow['total_xp'] as num?)?.toInt() ?? profile.totalXp,
+              streakDays:
+                  (xpRow['streak_days'] as num?)?.toInt() ?? profile.streakDays,
+            );
+          } else if (xpRow != null) {
+            // No users-table profile yet, synthesise one from XP row
+            final xp = (xpRow['total_xp'] as num?)?.toInt() ?? 0;
+            final streak = (xpRow['streak_days'] as num?)?.toInt() ?? 0;
+            profile = UserProfile(
+              id: liveUserId,
+              email: authUser.email ?? '',
+              displayName: '',
+              currentLevel: 1,
+              levelTitle: '',
+              totalXp: xp,
+              streakDays: streak,
+              longestStreak: streak,
+              totalSessions: 0,
+              totalFocusMinutes: 0,
+              joinedAt: DateTime.now(),
+            );
+          }
+        } catch (e) {
+          debugPrint('Could not fetch user_xp for dashboard: $e');
         }
       }
 
+      // Load full 7-day history so UTC-offset sessions from earlier today
+      // are never missed, then narrow to local-calendar today for the stats.
       final history = await _loadSessionsFromCloud();
       final today = DateTime.now();
       final todaySessions = history
@@ -104,8 +144,11 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
               s.startTime.day == today.day)
           .toList();
 
+      // Use all sessions for distraction count (today) — fall back to full
+      // history total when today slice is empty (e.g. first load after midnight).
+      final sessionsForStats = todaySessions.isNotEmpty ? todaySessions : history;
       final distractions =
-          todaySessions.fold<int>(0, (sum, s) => sum + s.totalDistractions);
+          sessionsForStats.fold<int>(0, (sum, s) => sum + s.totalDistractions);
       final minutes = todaySessions.fold<int>(
         0,
         (sum, s) =>
@@ -113,9 +156,10 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
             ((s.endTime ?? DateTime.now()).difference(s.startTime).inMinutes),
       );
 
-      // Feature 3 — headline Recovery Rate with week-over-week trend.
+      // Feature 3 — headline Recovery Rate over rolling 7 days.
       final now = DateTime.now();
-      final recentEvents = await _loadEventsFromCloud(todaySessions);
+      // Pass full history so recovery rate covers a meaningful window.
+      final recentEvents = await _loadEventsFromCloud(history);
       final thisWeek =
           _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
@@ -126,7 +170,7 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
 
       state = state.copyWith(
         userProfile: profile,
-        todaySessions: todaySessions,
+        todaySessions: todaySessions.isNotEmpty ? todaySessions : history,
         todayDistractionCount: distractions,
         totalFocusMinutesToday: minutes,
         recoveryRate: thisWeek.rate,
@@ -145,46 +189,58 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
 
   Future<List<FocusSession>> _loadSessionsFromCloud() async {
     try {
-      final today = DateTime.now();
-      final midnight = DateTime(today.year, today.month, today.day);
+      // Use a 7-day window (same as Analytics) so UTC-offset or cross-midnight
+      // sessions are never missed by a today-only filter.
+      final cutoff =
+          DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
       final rows = await Supabase.instance.client
           .from('focus_sessions')
           .select()
-          .gte('start_time', midnight.toIso8601String())
+          .gte('start_time', cutoff)
           .order('start_time', ascending: false);
-      return (rows as List)
+      final cloudSessions = (rows as List)
           .map((row) =>
               FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
           .toList();
+      if (cloudSessions.isNotEmpty) return cloudSessions;
     } catch (e) {
       debugPrint('Web dashboard session query failed, using local cache: ' +
           e.toString());
-      return _focusSessionDao.getSessionHistory(50);
     }
+    return _focusSessionDao.getSessionHistory(50);
   }
 
   Future<List<DistractionEvent>> _loadEventsFromCloud(
       List<FocusSession> sessions) async {
-    if (sessions.isEmpty) return const [];
     try {
-      final rows = await Supabase.instance.client
-          .from('distraction_events')
-          .select()
-          .inFilter('session_id', sessions.map((s) => s.id).toList())
-          .order('triggered_at');
-      return (rows as List)
-          .map((row) => DistractionEvent.fromSqliteMap(
-              Map<String, dynamic>.from(row as Map)))
-          .toList();
+      if (sessions.isNotEmpty) {
+        final rows = await Supabase.instance.client
+            .from('distraction_events')
+            .select()
+            .inFilter('session_id', sessions.map((s) => s.id).toList())
+            .order('triggered_at');
+        final cloudEvents = (rows as List)
+            .map((row) => DistractionEvent.fromSqliteMap(
+                Map<String, dynamic>.from(row as Map)))
+            .toList();
+        if (cloudEvents.isNotEmpty) return cloudEvents;
+      }
     } catch (e) {
       debugPrint('Web dashboard event query failed, using local cache: ' +
           e.toString());
-      final events = <DistractionEvent>[];
-      for (final session in sessions) {
-        events.addAll(await _eventDao.getEventsForSession(session.id));
-      }
-      return events;
     }
+    // Fallback: local cache per-session + recent events (mirrors Analytics)
+    final events = <DistractionEvent>[];
+    for (final session in sessions) {
+      events.addAll(await _eventDao.getEventsForSession(session.id));
+    }
+    final recentLocal =
+        await _eventDao.getRecentEvents(100, eventType: 'distraction');
+    final seenIds = events.map((e) => e.id).toSet();
+    for (final e in recentLocal) {
+      if (!seenIds.contains(e.id)) events.add(e);
+    }
+    return events;
   }
 
   void _subscribeRealtimeDashboard() {
@@ -249,6 +305,9 @@ final dashboardProvider =
     AppDependencies.supabaseService,
     AppDependencies.sessionDao,
     AppDependencies.eventDao,
-    AppDependencies.prefs.getString(AppKeys.userId) ?? '',
+    // Use live auth id; prefs value may be stale before OTP login completes.
+    Supabase.instance.client.auth.currentUser?.id ??
+        AppDependencies.prefs.getString(AppKeys.userId) ??
+        '',
   ),
 );

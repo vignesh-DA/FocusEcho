@@ -64,7 +64,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(height: 8),
                   Text(
                     _otpSent
-                        ? 'Enter the 6-digit code sent to\n${_emailCtrl.text}'
+                        ? 'Enter the 8-digit code sent to\n${_emailCtrl.text}'
                         : 'Create an account to sync your focus\nsessions across all devices.',
                     textAlign: TextAlign.center,
                     style: AppTextStyles.bodyLarge
@@ -116,14 +116,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     TextField(
                       controller: _otpCtrl,
                       keyboardType: TextInputType.number,
-                      maxLength: 6,
+                      maxLength: 8,
                       textAlign: TextAlign.center,
                       style: const TextStyle(
                           color: Colors.white,
                           fontSize: 24,
                           letterSpacing: 8),
                       decoration: InputDecoration(
-                        hintText: '000000',
+                        hintText: '00000000',
                         counterText: '',
                         filled: true,
                         fillColor: AppColors.surface,
