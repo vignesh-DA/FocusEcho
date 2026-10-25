@@ -148,4 +148,13 @@ class SupabaseService {
   }
 
   User? get currentUser => _client.auth.currentUser;
+  /// Returns a broadcast stream of distraction_events rows for [sessionId].
+  /// Updates are delivered via Supabase Realtime without polling.
+  Stream<List<Map<String, dynamic>>> watchDistractionEvents(String sessionId) {
+    return _client
+        .from('distraction_events')
+        .stream(primaryKey: ['id'])
+        .eq('session_id', sessionId)
+        .order('triggered_at', ascending: false);
+  }
 }
