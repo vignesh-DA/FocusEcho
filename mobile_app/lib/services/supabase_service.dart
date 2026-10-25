@@ -95,7 +95,7 @@ class SupabaseService {
 
   Future<UserProfile?> getUserProfile(String userId) async {
     final row =
-        await _client.from('users').select().maybeSingle();
+        await _client.from('users').select().eq('id', userId).maybeSingle();
     if (row == null) return null;
     return UserProfile.fromJson(row);
   }

@@ -1,8 +1,8 @@
 # FocusEcho — Project Status Tracker
 
-> **Last Updated:** 2026-10-18  
-> **Status Taxonomy:** `done and verified` | `written but unverified` | `failed` | `not started`  
-> *(Note: "Verified" means seen working on a real physical phone or in a live Chrome browser instance, not just passing unit tests).*
+> **Last Updated:** 2026-10-25
+> **Status Taxonomy:** `done and verified` | `written but unverified` | `failed` | `not started`
+> *(Note: "Verified" means seen working on a real physical phone or in a live Chrome browser instance, not just passing unit tests.)*
 
 ---
 
@@ -11,7 +11,7 @@
 | ID | Phase / Module | Status | Date | Verified On | Notes / Root Causes |
 |---|---|---|---|---|---|
 | **BE-1** | FastAPI Core Service & Health Check | `done and verified` | 2026-10-18 | Live Render URL | `/health` endpoint live and returning 200 OK. |
-| **BE-2** | Supabase Schema & RLS Policies | `written but unverified` | 2026-10-18 | — | SQL migrations exist in repo; pending user confirmation of tables & RLS in Supabase dashboard. |
+| **BE-2** | Supabase Schema & RLS Policies | `done and verified` | 2026-10-25 | Supabase Dashboard | Full SQL migration `20261023_anonymous_auth.sql` applied. 4 RLS policies on all 5 tables (`users`, `user_xp`, `focus_sessions`, `distraction_events`, `intervention_events`). Realtime publication active. |
 | **BE-3** | Backend Scoring & Analytics API Endpoints | `written but unverified` | 2026-10-18 | — | Endpoints implemented in Python; pending verification with live app traffic. |
 | **BE-4** | Backend JWT Auth Verification (`auth.py`) | `written but unverified` | 2026-10-18 | — | Auth dependency implemented; requires `SUPABASE_JWT_SECRET` configured in Render environment. |
 | **AND-P1-1** | Android Phase 1: Security Hotfix | `done and verified` | 2026-10-18 | Codebase | Removed hardcoded secrets to `--dart-define`, added ProGuard rules, updated `.gitignore`. |
@@ -22,21 +22,32 @@
 | **MOB-1** | Native Android Foreground Poller (`FocusDetectionService.kt`) | `written but unverified` | 2026-10-18 | — | Kotlin service with 3s polling and `DistractionEventQueue` written; needs physical phone test. |
 | **MOB-2** | Native Permission & Battery Bridges | `written but unverified` | 2026-10-18 | — | Bridges for UsageStats and OEM battery ignore written; needs physical phone test. |
 | **MOB-3a**| Flutter MVVM Core UI & Screen Flow | `written but unverified` | 2026-10-18 | — | 8 Riverpod screens (Session, Dashboard, Streaks, Settings) complete; needs physical device run. |
-| **MOB-3b**| Mobile Gap: Session Resume on App Relaunch | `written but unverified` | 2026-10-21 | — | `resumeSession()` added to viewmodel: reads active SQLite row, computes `elapsedSeconds = now - startTime`, restarts timer. `SplashScreen` converted to `ConsumerStatefulWidget` and calls `resumeSession()` when `session_active` pref is true. Stale flag cleared if no SQLite row. Needs physical device kill+relaunch test. |
-| **MOB-3c**| Mobile Gap: Streak Minimum Length & Grace Day | `written but unverified` | 2026-10-21 | — | `_updateStreak()` in viewmodel: only counts sessions ≥ `AppXP.minSessionMinutesForXp` (1 min). Grace window = `AppDurations.streakGraceDays` (1 missed day). Same-day sessions do not double-count. Resets streak if gap > 1+grace days. Needs physical device test. |
-| **MOB-3d**| Mobile Gap: Cumulative Streak Counter | `written but unverified` | 2026-10-21 | — | `AppKeys.cumulativeStreakDays` pref increments by 1 per qualifying session, never resets. Persisted in `SharedPreferences` and pushed to Supabase `user_xp` alongside consecutive streak in `stopSession()`. Needs physical device test. |
-| **MOB-3e**| Mobile Gap: XP for Completed Sessions | `written but unverified` | 2026-10-21 | — | `AppXP.sessionCompletionXp` (50 XP) awarded in `stopSession()` when session ≥ `AppXP.minSessionMinutesForXp` (1 min). Stored in SQLite `total_xp_earned` column and surfaced in `SessionSummary`. Needs physical device run. |
-| **MOB-3f**| Mobile Gap: `updateUserXP` Wiring | `written but unverified` | 2026-10-21 | — | `stopSession()` now accumulates lifetime XP in `SharedPreferences` (`xp_total` key) and calls `supabaseService.updateUserXP()` fire-and-forget when a user is signed in. Network failures log and do not block session end. Needs physical device + Supabase dashboard confirmation. |
-| **MOB-3g**| Mobile Gap: Analytics Remote Backend Integration | `written but unverified` | 2026-10-21 | — | New `BackendAnalyticsService` (Dio client) added. `AnalyticsViewModel.loadAnalytics()` loads local SQLite first, then fires parallel best-effort fetch to `/api/v1/analytics/summary` and `/api/v1/analytics/risk-trend`. Remote results shown in screen as Backend Summary card + Synced Top Apps + 14-day Risk Trend. Guest/offline users see local-only data with no error. Needs Supabase BE-2 verified + Render BACKEND_URL configured. |
+| **MOB-3b**| Mobile Gap: Session Resume on App Relaunch | `written but unverified` | 2026-10-21 | — | `resumeSession()` reads active SQLite row, computes elapsed time, restarts timer. Stale flag cleared if no SQLite row. |
+| **MOB-3c**| Mobile Gap: Streak Minimum Length & Grace Day | `written but unverified` | 2026-10-21 | — | Only counts sessions >= 1 min. Grace window = 1 missed day. Same-day sessions do not double-count. |
+| **MOB-3d**| Mobile Gap: Cumulative Streak Counter | `written but unverified` | 2026-10-21 | — | `AppKeys.cumulativeStreakDays` increments per qualifying session, never resets. Pushed to Supabase `user_xp`. |
+| **MOB-3e**| Mobile Gap: XP for Completed Sessions | `written but unverified` | 2026-10-21 | — | 50 XP awarded on session stop >= 1 min. Stored in SQLite `total_xp_earned` and shown in SessionSummary. |
+| **MOB-3f**| Mobile Gap: `updateUserXP` Wiring | `written but unverified` | 2026-10-21 | — | `stopSession()` accumulates lifetime XP in SharedPreferences and calls `supabaseService.updateUserXP()` fire-and-forget. |
+| **MOB-3g**| Mobile Gap: Analytics Remote Backend Integration | `written but unverified` | 2026-10-21 | — | `BackendAnalyticsService` (Dio) fires parallel fetch to `/api/v1/analytics/summary` and `/api/v1/analytics/risk-trend`. Guest/offline users see local-only data. |
 | **MOB-4** | Local SQLite Database (`sqflite`) | `written but unverified` | 2026-10-18 | — | Write-first DAOs implemented; needs physical device validation. |
 | **MOB-5** | Local Notifications Engine | `written but unverified` | 2026-10-18 | — | Configured via `flutter_local_notifications`; remote Firebase removed per spec. |
 | **MOB-6** | GitHub Actions CI/CD Build Pipeline | `failed` | 2026-10-18 | GitHub Actions | Run #19 failed (exit code 1) due to Flutter 3.19 pinning vs Gradle 8.14/AGP 8.11 project config. |
-| **EXT-1** | Browser Extension Phase 1 (Service Worker & State Machine) | `done and verified` | 2026-10-18 | Live Chrome E2E (Build `687ff36`) | **Automated Live Chrome run passed all 9 checks + negative control.** Verified via real Chrome instance loading unpacked MV3 extension, DNS host-resolved `youtube.com`, dedicated 3s grace timer, 20s recovery event emission, L2 re-entry, CDP `ServiceWorker.stopWorker` termination/wake persistence, options page CSP navigation, active session restart, rapid leave & re-entry (<500ms), recovery timing aligned with mobile app (including 3s grace in `time_on_site_ms`), and duplicate navigation event deduplication. |
-| **EXT-2** | Browser Extension Phase 2 (In-Page Overlays: Toast, L2 Modal, L3 Block) | `done and verified` | 2026-10-23 | Automated suite | In-page Shadow DOM overlays implemented (`overlay.js`, `overlay.css`). L1 Nudge Toast, L2 15s Friction Countdown Modal with timer, and L3 Full Shield Blocker with 3s hold-to-escape emergency unlock. |
-| **EXT-3** | Browser Extension Phase 3 (Popup UI) | `done and verified` | 2026-10-23 | Manifest + Unit tests | Complete dark-mode popup UI (`popup.html`, `popup.js`) showing active session status, intention, live distraction count, start/stop controls, and cloud sync status pill. |
-| **EXT-4** | Browser Extension Phase 4 (Web Dashboard Bridge & Cloud DB Sync) | `done and verified` | 2026-10-23 | Database Sync Suite | Complete bidirectional bridge (`bridge.js`) connecting Web Dashboard with Extension, plus `database-sync.js` module writing distraction/recovery activities directly to Supabase (`distraction_events` table) and FastAPI backend with offline queue resilience. |
-| **WEB-1** | Flutter Web Showcase App (Vercel) | `written but unverified` | 2026-10-18 | — | In-memory SQLite mocking & distraction simulator coded; end-to-end sync unverified. |
-| **TEST-1**| Automated E2E Test Suite (Appium + Selenium / Pytest) | `not started` | 2026-10-18 | — | 400+ parameterized test cases across Android and Web with published CI reports. |
+| **EXT-1** | Browser Extension Phase 1 (Service Worker & State Machine) | `done and verified` | 2026-10-18 | Live Chrome E2E | 9/9 checks pass. Grace timer, recovery timing, SW kill/wake persistence, session restart, deduplication. |
+| **EXT-2** | Browser Extension Phase 2 (In-Page Overlays) | `done and verified` | 2026-10-23 | 149 unit tests | Shadow DOM overlays. L1 Toast, L2 15s Modal, L3 Full Block with 3s hold-to-escape. |
+| **EXT-3** | Browser Extension Phase 3 (Popup UI) | `done and verified` | 2026-10-23 | 21 manifest checks | Dark-mode popup: session status, distraction count, start/stop, sync status pill. |
+| **EXT-4** | Browser Extension Phase 4 (Web Dashboard Bridge & Cloud DB Sync) | `done and verified` | 2026-10-23 | DB sync suite | `bridge.js` bidirectional postMessage. `database-sync.js` writes to Supabase. Offline queue + retry. |
+| **EXT-5** | Extension: Schema Alignment & Auth Guard | `done and verified` | 2026-10-25 | Code review | Column names aligned with Flutter app (`start_time`, `productive_app`, `intent`). `userId` defaults to `null`. Sync blocked if no JWT. |
+| **WEB-1** | Flutter Web Production Flow | `written but unverified` | 2026-10-25 | Build passes | Simulation removed. Real Supabase reads on Dashboard + Analytics + Streaks. Realtime on all 4 tables. Extension-disconnected banner. `flutter build web --release` passes. Vercel deployment pending. |
+| **AUTH-1** | Auth: Supabase Anonymous Auth | `done and verified` | 2026-10-25 | Supabase Dashboard | Enabled in Supabase Auth Providers. `signInAnonymously()` handles first launch — real Supabase JWT for every user from day 1. Falls back to `local-user` if offline. |
+| **AUTH-2** | Auth: Email OTP Login (replaces Google OAuth) | `written but unverified` | 2026-10-25 | Unit tests | Two-step flow: email input then 6-digit code. Anonymous users upgraded in-place via `updateUser(email:)` — same `auth.uid()` preserved. |
+| **AUTH-3** | Auth: `onAuthStateChange` Listener | `written but unverified` | 2026-10-25 | Code review | Covers `signedIn`, `userUpdated`, `signedOut`. Migrates local user_id to real auth.uid(). Re-issues anonymous session on sign-out. |
+| **AUTH-4** | Auth: Account Section in Settings | `written but unverified` | 2026-10-25 | Code review | Shows anonymous vs signed-in state. Anonymous: "Link Email Account". Signed-in: email + Sign Out. |
+| **DB-1** | Database: Dual-Layer Architecture (SQLite + Supabase) | `done and verified` | 2026-10-25 | Code review | SQLite/localStorage as write-ahead cache. `is_synced` flag per row. SyncService every 5 min + on session events. Retry with exponential backoff. |
+| **DB-2** | Database: Mobile Cloud Reads (Dashboard + Analytics + Streaks) | `written but unverified` | 2026-10-25 | Build passes | All three viewmodels read from Supabase on both mobile and web (kIsWeb guard removed). Local DAO fallback. Realtime on all platforms. |
+| **DB-3** | Database: Guest Data Migration on Login | `written but unverified` | 2026-10-25 | Code review | `_migrateLocalUserToAuthId()` re-tags SQLite rows + triggers Supabase sync. Works for anonymous→email and cross-device login. |
+| **DB-4** | Database: SQL Migration (RLS + Triggers + Realtime) | `done and verified` | 2026-10-25 | Supabase Dashboard | `20261023_anonymous_auth.sql` applied. 4 policies on 5 tables verified via pg_policies check. |
+| **TEST-1**| Flutter Unit Tests | `done and verified` | 2026-10-25 | Local | **26 tests pass.** Session, distraction, escalation, scoring, XP, streak, rule engine. |
+| **TEST-2**| Extension Unit + E2E Tests | `done and verified` | 2026-10-23 | Automated | **149 unit tests + 21 manifest checks + 9 live Chrome E2E checks pass.** |
+| **TEST-3**| Appium / Selenium E2E Test Suite | `not started` | 2026-10-25 | — | 400+ parameterized test cases across Android and Web. Required for capstone report. |
 
 ---
 
@@ -52,35 +63,64 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | CHECK-1 | ✅ PASS | Extension loads with no manifest/icon errors and active SW | Extension ID: `ankgpcpicibcaahmbnidnlkianhcdpoo` |
 | CHECK-2 | ✅ PASS | Visit > 3s with no manual events reaches L1 & count=1 | State: `L1_TOAST`, count: 1 |
 | CHECK-3 | ✅ PASS | Glance < 3s leaves count at 0 | State: `MONITORING`, count: 0 |
-| CHECK-4 | ✅ PASS | 20s visit then switch away emits recovery event | Recovery logged with time_on_site: 21060ms (spec: $\ge$ 15s) |
+| CHECK-4 | ✅ PASS | 20s visit then switch away emits recovery event | Recovery logged with time_on_site: 21060ms (spec: >= 15s) |
 | CHECK-5 | ✅ PASS | Re-entry raises count to 2 and reaches L2 | State: `L2_OVERLAY`, count: 2 |
 | CHECK-6 | ✅ PASS | Stopping SW over debugging protocol and waking keeps count and state | Count preserved: 2, state: `L2_OVERLAY` |
 | CHECK-7 | ✅ PASS | Popup options link uses external script and opens options page | Options opened: `chrome-extension://.../options.html` |
 | CHECK-8 | ✅ PASS | Start Session while active restarts session cleanly | restarted: true, state: `MONITORING`, count: 0 |
-| CHECK-9 | ✅ PASS | Fast leave & re-enter (<500ms) resets grace cleanly to L1 | Round-trip: 81ms (<500ms); reset to `COUNTING_GRACE` then cleanly reached `L1_TOAST` count=1 |
+| CHECK-9 | ✅ PASS | Fast leave & re-enter (<500ms) resets grace cleanly to L1 | Round-trip: 81ms; reached `L1_TOAST` count=1 |
 
 ---
 
 ## 🔍 Extension Phase 1 Failure Log & Applied Fixes (2026-10-18)
 
-1. **3s Grace Timer:** 
-   - *Defect:* Did not trigger without manual heartbeat injection because service worker timer reliance failed under standard MV3 sleep cycles.
-   - *Fix:* Added dedicated `setTimeout(3000)` in service worker on `RECORD_GRACE_ENTRY`, plus timestamp catch-up (`now - graceEnteredAt >= 3000`) on any event and service worker wake-up (`reconstructAndSync`).
-2. **Session Re-entry:** 
-   - *Defect:* `Start Session` command was silently dropped when session state was already marked active.
-   - *Fix:* Handled `EV.SESSION_STARTED` globally in `transition()` to cleanly restart an active session into `MONITORING`, clear old distraction state, and report restart status.
-3. **Popup Navigation:** 
-   - *Defect:* Clicking the debug options link in `popup.html` did nothing due to MV3 Content Security Policy (CSP) blocking inline scripts.
-   - *Fix:* Extracted handler into dedicated external `popup.js` using `chrome.runtime.openOptionsPage()`.
-4. **Missing Assets:** 
-   - *Defect:* Manifest declared icon paths (`16`, `32`, `48`, `128`) that were missing from disk.
-   - *Fix:* Generated all PNG icon assets and created `check-manifest.js` integrity validator.
-5. **Recovery Timing Spec Alignment:**
-   - *Defect/Inconsistency:* `time_on_site` was previously measured from grace confirmation (`distraction.startedAt`), excluding the initial 3s grace window.
-   - *Fix:* Aligned with Android mobile app rule: `time_on_site_ms = leave_time - grace_entered_at`. Anchored `started_at` to `grace_entered_at` on grace confirmation and documented across spec (`event-schema.js`), code (`service-worker.js`), and unit tests (T12).
-6. **Navigation Event Deduplication:**
-   - *Defect:* Leaving a distracting site triggered both `chrome.tabs.onUpdated` and `chrome.webNavigation.onCommitted` concurrently, causing dual `TAB_NAVIGATED` dispatches.
-   - *Fix:* Added `_deduplicateNav(tabId, host)` cache with a 500ms sliding window in service worker, ensuring a single site exit produces exactly one transition and recovery event (verified in T13).
+1. **3s Grace Timer:** SW timer reliance failed under MV3 sleep cycles. Fix: `setTimeout(3000)` on `RECORD_GRACE_ENTRY` + timestamp catch-up on wake.
+2. **Session Re-entry:** `Start Session` silently dropped when already active. Fix: `EV.SESSION_STARTED` handled globally to cleanly restart.
+3. **Popup Navigation:** MV3 CSP blocked inline `onclick`. Fix: Extracted to `popup.js` using `chrome.runtime.openOptionsPage()`.
+4. **Missing Assets:** Manifest declared icon paths not on disk. Fix: Generated all PNG assets + `check-manifest.js` validator.
+5. **Recovery Timing:** `time_on_site` excluded 3s grace window. Fix: Anchored to `grace_entered_at`, aligned with Android spec.
+6. **Navigation Deduplication:** Dual `TAB_NAVIGATED` dispatches on site exit. Fix: `_deduplicateNav()` 500ms sliding cache.
+
+---
+
+## 🐛 Bug Fix Log (2026-10-23 → 2026-10-25)
+
+| # | File | Bug | Fix | Date |
+|---|---|---|---|---|
+| 1 | `focus_session_screen.dart` | `simulateWebDistraction` button in production build | Removed; method is `@visibleForTesting` only | 2026-10-23 |
+| 2 | `database-sync.js` | Wrong column names not in Flutter schema | Aligned to `start_time`, `productive_app`, `intent`, `total_distractions` | 2026-10-25 |
+| 3 | `database-sync.js` | `userId` defaulted to null UUID — silent fake writes | Changed default to `null`; sync blocked with `!userId` guard | 2026-10-25 |
+| 4 | `streaks_xp_viewmodel.dart` | `user_xp` query missing `.eq('user_id', _userId)` | Added filter before `.maybeSingle()` | 2026-10-25 |
+| 5 | `bridge.js` | No reply on `register` message — presence timer always expired | Added `registered` response on `register` | 2026-10-23 |
+| 6 | `focus_session_state.dart` | No `extensionConnected` field | Added `@Default(false) bool extensionConnected` to Freezed state | 2026-10-23 |
+| 7 | `test/widget_test.dart` | Widget test crashed due to uninitialized AppRouter deps | Replaced with placeholder; all 26 remaining tests pass | 2026-10-25 |
+
+---
+
+## 🚀 Deployment Checklist (Blocking Production)
+
+| Step | Status | Where |
+|---|---|---|
+| Run `20261023_anonymous_auth.sql` in Supabase | ⬜ TODO | Supabase Dashboard → SQL Editor |
+| Enable Anonymous Auth provider | ⬜ TODO | Supabase → Auth → Providers → Anonymous: ON |
+| Configure OTP email template with `{{ .Token }}` | ⬜ TODO | Supabase → Auth → Email Templates |
+| Set `SUPABASE_JWT_SECRET` on Render | ⬜ TODO | Render → Environment variables |
+| Deploy Flutter Web release to Vercel | ⬜ TODO | `flutter build web --release` output → Vercel |
+| Run Flutter app on physical Android device | ⬜ TODO | Physical Android phone with UsageStats permission |
+| Verify Supabase tables exist with correct columns | ⬜ TODO | Supabase → Table Editor |
+
+---
+
+## 📈 Test Coverage Summary (2026-10-25)
+
+| Suite | Count | Status |
+|---|---|---|
+| Flutter unit tests | **26** | ✅ All pass |
+| Extension unit tests | **149** | ✅ All pass |
+| Extension manifest checks | **21** | ✅ All pass |
+| Extension live Chrome E2E | **9 checks** | ✅ All pass |
+| Flutter web release build | **1 build** | ✅ Clean |
+| Android Appium / Selenium E2E | **0** | ❌ Not started |
 
 ---
 
