@@ -11,6 +11,9 @@
  */
 
 import { SK } from '../shared/constants.js';
+import { Logger } from '../shared/logger.js';
+
+const log = Logger.tag('DB-SYNC');
 
 // Default project configuration (mirrors backend/.env)
 export const DEFAULT_SUPABASE_URL = 'https://dfqwjobcbhifvuwwroys.supabase.co';
@@ -187,10 +190,10 @@ async function ensureFocusSessionInCloud(session, creds) {
       body: JSON.stringify(sessionRow),
     });
     if (!resp.ok) {
-      console.warn('[FE DB-SYNC] focus_session upsert warning:', resp.status, await resp.text());
+      log.w(`focus_session parent upsert warning (${resp.status}): ${await resp.text()}`);
     }
   } catch (err) {
-    console.warn('[FE DB-SYNC] focus_session network skip:', err.message);
+    log.w(`focus_session parent network skip: ${err.message}`);
   }
 }
 
@@ -283,13 +286,13 @@ export async function syncEventQueue(activeSession = null) {
 
     if (res.ok) {
       writeSuccess = true;
-      console.log(`[FE DB-SYNC] Successfully wrote ${rows.length} events to Supabase distraction_events!`);
+      log.i(`Successfully wrote ${rows.length} events to Supabase distraction_events!`);
     } else {
       const errText = await res.text();
-      console.warn(`[FE DB-SYNC] Supabase write failed (${res.status}): ${errText}`);
+      log.w(`Supabase write failed (${res.status}): ${errText}`);
     }
   } catch (netErr) {
-    console.warn(`[FE DB-SYNC] Network offline or Supabase unreachable: ${netErr.message}`);
+    log.w(`Network offline or Supabase unreachable: ${netErr.message}`);
   }
 
   // Fallback to FastAPI backend /api/v1/events/batch if direct Supabase failed
@@ -309,10 +312,10 @@ export async function syncEventQueue(activeSession = null) {
 
       if (backendRes.ok) {
         writeSuccess = true;
-        console.log(`[FE DB-SYNC] Successfully synced ${rows.length} events via FastAPI backend!`);
+        log.i(`Successfully synced ${rows.length} events via FastAPI backend!`);
       }
     } catch (bErr) {
-      console.warn(`[FE DB-SYNC] Backend batch endpoint unreachable: ${bErr.message}`);
+      log.w(`Backend batch endpoint unreachable: ${bErr.message}`);
     }
   }
 

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'features/focus_session/focus_session_viewmodel.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,10 +38,12 @@ Future<void> main() async {
   if (kIsWeb) {
     await DatabaseHelper.initWebStorage(prefs);
     // Pre-populate web-friendly app names on first run so Focus Session works immediately
-    if ((prefs.getString(AppKeys.productiveApps) ?? '[]') == '[]') {
+    final existingApps = prefs.getString(AppKeys.productiveApps) ?? '[]';
+    if (existingApps == '[]' ||
+        existingApps == '["Figma","VS Code","GitHub","Google Docs","Notion"]') {
       await prefs.setString(
         AppKeys.productiveApps,
-        '["Figma","VS Code","GitHub","Google Docs","Notion"]',
+        jsonEncode(FocusSessionViewModel.defaultProductiveApps),
       );
     }
     if ((prefs.getString(AppKeys.distractingApps) ?? '[]') == '[]') {

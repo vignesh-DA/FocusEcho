@@ -181,15 +181,15 @@ class FocusSessionScreen extends ConsumerWidget {
                       width: double.infinity,
                       color: AppColors.accentYellow.withValues(alpha: 0.15),
                       padding: const EdgeInsets.all(10),
-                      child: Row(
+                      child: const Row(
                         children: [
-                          const Icon(Icons.extension_off,
+                          Icon(Icons.extension_off,
                               color: AppColors.accentYellow, size: 16),
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               'Install the FocusEcho Chrome extension for real-time monitoring.',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   color: AppColors.accentYellow, fontSize: 12),
                             ),
                           ),
@@ -226,18 +226,177 @@ class FocusSessionScreen extends ConsumerWidget {
   }
 }
 
-/// Feature 1 — setup view with the required Focus Intent step.
-class _SessionSetupView extends StatelessWidget {
+/// Feature 1 — Enhanced setup view with rich category chips, custom app creation,
+/// quick intent suggestions, and responsive layout.
+class _SessionSetupView extends StatefulWidget {
   const _SessionSetupView({required this.state, required this.vm});
 
   final FocusSessionState state;
   final FocusSessionViewModel vm;
 
   @override
+  State<_SessionSetupView> createState() => _SessionSetupViewState();
+}
+
+class _SessionSetupViewState extends State<_SessionSetupView> {
+  late final TextEditingController _intentCtrl;
+
+  static const List<String> _quickPicks = [
+    'VS Code',
+    'Figma',
+    'GitHub',
+    'Notion',
+    'Google Docs',
+    'ChatGPT / Claude',
+    'Slack',
+    'Cursor',
+  ];
+
+  static const List<String> _quickIntents = [
+    'Deep coding session',
+    'Feature implementation',
+    'Bug fixes & tests',
+    'UI & design review',
+    'Documentation & writing',
+    'Research & study',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _intentCtrl = TextEditingController(text: widget.state.intent);
+  }
+
+  @override
+  void didUpdateWidget(covariant _SessionSetupView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.state.intent != oldWidget.state.intent &&
+        widget.state.intent != _intentCtrl.text) {
+      _intentCtrl.text = widget.state.intent;
+    }
+  }
+
+  @override
+  void dispose() {
+    _intentCtrl.dispose();
+    super.dispose();
+  }
+
+  IconData _iconForApp(String app) {
+    final l = app.toLowerCase();
+    if (l.contains('code') || l.contains('cursor') || l.contains('intellij') || l.contains('terminal')) {
+      return Icons.code_rounded;
+    }
+    if (l.contains('git') || l.contains('github') || l.contains('gitlab')) {
+      return Icons.commit_rounded;
+    }
+    if (l.contains('figma') || l.contains('design') || l.contains('canva') || l.contains('photoshop') || l.contains('blender')) {
+      return Icons.palette_outlined;
+    }
+    if (l.contains('doc') || l.contains('word') || l.contains('overleaf') || l.contains('latex')) {
+      return Icons.description_outlined;
+    }
+    if (l.contains('sheet') || l.contains('excel')) {
+      return Icons.table_chart_outlined;
+    }
+    if (l.contains('notion') || l.contains('obsidian') || l.contains('note')) {
+      return Icons.auto_stories_outlined;
+    }
+    if (l.contains('slack') || l.contains('teams') || l.contains('meet') || l.contains('zoom')) {
+      return Icons.chat_bubble_outline_rounded;
+    }
+    if (l.contains('chatgpt') || l.contains('claude') || l.contains('perplexity') || l.contains('ai')) {
+      return Icons.psychology_outlined;
+    }
+    if (l.contains('coursera') || l.contains('khan') || l.contains('duolingo') || l.contains('study')) {
+      return Icons.school_outlined;
+    }
+    return Icons.apps_rounded;
+  }
+
+  void _showAddCustomAppDialog() {
+    final controller = TextEditingController();
+    showDialog<void>(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: AppColors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: const BorderSide(color: AppColors.border),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.add_circle_outline, color: AppColors.accentBlue),
+            const SizedBox(width: 8),
+            Text('Add Productive App', style: AppTextStyles.displayMedium.copyWith(fontSize: 20)),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Enter the name of the app or website you work with:',
+              style: AppTextStyles.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'e.g. Linear, Jupyter, Blender, Company Portal',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: AppColors.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+              ),
+              onSubmitted: (val) {
+                if (val.trim().isNotEmpty) {
+                  widget.vm.addProductiveApp(val.trim());
+                  Navigator.of(dialogCtx).pop();
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogCtx).pop(),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accentBlue,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                widget.vm.addProductiveApp(controller.text.trim());
+                Navigator.of(dialogCtx).pop();
+              }
+            },
+            child: const Text('Add & Select', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final intent = state.intent;
+    final state = widget.state;
+    final vm = widget.vm;
+    final intent = _intentCtrl.text;
     final canStart =
         state.selectedProductiveApp != null && intent.trim().isNotEmpty;
+
+    final allApps = state.availableProductiveApps;
+    final selectedApp = state.selectedProductiveApp;
 
     return Scaffold(
       appBar: AppBar(
@@ -252,97 +411,324 @@ class _SessionSetupView extends StatelessWidget {
       ),
       body: Center(
         child: SingleChildScrollView(
-          child: Container(
-            margin: const EdgeInsets.all(20),
-            padding: const EdgeInsets.all(20),
-            decoration: AppDecorations.glassmorphismCard(),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Ready to Focus?',
-                    style: AppTextStyles.displayLarge.copyWith(fontSize: 28)),
-                const SizedBox(height: 16),
-                Text('Select your productive app',
-                    style: AppTextStyles.bodyMedium),
-                const SizedBox(height: 8),
-                if (state.availableProductiveApps.isEmpty)
-                  Text('No apps selected. Go to Settings > App Selector.',
-                      style: AppTextStyles.bodyMedium
-                          .copyWith(color: AppColors.accentRed))
-                else
-                  DropdownButton<String>(
-                    value: state.selectedProductiveApp,
-                    dropdownColor: AppColors.card,
-                    isExpanded: true,
-                    items: state.availableProductiveApps
-                        .map((app) =>
-                            DropdownMenuItem(value: app, child: Text(app)))
-                        .toList(),
-                    onChanged: (v) {
-                      if (v != null) vm.selectProductiveApp(v);
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
+            child: Container(
+              padding: const EdgeInsets.all(28),
+              decoration: AppDecorations.glassmorphismCard(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ── Header Badge & Title ─────────────────────────────────
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: AppColors.accentBlue.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: AppColors.accentBlue.withValues(alpha: 0.3)),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.bolt_rounded, size: 14, color: AppColors.accentBlue),
+                            const SizedBox(width: 4),
+                            Text(
+                              'DEEP WORK SETUP',
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.accentBlue,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text('Ready to Focus?',
+                      style: AppTextStyles.displayLarge.copyWith(fontSize: 30)),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Pick what you are working in and state your intention for this session.',
+                    style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Section 1: Quick Picks ────────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('Top Productive Tools',
+                          style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '${allApps.length} tools available',
+                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      ..._quickPicks.map((app) {
+                        final isSelected = selectedApp == app;
+                        return ChoiceChip(
+                          selected: isSelected,
+                          onSelected: (_) => vm.selectProductiveApp(app),
+                          avatar: Icon(
+                            _iconForApp(app),
+                            size: 16,
+                            color: isSelected ? Colors.black : AppColors.accentBlue,
+                          ),
+                          label: Text(app),
+                          labelStyle: TextStyle(
+                            color: isSelected ? Colors.black : Colors.white,
+                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontSize: 13,
+                          ),
+                          selectedColor: AppColors.accentBlue,
+                          backgroundColor: AppColors.surface,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(
+                              color: isSelected ? AppColors.accentBlue : AppColors.border,
+                            ),
+                          ),
+                        );
+                      }),
+                      ActionChip(
+                        onPressed: _showAddCustomAppDialog,
+                        avatar: const Icon(Icons.add, size: 16, color: AppColors.accentGreen),
+                        label: const Text('+ Custom app'),
+                        labelStyle: const TextStyle(
+                          color: AppColors.accentGreen,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 13,
+                        ),
+                        backgroundColor: AppColors.surface,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          side: BorderSide(color: AppColors.accentGreen.withValues(alpha: 0.5)),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+
+                  // ── Section 2: All Apps Dropdown Selector ─────────────────
+                  Text('Or select from all apps:',
+                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                  const SizedBox(height: 8),
+                  InputDecorator(
+                    decoration: InputDecoration(
+                      filled: true,
+                      fillColor: AppColors.surface,
+                      prefixIcon: const Icon(Icons.search_rounded, color: AppColors.accentBlue),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.accentBlue),
+                      ),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: allApps.contains(selectedApp)
+                            ? selectedApp
+                            : (allApps.isNotEmpty ? allApps.first : null),
+                        menuMaxHeight: 320,
+                        isExpanded: true,
+                        dropdownColor: AppColors.surface,
+                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        items: allApps.map((app) {
+                          return DropdownMenuItem<String>(
+                            value: app,
+                            child: Row(
+                              children: [
+                                Icon(_iconForApp(app), size: 18, color: AppColors.accentBlue),
+                                const SizedBox(width: 10),
+                                Text(app, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (v) {
+                          if (v != null) vm.selectProductiveApp(v);
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // ── Section 3: Focus Intent ──────────────────────────────
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text('What is your focus intent?',
+                          style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                      Text(
+                        '${intent.trim().length}/80',
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: intent.trim().isNotEmpty
+                              ? AppColors.accentGreen
+                              : AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _intentCtrl,
+                    maxLength: 80,
+                    textInputAction: TextInputAction.done,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      hintText: 'e.g. Finish the analytics dashboard charts',
+                      hintStyle: const TextStyle(color: Colors.white38),
+                      counterText: '',
+                      filled: true,
+                      fillColor: AppColors.surface,
+                      prefixIcon: const Icon(Icons.track_changes_rounded, color: AppColors.accentBlue),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: AppColors.accentBlue),
+                      ),
+                    ),
+                    onChanged: (val) {
+                      setState(() {});
+                      vm.setIntent(val);
                     },
                   ),
-                const SizedBox(height: 20),
-                // Feature 1 — required Focus Intent (max ~80 chars).
-                Text('What is your focus intent?',
-                    style: AppTextStyles.bodyLarge),
-                const SizedBox(height: 6),
-                TextField(
-                  maxLength: 80,
-                  textInputAction: TextInputAction.done,
-                  decoration: InputDecoration(
-                    hintText: 'e.g. Finish the analytics dashboard',
-                    counterText: '${intent.trim().length}/80',
-                    border: const OutlineInputBorder(),
-                  ),
-                  onChanged: vm.setIntent,
-                ),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  onTap: canStart
-                      ? () => vm.startSession(
-                            state.selectedProductiveApp!,
-                            intent: intent,
-                          )
-                      : null,
-                  child: Container(
-                    width: 140,
-                    height: 140,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: canStart
-                          ? AppColors.accentBlue
-                          : AppColors.textSecondary,
-                      boxShadow: canStart
-                          ? [
-                              BoxShadow(
-                                color:
-                                    AppColors.accentBlue.withValues(alpha: 0.4),
-                                blurRadius: 24,
-                              ),
-                            ]
-                          : const [],
-                    ),
-                    child: Center(
-                      child: Text('START',
-                          style: AppTextStyles.displayMedium
-                              .copyWith(color: Colors.white)),
-                    ),
-                  ),
-                ),
-                if (!canStart) ...[
                   const SizedBox(height: 10),
-                  Text(
-                    state.selectedProductiveApp == null
-                        ? 'Pick a productive app to begin.'
-                        : 'Enter your intent above to unlock the start button.',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.bodyMedium
-                        .copyWith(color: AppColors.accentYellow),
+
+                  // Quick Intent Suggestion Chips
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: _quickIntents.map((qi) {
+                      return ActionChip(
+                        backgroundColor: AppColors.surface.withValues(alpha: 0.6),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          side: const BorderSide(color: AppColors.border),
+                        ),
+                        label: Text(
+                          qi,
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+                        ),
+                        onPressed: () {
+                          _intentCtrl.text = qi;
+                          setState(() {});
+                          vm.setIntent(qi);
+                        },
+                      );
+                    }).toList(),
                   ),
+                  const SizedBox(height: 28),
+
+                  // ── Section 4: Start Action Button ─────────────────────────
+                  InkWell(
+                    onTap: canStart
+                        ? () => vm.startSession(
+                              selectedApp!,
+                              intent: intent,
+                            )
+                        : null,
+                    borderRadius: BorderRadius.circular(14),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      padding: const EdgeInsets.symmetric(vertical: 18),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        gradient: canStart
+                            ? const LinearGradient(
+                                colors: [Color(0xFF00C2FF), Color(0xFF0072FF)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              )
+                            : null,
+                        color: canStart ? null : AppColors.surface,
+                        border: Border.all(
+                          color: canStart ? AppColors.accentBlue : AppColors.border,
+                        ),
+                        boxShadow: canStart
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.accentBlue.withValues(alpha: 0.4),
+                                  blurRadius: 20,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ]
+                            : const [],
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            size: 24,
+                            color: canStart ? Colors.white : AppColors.textSecondary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'START FOCUS SESSION',
+                            style: AppTextStyles.displayMedium.copyWith(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.1,
+                              color: canStart ? Colors.white : AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  if (!canStart)
+                    Text(
+                      selectedApp == null
+                          ? 'Select a productive tool above to continue.'
+                          : 'Enter your focus intent above to unlock the session.',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.accentYellow,
+                      ),
+                    )
+                  else
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.check_circle_outline, size: 14, color: AppColors.accentGreen),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Ready to work in $selectedApp: "${intent.trim()}"',
+                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.accentGreen),
+                        ),
+                      ],
+                    ),
                 ],
-              ],
+              ),
             ),
           ),
         ),

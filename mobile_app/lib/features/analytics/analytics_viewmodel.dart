@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -10,6 +9,7 @@ import '../../core/providers/app_dependencies.dart';
 import '../../local_db/distraction_event_dao.dart';
 import '../../local_db/focus_session_dao.dart';
 import '../../services/backend_analytics_service.dart';
+import '../../core/utils/fe_logger.dart';
 
 /// Feature 3 — Recovery Rate definition (primary, used everywhere):
 /// the % of distractions recovered within 30 seconds over a rolling window.
@@ -120,8 +120,9 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   /// the screen stays fully functional with local data.
   Future<void> loadAnalytics() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
+    FELog.i('Analytics', 'Starting loadAnalytics computation');
     try {
-      // ── Local SQLite (always available) ─────────────────────────────────
+      // ── Local SQLite / Cloud fetch ─────────────────────────────────────
       final sessions = await _loadSessionsFromCloud();
       final now = DateTime.now();
       final weeklyFocus = List<double>.filled(7, 0);
@@ -155,6 +156,13 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       );
       final trend = thisWeek.rate - lastWeek.rate;
 
+      FELog.i(
+        'Analytics',
+        'Analytics calculated: ${sessions.length} sessions, ${recentEvents.length} events, '
+        'weeklyFocusSum=${weeklyFocus.reduce((a, b) => a + b).toInt()}m, '
+        'recoveryRate=${thisWeek.rate.toStringAsFixed(1)}%, topApps=${appCount.keys.length}',
+      );
+
       state = state.copyWith(
         weeklyFocusMinutes: weeklyFocus,
         dailyDistractions: dailyDistractions,
@@ -173,8 +181,8 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
 
       // ── Remote backend (MOB-3g) — fire-and-forget enrichment ─────────────
       unawaited(_loadRemote());
-    } catch (e) {
-      debugPrint('Analytics load error: $e');
+    } catch (e, st) {
+      FELog.e('Analytics', 'Analytics load failed', e, st);
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Could not load analytics. Pull to retry.',
@@ -195,9 +203,10 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
           .map((row) =>
               FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
           .toList();
+      FELog.d('Analytics', 'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
       if (cloudSessions.isNotEmpty) return cloudSessions;
     } catch (e) {
-      debugPrint('Web analytics session query failed: ');
+      FELog.w('Analytics', 'Cloud session query failed, falling back to local cache: $e');
     }
     return _sessionDao.getSessionHistory(60);
   }
@@ -218,9 +227,10 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
                 Map<String, dynamic>.from(row as Map)))
             .where((e) => e.eventType == 'distraction')
             .toList();
+        FELog.d('Analytics', 'Cloud query: fetched ${cloudEvents.length} events across ${sessionIds.length} sessions');
         if (cloudEvents.isNotEmpty) return cloudEvents;
       } catch (e) {
-        debugPrint('Web analytics event query failed: ');
+        FELog.w('Analytics', 'Cloud event query failed, falling back to local cache: $e');
       }
     }
     for (final session in sessions) {
@@ -233,6 +243,7 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         events.add(e);
       }
     }
+    FELog.d('Analytics', 'Resolved total events: ${events.length}');
     return events.where((e) => e.eventType == 'distraction').toList();
   }
 
@@ -242,36 +253,39 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     // Retrieve Supabase session JWT as the Bearer token for the FastAPI backend.
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) {
-      // Guest / offline user — skip remote entirely.
-      debugPrint('[AnalyticsVM] No auth session; skipping remote backend.');
+      FELog.d('Analytics', 'No auth session; skipping remote backend enrichment');
       return;
     }
     _backendAnalytics.setToken(session.accessToken);
     final userId = session.user.id;
+    FELog.d('Analytics', 'Fetching remote backend summary & risk trend for user: $userId');
 
-    // Parallel fetch — both calls are independent.
-    final results = await Future.wait<dynamic>([
-      _backendAnalytics.fetchSummary(userId),
-      _backendAnalytics.fetchRiskTrend(userId),
-    ]);
+    try {
+      // Parallel fetch — both calls are independent.
+      final results = await Future.wait<dynamic>([
+        _backendAnalytics.fetchSummary(userId),
+        _backendAnalytics.fetchRiskTrend(userId),
+      ]);
 
-    final summary = results[0] as AnalyticsSummary?;
-    final riskTrend = (results[1] as List).cast<RiskDayEntry>();
+      final summary = results[0] as AnalyticsSummary?;
+      final riskTrend = (results[1] as List).cast<RiskDayEntry>();
 
-    state = state.copyWith(
-      remoteFocusScoreAverage: summary?.focusScoreAverage,
-      remoteWeeklySessions: summary?.weeklySessions,
-      remoteTopApps: summary?.topDistractingApps ?? [],
-      remoteRiskTrend: riskTrend,
-      isRemoteLoaded: true,
-    );
+      state = state.copyWith(
+        remoteFocusScoreAverage: summary?.focusScoreAverage,
+        remoteWeeklySessions: summary?.weeklySessions,
+        remoteTopApps: summary?.topDistractingApps ?? [],
+        remoteRiskTrend: riskTrend,
+        isRemoteLoaded: true,
+      );
 
-    debugPrint(
-      '[AnalyticsVM] Remote loaded: '
-      'focusAvg=${summary?.focusScoreAverage} '
-      'weeklySessions=${summary?.weeklySessions} '
-      'riskDays=${riskTrend.length}',
-    );
+      FELog.i(
+        'Analytics',
+        'Remote backend enrichment loaded: focusAvg=${summary?.focusScoreAverage}, '
+        'weeklySessions=${summary?.weeklySessions}, riskDays=${riskTrend.length}',
+      );
+    } catch (e) {
+      FELog.w('Analytics', 'Remote backend enrichment failed (continuing with local data): $e');
+    }
   }
 
   /// Computes RecoveryStats for distractions triggered within

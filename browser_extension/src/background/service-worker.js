@@ -25,16 +25,18 @@ import { normalizeHost, isDistracting, isWebUrl } from '../shared/host-utils.js'
 import { mkDistractionEvent, mkRecoveryEvent, mkEmergencyExitEvent } from '../shared/event-schema.js';
 import { defaultConfig } from '../shared/storage-schema.js';
 import { syncEventQueue, saveSyncCredentials } from './database-sync.js';
+import { Logger } from '../shared/logger.js';
 
 // ---------------------------------------------------------------------------
-// Logging — structured, consistent prefix
+// Logging — structured, Python-style tracing with levels & timestamps
 // ---------------------------------------------------------------------------
 const LOG = {
-  sm:    (msg, ...a) => console.log(`[FE SM]  ${msg}`, ...a),
-  sw:    (msg, ...a) => console.log(`[FE SW]  ${msg}`, ...a),
-  act:   (msg, ...a) => console.log(`[FE ACT] ${msg}`, ...a),
-  warn:  (msg, ...a) => console.warn(`[FE ⚠]  ${msg}`, ...a),
-  err:   (msg, ...a) => console.error(`[FE ✖]  ${msg}`, ...a),
+  sm:    (msg, ...a) => Logger.debug('SM', msg, ...a),
+  sw:    (msg, ...a) => Logger.info('SW', msg, ...a),
+  d:     (msg, ...a) => Logger.debug('SW', msg, ...a),
+  act:   (msg, ...a) => Logger.info('ACT', msg, ...a),
+  warn:  (msg, ...a) => Logger.warn('SW', msg, ...a),
+  err:   (msg, ...a) => Logger.error('SW', msg, ...a),
 };
 
 // ---------------------------------------------------------------------------
@@ -452,21 +454,56 @@ async function _executeAction(name, param, { session, distraction, event, now })
 
     case 'NAVIGATE_BACK_TO_FOCUS': {
       const targetTabId = session?.last_productive_tab_id;
-      if (targetTabId) {
+      const distractionList = session?.distraction_list ?? [];
+
+      // Helper: try to activate a known tab id; returns true on success.
+      async function tryActivate(tabId) {
         try {
-          await chrome.tabs.update(targetTabId, { active: true });
-          LOG.act(`navigated back to tab ${targetTabId}`);
+          await chrome.tabs.update(tabId, { active: true });
+          // Also bring its window to the foreground.
+          const tab = await chrome.tabs.get(tabId);
+          if (tab?.windowId) await chrome.windows.update(tab.windowId, { focused: true });
+          return true;
         } catch (_) {
-          // Tab was closed — open new tab
-          await chrome.tabs.create({});
-          LOG.act('lastProductiveTab closed — opened new tab');
+          return false;
         }
-      } else {
-        await chrome.tabs.create({});
-        LOG.act('no lastProductiveTab — opened new tab');
       }
+
+      // 1. Try the stored productive tab first.
+      if (targetTabId && await tryActivate(targetTabId)) {
+        LOG.act(`switched to lastProductiveTab ${targetTabId}`);
+        break;
+      }
+
+      // 2. Scan all tabs for a non-distracting one to switch to.
+      try {
+        const allTabs = await chrome.tabs.query({});
+        const currentTab = (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+        const productive = allTabs.find(t => {
+          if (!t.url || !t.id) return false;
+          if (t.id === currentTab?.id) return false; // skip current blocked tab
+          try {
+            const host = new URL(t.url).hostname.replace(/^www\./, '');
+            return !isDistracting(host, distractionList);
+          } catch (_) {
+            return false;
+          }
+        });
+
+        if (productive && await tryActivate(productive.id)) {
+          LOG.act(`switched to non-distracting tab ${productive.id} (${productive.url})`);
+          break;
+        }
+      } catch (e) {
+        LOG.warn('tab scan failed:', e.message);
+      }
+
+      // 3. Last resort: open a new tab (all existing tabs are distracting or closed).
+      await chrome.tabs.create({});
+      LOG.act('all tabs distracting or no tabs — opened new tab');
       break;
     }
+
 
     case 'SHOW_OVERLAY': {
       const level = parseInt(param, 10);

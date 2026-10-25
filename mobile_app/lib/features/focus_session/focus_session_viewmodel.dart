@@ -18,6 +18,7 @@ import '../../local_db/intervention_event_dao.dart';
 import '../../services/sync_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/browser_monitor/browser_monitor.dart';
+import '../../core/utils/fe_logger.dart';
 import 'focus_session_state.dart';
 import 'focus_detection_engine.dart';
 import 'rule_engine.dart';
@@ -140,22 +141,83 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     'com.android.settings',
   };
 
+  static const List<String> defaultProductiveApps = [
+    'VS Code',
+    'GitHub',
+    'Figma',
+    'Notion',
+    'Google Docs',
+    'Cursor',
+    'GitLab',
+    'Google Sheets',
+    'Slack',
+    'ChatGPT / Claude',
+    'Obsidian',
+    'Terminal / CLI',
+    'IntelliJ IDEA',
+    'Stack Overflow',
+    'Postman',
+    'Docker',
+    'Linear',
+    'Jira',
+    'Canva',
+    'Adobe Photoshop',
+    'Blender',
+    'Overleaf (LaTeX)',
+    'Microsoft Excel',
+    'Microsoft Word',
+    'Microsoft Teams',
+    'Zoom',
+    'Google Meet',
+    'Perplexity',
+    'ArXiv',
+    'Coursera',
+    'Khan Academy',
+    'Duolingo',
+  ];
+
   void _loadAvailableApps() {
     final raw = _prefs.getString(AppKeys.productiveApps) ?? '[]';
     try {
       final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
-      final apps = decoded.cast<String>().toList();
+      var apps = decoded.cast<String>().toList();
+      final legacyWebDefaults = {'Figma', 'VS Code', 'GitHub', 'Google Docs', 'Notion'};
+      final isLegacyList = apps.length == 5 && legacyWebDefaults.every(apps.contains);
+      if (apps.isEmpty || isLegacyList) {
+        apps = <String>{...apps, ...defaultProductiveApps}.toList();
+        unawaited(_prefs.setString(AppKeys.productiveApps, jsonEncode(apps)));
+      }
       state = state.copyWith(
         availableProductiveApps: apps,
-        selectedProductiveApp: apps.isNotEmpty ? apps.first : null,
+        selectedProductiveApp: apps.isNotEmpty ? apps.first : 'VS Code',
       );
     } catch (_) {
-      state = state.copyWith(availableProductiveApps: const []);
+      state = state.copyWith(
+        availableProductiveApps: defaultProductiveApps,
+        selectedProductiveApp: 'VS Code',
+      );
     }
   }
 
   void selectProductiveApp(String app) {
     state = state.copyWith(selectedProductiveApp: app);
+  }
+
+  Future<void> addProductiveApp(String appName) async {
+    final trimmed = appName.trim();
+    if (trimmed.isEmpty) return;
+    final current = List<String>.from(state.availableProductiveApps);
+    if (!current.contains(trimmed)) {
+      current.insert(0, trimmed);
+      await _prefs.setString(AppKeys.productiveApps, jsonEncode(current));
+      state = state.copyWith(
+        availableProductiveApps: current,
+        selectedProductiveApp: trimmed,
+      );
+      FELog.i('FocusSession', 'Added custom productive app: "$trimmed"');
+    } else {
+      selectProductiveApp(trimmed);
+    }
   }
 
   /// Feature 1 — Focus Intent. Called on every keystroke so the setup UI can
@@ -234,7 +296,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   Future<void> startSession(String productiveApp, {String intent = ''}) async {
     // Feature 1 — a session cannot start without a stated intent.
     final trimmedIntent = intent.trim();
-    if (trimmedIntent.isEmpty) return;
+    if (trimmedIntent.isEmpty) {
+      FELog.w('FocusSession', 'startSession rejected: intent is empty');
+      return;
+    }
 
     final userId = _prefs.getString(AppKeys.userId) ?? 'local-user';
     final session = FocusSession(
@@ -244,6 +309,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       productiveApp: productiveApp,
       intent: trimmedIntent,
     );
+    FELog.i('FocusSession', 'Starting session ${session.id} (intent: "$trimmedIntent", app: $productiveApp, user: $userId)');
     await _sessionDao.insertSession(session);
     _requestSync();
     // Persist the intent so the native layer can show it on full-screen
@@ -254,6 +320,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     }
     await _prefs.setBool(AppKeys.sessionActive, true);
     if (kIsWeb) {
+      FELog.d('FocusSession', 'Dispatching startSession to browser extension');
       await _browserMonitor.startSession(
         _decodeStringList(
             _prefs.getString(AppKeys.webDistractingSites) ?? '[]'),
@@ -508,11 +575,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final level = (event.escalationLevel > 1)
         ? event.escalationLevel
         : _levelForRelapse(newCount);
-    debugPrint(
-      '[FocusSession] distraction #$newCount '
-      'native_level=${event.escalationLevel} '
-      'resolved_level=$level '
-      'source=${event.eventType}',
+    FELog.w(
+      'FocusSession',
+      'Distraction registered #$newCount: package=${event.packageName}, label=${event.appLabel}, '
+      'resolved_level=$level, source=${event.eventType}',
     );
     state = state.copyWith(
       distractionCount: newCount,
@@ -543,7 +609,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
           await _eventDao.getEventsForSession(state.session?.id ?? '');
       final event = events.where((e) => e.id == eventId).firstOrNull;
       if (event == null) {
-        debugPrint('Recovery event $eventId not found, dismissing alert.');
+        FELog.w('FocusSession', 'Recovery event $eventId not found in session, dismissing alert');
         state = state.copyWith(showAlert: false);
         return;
       }
@@ -562,11 +628,15 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       final gained = seconds < AppRiskThresholds.mediumRecoverySeconds
           ? AppXP.recoveryXp
           : AppXP.slowRecoveryXp;
+      FELog.i(
+        'FocusSession',
+        'Recovery completed for $eventId: away=${seconds}s, gainedXP=+$gained, returned=$returnedToOrigin',
+      );
       state =
           state.copyWith(sessionXp: state.sessionXp + gained, showAlert: false);
       unawaited(_syncService.syncPendingEvents());
-    } catch (e) {
-      debugPrint('Error during recovery: $e');
+    } catch (e, st) {
+      FELog.e('FocusSession', 'Error during recovery: $eventId', e, st);
       state = state.copyWith(showAlert: false);
     }
   }
@@ -600,18 +670,22 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     );
 
     // MOB-3e — Award base completion XP for sessions that reached the minimum
-    // duration threshold. Recovery XP is already accumulated in state.sessionXp
-    // throughout the session; we add the flat completion bonus on top here so
-    // the final row stored in SQLite always contains the complete earned total.
+    // duration threshold.
     var finalSessionXp = state.sessionXp;
     if (minutes >= AppXP.minSessionMinutesForXp) {
       finalSessionXp += AppXP.sessionCompletionXp;
-      debugPrint(
-        '[FocusSession] Awarded ${AppXP.sessionCompletionXp} completion XP '
-        '(session ${session.id}, ${minutes}min). '
-        'Total session XP: $finalSessionXp',
+      FELog.d(
+        'FocusSession',
+        'Awarded ${AppXP.sessionCompletionXp} completion XP '
+        '(session ${session.id}, ${minutes}min). Total session XP: $finalSessionXp',
       );
     }
+
+    FELog.i(
+      'FocusSession',
+      'Session stopped: id=${session.id}, duration=${minutes}m, distractions=$totalDistractions, '
+      'focusScore=$focusScore, sessionXp=$finalSessionXp',
+    );
 
     await _sessionDao.updateSessionEnd(
       session.id,

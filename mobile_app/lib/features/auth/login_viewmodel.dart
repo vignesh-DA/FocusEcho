@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constants/app_constants.dart';
 import '../../../core/providers/app_dependencies.dart';
+import '../../../core/utils/fe_logger.dart';
 
 class LoginState {
   const LoginState({this.isLoading = false, this.errorMessage});
@@ -25,11 +26,11 @@ class LoginViewModel extends StateNotifier<LoginState> {
 
   Future<bool> sendOtp(String email) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
+    FELog.i('Auth', 'Sending OTP to $email');
     try {
       final currentUser = _client.auth.currentUser;
       if (currentUser?.isAnonymous == true) {
-        // Upgrade the anonymous identity in place so its cloud rows remain
-        // owned by the same auth.uid() after email confirmation.
+        FELog.d('Auth', 'Upgrading anonymous user ${currentUser?.id} with email $email');
         await _client.auth.updateUser(UserAttributes(email: email));
       } else {
         await _client.auth.signInWithOtp(
@@ -37,12 +38,16 @@ class LoginViewModel extends StateNotifier<LoginState> {
           shouldCreateUser: true,
         );
       }
+      FELog.i('Auth', 'OTP sent successfully to $email');
       state = state.copyWith(isLoading: false);
       return true;
-    } on AuthException catch (e) {
+    } on AuthException catch (e, st) {
+      FELog.w('Auth', 'AuthException during sendOtp: ${e.message}');
+      FELog.e('Auth', 'AuthException details', e, st);
       state = state.copyWith(isLoading: false, errorMessage: e.message);
       return false;
-    } catch (_) {
+    } catch (e, st) {
+      FELog.e('Auth', 'Unexpected error during sendOtp', e, st);
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Network error. Try again.',
@@ -53,18 +58,27 @@ class LoginViewModel extends StateNotifier<LoginState> {
 
   Future<bool> verifyOtp(String email, String token) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
+    FELog.i('Auth', 'Verifying OTP for $email (token length: ${token.length})');
     try {
-      await _client.auth.verifyOTP(
+      final resp = await _client.auth.verifyOTP(
         email: email,
         token: token,
         type: OtpType.email,
       );
+      final userId = resp.user?.id ?? _client.auth.currentUser?.id;
+      FELog.i('Auth', 'OTP verified successfully! User ID: $userId');
+      if (userId != null) {
+        await _prefs.setString(AppKeys.userId, userId);
+      }
       state = state.copyWith(isLoading: false);
       return true;
-    } on AuthException catch (e) {
+    } on AuthException catch (e, st) {
+      FELog.w('Auth', 'AuthException during verifyOtp: ${e.message}');
+      FELog.e('Auth', 'AuthException details', e, st);
       state = state.copyWith(isLoading: false, errorMessage: e.message);
       return false;
-    } catch (_) {
+    } catch (e, st) {
+      FELog.e('Auth', 'Unexpected error during verifyOtp', e, st);
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Network error. Try again.',
@@ -73,7 +87,10 @@ class LoginViewModel extends StateNotifier<LoginState> {
     }
   }
 
-  Future<void> skipLogin() => _prefs.setBool(AppKeys.hasSkippedLogin, true);
+  Future<void> skipLogin() {
+    FELog.i('Auth', 'User skipped login, continuing as guest');
+    return _prefs.setBool(AppKeys.hasSkippedLogin, true);
+  }
 }
 
 final loginViewModelProvider =
