@@ -760,7 +760,18 @@ class AiCoachService:
         user_prompt: str,
         timeout_seconds: float,
     ) -> Tuple[str, str, str]:
-        """Use reasoning controls first, then retry without them when Groq rejects them."""
+        """Call Groq model directly. Non-reasoning models like Kimi skip reasoning controls to prevent 400 rejections."""
+        lower = model_name.lower()
+        is_known_non_reasoning = any(brand in lower for brand in ("kimi", "moonshot", "llama", "gemma"))
+        if is_known_non_reasoning:
+            return self._groq_completion(
+                model_name,
+                system_prompt,
+                user_prompt,
+                timeout_seconds,
+                include_reasoning=False,
+            ), "none", "none"
+
         try:
             return self._groq_completion(
                 model_name,

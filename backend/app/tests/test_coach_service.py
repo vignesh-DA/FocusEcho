@@ -289,6 +289,33 @@ class EchoCoachTests(unittest.TestCase):
         self.assertEqual(kwargs["response_format"], {"type": "json_object"})
         self.assertIn("JSON only", kwargs["messages"][0]["content"])
 
+    def test_groq_kimi_model_direct_call_without_reasoning_params(self):
+        """Kimi model on Groq must never send reasoning_effort/format to prevent HTTP 400 rejections."""
+        payload = json.dumps({
+            "is_sufficiently_clear": True,
+            "refined_intention": "Draft project requirements in Notion",
+            "clarity_score": 95,
+            "coach_feedback": "Specific tool and document named. Ready for focus block.",
+        })
+        service = self._live_service()
+        service.model = "moonshotai/kimi-k2-instruct-0905"
+
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.return_value = self._completion(payload)
+            result = service.refine_intention("write doc", "user-kimi-1")
+
+        self.assertFalse(result.is_fallback)
+        self.assertEqual(result.clarity_score, 95)
+        self.assertEqual(result.refined_intention, "Draft project requirements in Notion")
+        # Called exactly once with 3.0s timeout (never doubled)
+        mock_groq.assert_called_once_with(api_key="gsk_test_groq_key_123", timeout=3.0, max_retries=0)
+        kwargs = mock_groq.return_value.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["model"], "moonshotai/kimi-k2-instruct-0905")
+        # MUST NOT contain reasoning parameters
+        self.assertNotIn("reasoning_effort", kwargs)
+        self.assertNotIn("reasoning_format", kwargs)
+        self.assertEqual(kwargs["response_format"], {"type": "json_object"})
+
     def test_reasoning_controls_fall_back_to_default_with_longer_timeout(self):
         class FakeReasoningRejection(Exception):
             status_code = 400
