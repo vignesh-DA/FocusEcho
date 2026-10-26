@@ -153,7 +153,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | Extension manifest checks | **21** | ✅ All pass |
 | Extension DB sync tests | **21** | ✅ All pass |
 | Extension live Chrome E2E | **9 checks** | ⚠️ 8 pass, 1 fail (CHECK-9 rapid bounce) |
-| EchoCoach v1 unit tests | **6 tests** | ✅ All pass (mock DB + offline fallback) |
+| EchoCoach v1 unit tests | **7 tests** | ✅ All pass (auth, cold-start, injection, cache, rate-limit, fallback, Groq/Kimi) |
 | Flutter static analysis | **lib/** | ✅ 0 errors, 0 warnings |
 | Flutter web release build | **1 build** | ✅ Clean |
 | Android Appium / Selenium E2E | **0** | ❌ Not started |
