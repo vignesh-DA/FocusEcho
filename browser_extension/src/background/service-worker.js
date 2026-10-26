@@ -71,6 +71,22 @@ let _graceTimer = null;
 let _lastNavKey = null;
 let _lastNavClearTimer = null;
 
+/**
+ * The most recently committed host for the active tab.
+ * Set SYNCHRONOUSLY when onCommitted / onHistoryStateUpdated fires so that
+ * onUpdated (which arrives later) can validate against it without an async
+ * chrome.tabs.get call — eliminating the race window that caused stale
+ * intermediate-page events to slip through during rapid bounces.
+ * @type {string|null}
+ */
+let _lastCommittedHost = null;
+let _lastCommittedTabId = null;
+
+function _setLastCommitted(tabId, host) {
+  _lastCommittedTabId = tabId;
+  _lastCommittedHost  = host;
+}
+
 function _deduplicateNav(tabId, host) {
   const key = `${tabId}|${host}`;
   if (_lastNavKey === key) return true; // duplicate — suppress
@@ -250,12 +266,53 @@ async function _dispatchInner(event) {
 // ---------------------------------------------------------------------------
 // Realtime Messaging & Overlay Communication Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Sends an overlay message to the active tab.
+ * If the content script isn't listening yet (page just loaded or content
+ * script injection failed), we programmatically inject overlay.js + overlay.css
+ * via chrome.scripting and then retry the message send after a short delay.
+ */
 async function sendToActiveDistractionTab(msg) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-    if (tab?.id) {
-      await chrome.tabs.sendMessage(tab.id, msg).catch(() => {});
+    if (!tab?.id) return;
+
+    const tabId = tab.id;
+
+    // Helper: try to send message; returns true if the content script replied.
+    async function trySend() {
+      try {
+        const resp = await chrome.tabs.sendMessage(tabId, msg);
+        return resp?.ok === true;
+      } catch (_) {
+        return false;
+      }
     }
+
+    // 1. Optimistic send — works when the CS is already running.
+    const ok = await trySend();
+    if (ok) return;
+
+    // 2. Content script not ready — inject overlay.js + overlay.css now.
+    LOG.sw(`CS not ready on tab ${tabId} — injecting overlay script programmatically`);
+    try {
+      await chrome.scripting.insertCSS({
+        target: { tabId },
+        files: ['src/content/overlay.css'],
+      });
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['src/content/overlay.js'],
+      });
+    } catch (injErr) {
+      LOG.warn(`scripting injection failed for tab ${tabId}: ${injErr?.message}`);
+      return;
+    }
+
+    // 3. Give the injected script a moment to register its message listener, then retry.
+    await new Promise(resolve => setTimeout(resolve, 150));
+    await trySend();
   } catch (err) {
     LOG.err('sendToActiveDistractionTab error:', err?.message);
   }
@@ -453,6 +510,15 @@ async function _executeAction(name, param, { session, distraction, event, now })
       break;
 
     case 'NAVIGATE_BACK_TO_FOCUS': {
+      // Opt-in Strict Setting: Forced tab redirect is only performed if strict_focus_mode is enabled.
+      // Default is FALSE to avoid involuntary tab hijacking unless explicitly enabled by the user.
+      const storedConfig = (await chrome.storage.local.get(SK.CONFIG))?.[SK.CONFIG];
+      const isStrict = Boolean(storedConfig?.strict_focus_mode ?? session?.strict_focus_mode ?? false);
+      if (!isStrict) {
+        LOG.act('NAVIGATE_BACK_TO_FOCUS skipped: strict_focus_mode is disabled (opt-in)');
+        break;
+      }
+
       const targetTabId = session?.last_productive_tab_id;
       const distractionList = session?.distraction_list ?? [];
 
@@ -706,6 +772,20 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Only care about URL changes on the active tab; SPA navigation is handled
   // via webNavigation.onHistoryStateUpdated which is more reliable.
   if (changeInfo.status !== 'complete' || !tab.active) return;
+
+  // Guard against stale intermediate-page events during rapid bounces.
+  // During a bounce (A→B→A within < 500 ms), Chrome queues onUpdated for the
+  // intermediate host B. By the time it fires, we are already back on A.
+  // _lastCommittedHost is set SYNCHRONOUSLY in onCommitted / onHistoryStateUpdated,
+  // so this check has zero async race window — no chrome.tabs.get needed.
+  if (isWebUrl(tab.url) && _lastCommittedTabId === tabId) {
+    const eventHost = normalizeHost(tab.url);
+    if (eventHost && _lastCommittedHost && eventHost !== _lastCommittedHost) {
+      LOG.sw(`onUpdated stale-host skip: event=${eventHost}, last_committed=${_lastCommittedHost}`);
+      return;
+    }
+  }
+
   const info = describeTab(tab.url);
   if (info.kind === 'unknown' || info.kind === 'own') return;
   const host = info.host;
@@ -736,6 +816,10 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async ({ tabId, frameId, 
   if (frameId !== 0) return; // main frame only
   if (!isWebUrl(url)) return;
 
+  // Set synchronously so onUpdated's stale-host guard is always up to date.
+  const host = normalizeHost(url);
+  _setLastCommitted(tabId, host);
+
   const session = await loadSession();
   if (!session?.active) return;
 
@@ -748,7 +832,6 @@ chrome.webNavigation.onHistoryStateUpdated.addListener(async ({ tabId, frameId, 
   if (!isActiveTab) return;
 
   // Hostname only — path discarded
-  const host = normalizeHost(url);
   const distracting = isDistracting(host, session.distraction_list);
   await markTabActive(tabId, host, distracting);
 
@@ -765,6 +848,10 @@ chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId, url, trans
   // Skip SPA navigations — handled by onHistoryStateUpdated
   if (transitionType === 'auto_subframe' || transitionType === 'manual_subframe') return;
 
+  // Set synchronously so onUpdated's stale-host guard is always up to date.
+  const host = normalizeHost(url);
+  _setLastCommitted(tabId, host);
+
   const session = await loadSession();
   if (!session?.active) return;
 
@@ -775,7 +862,6 @@ chrome.webNavigation.onCommitted.addListener(async ({ tabId, frameId, url, trans
   } catch (_) {}
   if (!isActiveTab) return;
 
-  const host = normalizeHost(url);
   // Dedup: onUpdated fires ~simultaneously for the same navigation.
   if (_deduplicateNav(tabId, host)) { LOG.sw(`onCommitted dedup skip for ${host}`); return; }
   const distracting = isDistracting(host, session.distraction_list);

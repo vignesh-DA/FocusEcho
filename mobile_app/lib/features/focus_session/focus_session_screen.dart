@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../services/ai_coach_service.dart';
+import '../ai_coach/widgets/coach_opt_in_dialog.dart';
 import '../distraction_alert/distraction_alert_modal.dart';
 import '../distraction_alert/intervention_overlay.dart';
 import 'focus_session_state.dart';
@@ -240,6 +242,10 @@ class _SessionSetupView extends StatefulWidget {
 
 class _SessionSetupViewState extends State<_SessionSetupView> {
   late final TextEditingController _intentCtrl;
+  final _coachService = AiCoachService();
+  bool _isRefining = false;
+  DateTime? _lastRefineTap;
+  String? _refineFeedback;
 
   static const List<String> _quickPicks = [
     'VS Code',
@@ -265,6 +271,41 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
   void initState() {
     super.initState();
     _intentCtrl = TextEditingController(text: widget.state.intent);
+  }
+
+  Future<void> _onRefineTapped() async {
+    final now = DateTime.now();
+    if (_lastRefineTap != null &&
+        now.difference(_lastRefineTap!) < const Duration(milliseconds: 1500)) {
+      return; // Debounce taps to prevent duplicate calls
+    }
+    _lastRefineTap = now;
+
+    final currentText = _intentCtrl.text.trim();
+    if (currentText.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Type a draft intention first, then tap to refine with EchoCoach.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isRefining = true);
+    try {
+      final res = await _coachService.refineIntention(currentText);
+      if (mounted) {
+        setState(() {
+          _isRefining = false;
+          _intentCtrl.text = res.refinedIntention;
+          _refineFeedback = '${res.coachFeedback} (Clarity: ${res.clarityScore}/100)';
+        });
+        widget.vm.setIntent(res.refinedIntention);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isRefining = false);
+    }
   }
 
   @override
@@ -577,8 +618,34 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('What is your focus intent?',
-                          style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                      Row(
+                        children: [
+                          Text('What is your focus intent?',
+                              style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: () => CoachOptInDialog.show(context),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.accentBlue),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    'EchoCoach Info',
+                                    style: AppTextStyles.bodySmall.copyWith(
+                                      color: AppColors.accentBlue,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                       Text(
                         '${intent.trim().length}/80',
                         style: AppTextStyles.bodySmall.copyWith(
@@ -602,6 +669,26 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                       filled: true,
                       fillColor: AppColors.surface,
                       prefixIcon: const Icon(Icons.track_changes_rounded, color: AppColors.accentBlue),
+                      suffixIcon: _isRefining
+                          ? const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: AppColors.accentBlue,
+                                ),
+                              ),
+                            )
+                          : IconButton(
+                              icon: const Icon(
+                                Icons.auto_awesome_rounded,
+                                color: AppColors.accentBlue,
+                              ),
+                              tooltip: 'Refine intent with EchoCoach',
+                              onPressed: _onRefineTapped,
+                            ),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: AppColors.border),
@@ -620,6 +707,46 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                       vm.setIntent(val);
                     },
                   ),
+                  if (_refineFeedback != null) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.accentBlue.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.auto_awesome_rounded,
+                            size: 14,
+                            color: AppColors.accentBlue,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _refineFeedback!,
+                              style: AppTextStyles.bodySmall.copyWith(
+                                color: AppColors.textPrimary,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          InkWell(
+                            onTap: () => setState(() => _refineFeedback = null),
+                            child: const Icon(
+                              Icons.close,
+                              size: 14,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 10),
 
                   // Quick Intent Suggestion Chips

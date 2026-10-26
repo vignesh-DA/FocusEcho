@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from .api.routes.analytics import router as analytics_router
+from .api.routes.coach import router as coach_router
 from .api.routes.events import router as events_router
 from .api.routes.health import router as health_router
 from .api.routes.predictions import router as predictions_router
@@ -35,6 +36,7 @@ app.include_router(events_router)
 app.include_router(analytics_router)
 app.include_router(scoring_router)
 app.include_router(predictions_router)
+app.include_router(coach_router)
 app.include_router(health_router)
 
 

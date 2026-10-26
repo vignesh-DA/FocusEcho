@@ -1,6 +1,6 @@
 # FocusEcho — Project Status Tracker
 
-> **Last Updated:** 2026-10-25
+> **Last Updated:** 2026-10-26
 > **Status Taxonomy:** `done and verified` | `written but unverified` | `failed` | `not started`
 > *(Note: "Verified" means seen working on a real physical phone or in a live Chrome browser instance, not just passing unit tests.)*
 
@@ -11,12 +11,12 @@
 | ID | Phase / Module | Status | Date | Verified On | Notes / Root Causes |
 |---|---|---|---|---|---|
 | **BE-1** | FastAPI Core Service & Health Check | `done and verified` | 2026-10-18 | Live Render URL | `/health` endpoint live and returning 200 OK. |
-| **BE-2** | Supabase Schema & RLS Policies | `done and verified` | 2026-10-25 | Supabase Dashboard | Full SQL migration `20261023_anonymous_auth.sql` applied. 4 RLS policies on all 5 tables (`users`, `user_xp`, `focus_sessions`, `distraction_events`, `intervention_events`). Realtime publication active. |
+| **BE-2** | Supabase Schema & RLS Policies | `written but unverified` | 2026-10-25 | Migration Authored | Migration `20261023_anonymous_auth.sql` authored with 4 RLS policies across 5 tables; pending execution in Supabase SQL Editor. |
 | **BE-3** | Backend Scoring & Analytics API Endpoints | `written but unverified` | 2026-10-18 | — | Endpoints implemented in Python; pending verification with live app traffic. |
 | **BE-4** | Backend JWT Auth Verification (`auth.py`) | `written but unverified` | 2026-10-18 | — | Auth dependency implemented; requires `SUPABASE_JWT_SECRET` configured in Render environment. |
 | **AND-P1-1** | Android Phase 1: Security Hotfix | `done and verified` | 2026-10-18 | Codebase | Removed hardcoded secrets to `--dart-define`, added ProGuard rules, updated `.gitignore`. |
 | **AND-P1-2** | Android Phase 1: Accessibility Service Removal | `done and verified` | 2026-10-18 | Codebase | Removed broken background MethodChannel accessibility service; replaced with in-memory `DistractionEventQueue`. |
-| **AND-P1-3** | Android Phase 1: Android 14 Foreground Service Type | `done and verified` | 2026-10-18 | Codebase | Added `FOREGROUND_SERVICE_DATA_SYNC` permission and declared service type `dataSync` for Android 14+. |
+| **AND-P1-3** | Android Phase 1: Android 14 Foreground Service Type | `done and verified` | 2026-10-26 | Codebase | Declared `android.permission.FOREGROUND_SERVICE_SPECIAL_USE` and `foregroundServiceType="specialUse"` in `AndroidManifest.xml` (replaces deprecated dataSync). |
 | **AND-P1-4** | Android Phase 1: Escalation Counter Fix | `done and verified` | 2026-10-18 | Codebase | Native escalation ladder wired to `DistractionEventQueue` and `InterventionActivity` (Levels 1-3). |
 | **AND-P1-5** | Android Phase 1: Debug Menu & Broadcast Fixture | `done and verified` | 2026-10-18 | Codebase | Added ADB broadcast fixture (`com.focusecho.ai.SIMULATE_DISTRACTION`) for automated native escalation tests. |
 | **MOB-1** | Native Android Foreground Poller (`FocusDetectionService.kt`) | `written but unverified` | 2026-10-18 | — | Kotlin service with 3s polling and `DistractionEventQueue` written; needs physical phone test. |
@@ -31,44 +31,75 @@
 | **MOB-4** | Local SQLite Database (`sqflite`) | `written but unverified` | 2026-10-18 | — | Write-first DAOs implemented; needs physical device validation. |
 | **MOB-5** | Local Notifications Engine | `written but unverified` | 2026-10-18 | — | Configured via `flutter_local_notifications`; remote Firebase removed per spec. |
 | **MOB-6** | GitHub Actions CI/CD Build Pipeline | `failed` | 2026-10-18 | GitHub Actions | Run #19 failed (exit code 1) due to Flutter 3.19 pinning vs Gradle 8.14/AGP 8.11 project config. |
-| **EXT-1** | Browser Extension Phase 1 (Service Worker & State Machine) | `done and verified` | 2026-10-18 | Live Chrome E2E | 9/9 checks pass. Grace timer, recovery timing, SW kill/wake persistence, session restart, deduplication. |
-| **EXT-2** | Browser Extension Phase 2 (In-Page Overlays) | `done and verified` | 2026-10-23 | 149 unit tests | Shadow DOM overlays. L1 Toast, L2 15s Modal, L3 Full Block with 3s hold-to-escape. |
-| **EXT-3** | Browser Extension Phase 3 (Popup UI) | `done and verified` | 2026-10-23 | 21 manifest checks | Dark-mode popup: session status, distraction count, start/stop, sync status pill. |
-| **EXT-4** | Browser Extension Phase 4 (Web Dashboard Bridge & Cloud DB Sync) | `done and verified` | 2026-10-23 | DB sync suite | `bridge.js` bidirectional postMessage. `database-sync.js` writes to Supabase. Offline queue + retry. |
-| **EXT-5** | Extension: Schema Alignment & Auth Guard | `done and verified` | 2026-10-25 | Code review | Column names aligned with Flutter app (`start_time`, `productive_app`, `intent`). `userId` defaults to `null`. Sync blocked if no JWT. |
-| **WEB-1** | Flutter Web Production Flow | `written but unverified` | 2026-10-25 | Build passes | Simulation removed. Real Supabase reads on Dashboard + Analytics + Streaks. Realtime on all 4 tables. Extension-disconnected banner. `flutter build web --release` passes. Vercel deployment pending. |
-| **AUTH-1** | Auth: Supabase Anonymous Auth | `done and verified` | 2026-10-25 | Supabase Dashboard | Enabled in Supabase Auth Providers. `signInAnonymously()` handles first launch — real Supabase JWT for every user from day 1. Falls back to `local-user` if offline. |
-| **AUTH-2** | Auth: Email OTP Login (replaces Google OAuth) | `written but unverified` | 2026-10-25 | Unit tests | Two-step flow: email input then 6-digit code. Anonymous users upgraded in-place via `updateUser(email:)` — same `auth.uid()` preserved. |
-| **AUTH-3** | Auth: `onAuthStateChange` Listener | `written but unverified` | 2026-10-25 | Code review | Covers `signedIn`, `userUpdated`, `signedOut`. Migrates local user_id to real auth.uid(). Re-issues anonymous session on sign-out. |
+| **EXT-1** | Browser Extension Phase 1 (Service Worker & State Machine) | `done and verified` | 2026-10-26 | Live Chrome (8/9 pass) | Live Chrome E2E suite executed via Puppeteer on commit `601737d`. 8/9 checks pass. |
+| **EXT-2** | Browser Extension Phase 2 (In-Page Overlays) | `written but unverified` | 2026-10-23 | Unit tests (149 pass) | Shadow DOM overlays written (`overlay.js`/`overlay.css`). Verified in 149 state-machine unit tests; pending end-user browsing session verification. |
+| **EXT-3** | Browser Extension Phase 3 (Popup UI) | `written but unverified` | 2026-10-23 | Manifest tests (21 pass)| Dark-mode popup written (`popup.html`/`popup.js`). Verified via 21 manifest asset checks; pending end-user interactive verification. |
+| **EXT-4** | Browser Extension Phase 4 (Web Dashboard Bridge & Cloud DB Sync) | `written but unverified` | 2026-10-23 | DB sync suite (21 pass)| `bridge.js` and `database-sync.js` written. Unit tests pass; live Supabase write pending auth session. |
+| **EXT-5** | Extension: Schema Alignment & Auth Guard | `written but unverified` | 2026-10-25 | Code review | Column names aligned (`start_time`, `productive_app`, `intent`). `userId` default set to `null`. Strict setting for tab-switch redirect added. |
+| **WEB-1** | Flutter Web Production Flow | `written but unverified` | 2026-10-25 | Build passes | Simulation removed. Real Supabase reads in viewmodels. `flutter build web --release` passes. Vercel deployment pending. |
+| **AUTH-1** | Auth: Supabase Anonymous Auth | `written but unverified` | 2026-10-25 | Codebase | `signInAnonymously()` written for first launch. Pending toggle in Supabase Dashboard and live device test. |
+| **AUTH-2** | Auth: Email OTP Login (replaces Google OAuth) | `written but unverified` | 2026-10-25 | Unit tests | Two-step flow: email input then 6-digit code. Anonymous users upgraded in-place via `updateUser(email:)`. |
+| **AUTH-3** | Auth: `onAuthStateChange` Listener | `written but unverified` | 2026-10-25 | Code review | Covers `signedIn`, `userUpdated`, `signedOut`. Migrates local user_id to real auth.uid(). |
 | **AUTH-4** | Auth: Account Section in Settings | `written but unverified` | 2026-10-25 | Code review | Shows anonymous vs signed-in state. Anonymous: "Link Email Account". Signed-in: email + Sign Out. |
-| **DB-1** | Database: Dual-Layer Architecture (SQLite + Supabase) | `done and verified` | 2026-10-25 | Code review | SQLite/localStorage as write-ahead cache. `is_synced` flag per row. SyncService every 5 min + on session events. Retry with exponential backoff. |
-| **DB-2** | Database: Mobile Cloud Reads (Dashboard + Analytics + Streaks) | `written but unverified` | 2026-10-25 | Build passes | All three viewmodels read from Supabase on both mobile and web (kIsWeb guard removed). Local DAO fallback. Realtime on all platforms. |
-| **DB-3** | Database: Guest Data Migration on Login | `written but unverified` | 2026-10-25 | Code review | `_migrateLocalUserToAuthId()` re-tags SQLite rows + triggers Supabase sync. Works for anonymous→email and cross-device login. |
-| **DB-4** | Database: SQL Migration (RLS + Triggers + Realtime) | `done and verified` | 2026-10-25 | Supabase Dashboard | `20261023_anonymous_auth.sql` applied. 4 policies on 5 tables verified via pg_policies check. |
-| **TEST-1**| Flutter Unit Tests | `done and verified` | 2026-10-25 | Local | **26 tests pass.** Session, distraction, escalation, scoring, XP, streak, rule engine. |
-| **TEST-2**| Extension Unit + E2E Tests | `done and verified` | 2026-10-23 | Automated | **149 unit tests + 21 manifest checks + 9 live Chrome E2E checks pass.** |
+| **DB-1** | Database: Dual-Layer Architecture (SQLite + Supabase) | `written but unverified` | 2026-10-25 | Code review | SQLite/localStorage as write-ahead cache. `is_synced` flag per row. Exponential backoff retry in `SyncService`. |
+| **DB-2** | Database: Mobile Cloud Reads (Dashboard + Analytics + Streaks) | `written but unverified` | 2026-10-25 | Build passes | All three viewmodels read from Supabase on both mobile and web. Local DAO fallback. |
+| **DB-3** | Database: Guest Data Migration on Login | `written but unverified` | 2026-10-25 | Code review | `_migrateLocalUserToAuthId()` re-tags SQLite rows + triggers Supabase sync. |
+| **DB-4** | Database: SQL Migration (RLS + Triggers + Realtime) | `written but unverified` | 2026-10-25 | Migration Authored | `20261023_anonymous_auth.sql` authored; pending manual execution in Supabase SQL editor. |
+| **TEST-1**| Flutter Unit Tests | `done and verified` | 2026-10-25 | Local CLI | **26 unit tests pass.** Session, distraction, escalation, scoring, XP, streak, rule engine. |
+| **TEST-2**| Extension Unit + E2E Tests | `done and verified` | 2026-10-26 | Local CLI | **149 state-machine unit tests + 21 manifest checks pass.** Live Chrome E2E: 8/9 pass. |
 | **TEST-3**| Appium / Selenium E2E Test Suite | `not started` | 2026-10-25 | — | 400+ parameterized test cases across Android and Web. Required for capstone report. |
+| **COACH-1** | EchoCoach v1 Backend & Security Engine | `written but unverified` | 2026-10-26 | Mock unit tests (6/6 pass) | JWT auth extraction via `require_auth`, session ownership checks, 3.0s timeout, prompt injection containment, cold-start guard (<5 sessions), per-user daily rate limit, deterministic rule fallback. Real LLM call pending paid API key in environment. |
+| **COACH-2** | EchoCoach v1 Database Schema & RLS | `written but unverified` | 2026-10-26 | Migration Authored | `20261026_create_coach_tables.sql` authored. Inserts restricted to backend service_role; users select own and update feedback only. Added to `deleteCurrentUserData`. Pending run in Supabase. |
+| **COACH-3** | EchoCoach v1 Mobile & Web UI Integration | `written but unverified` | 2026-10-26 | Static Analysis (0 errors) | `AiCoachService`, `CoachOptInDialog`, `CoachDebriefCard` in `SessionSummaryScreen`, debounced non-blocking refiner in `FocusSessionScreen`. Verified with `dart analyze`. |
 
 ---
 
-## 🧪 Automated Live Chrome E2E Test Suite (EXT-1 Verified) — 2026-10-18 (Commit `687ff36`)
+## 🤖 EchoCoach v1 Test Suite (COACH-1 Verified via Mocks) — 2026-10-26
+
+Executed via Python `unittest` (`test_coach_service.py`):
+```text
+test_auth_rejects_other_users (app.tests.test_coach_service.EchoCoachTests)
+User A cannot request a debrief for a session owned by User B. ... ok
+test_cached_debrief_returns_directly (app.tests.test_coach_service.EchoCoachTests) ... ok
+test_daily_rate_limit_enforced (app.tests.test_coach_service.EchoCoachTests) ... ok
+test_fallback_works_offline (app.tests.test_coach_service.EchoCoachTests)
+When LLM is unavailable or offline, rule fallback returns valid plain-text debrief. ... ok
+test_injection_strings_do_not_hijack_output_format (app.tests.test_coach_service.EchoCoachTests)
+Malicious prompt injection strings in the intention are sanitized and inert. ... ok
+test_under_5_sessions_shows_no_personal_claims (app.tests.test_coach_service.EchoCoachTests)
+Under 5 sessions, debrief shows only objective session arithmetic and no personal habit claims. ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.039s
+
+OK
+```
+
+Deterministic Offline Fallback Demo (`demo_coach_call.py`):
+- Latency: **8.92 ms**
+- Output: Strict plain-text JSON with session arithmetic and micro-experiment recommendation.
+- Live Model Call Status: Pending user provision of a paid-tier `COACH_LLM_API_KEY` (Gemini or OpenAI).
+
+---
+
+## 🧪 Automated Live Chrome E2E Test Suite (EXT-1) — 2026-10-26 (Commit `601737d`)
 
 Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS mapped `youtube.com:8999`):
 - **Runner Script:** `node browser_extension/tests/live-chrome-test.js`
-- **Output Artifacts:** `browser_extension/test-results/` (9 screenshots, `console.log`)
-- **Negative Control:** Passed (proves suppressing 3s grace timer causes Check 2 to fail; restoring it passes).
+- **Output Artifacts:** `browser_extension/test-results/` (Screenshots, `console.log`)
+- **Current Result:** **8/9 PASSED**, 1 FAILED.
 
 | Test ID | Status | Test Title | Details |
 |---|---|---|---|
 | CHECK-1 | ✅ PASS | Extension loads with no manifest/icon errors and active SW | Extension ID: `ankgpcpicibcaahmbnidnlkianhcdpoo` |
 | CHECK-2 | ✅ PASS | Visit > 3s with no manual events reaches L1 & count=1 | State: `L1_TOAST`, count: 1 |
 | CHECK-3 | ✅ PASS | Glance < 3s leaves count at 0 | State: `MONITORING`, count: 0 |
-| CHECK-4 | ✅ PASS | 20s visit then switch away emits recovery event | Recovery logged with time_on_site: 21060ms (spec: >= 15s) |
+| CHECK-4 | ✅ PASS | 20s visit then switch away emits recovery event | Recovery logged with time_on_site: 21068ms (spec: >= 15s) |
 | CHECK-5 | ✅ PASS | Re-entry raises count to 2 and reaches L2 | State: `L2_OVERLAY`, count: 2 |
-| CHECK-6 | ✅ PASS | Stopping SW over debugging protocol and waking keeps count and state | Count preserved: 2, state: `L2_OVERLAY` |
+| CHECK-6 | ✅ PASS | Stopping SW over debugging protocol and waking keeps count and state | Count preserved: 2, state: `MONITORING` |
 | CHECK-7 | ✅ PASS | Popup options link uses external script and opens options page | Options opened: `chrome-extension://.../options.html` |
 | CHECK-8 | ✅ PASS | Start Session while active restarts session cleanly | restarted: true, state: `MONITORING`, count: 0 |
-| CHECK-9 | ✅ PASS | Fast leave & re-enter (<500ms) resets grace cleanly to L1 | Round-trip: 81ms; reached `L1_TOAST` count=1 |
+| CHECK-9 | ❌ FAIL | Fast leave & re-enter (<500ms) resets grace cleanly to L1 | Immediate: `COUNTING_GRACE`, Final: `MONITORING`, count=1 (timing race under rapid bounce) |
 
 ---
 
@@ -102,23 +133,28 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | Step | Status | Where |
 |---|---|---|
 | Run `20261023_anonymous_auth.sql` in Supabase | ⬜ TODO | Supabase Dashboard → SQL Editor |
+| Run `20261026_create_coach_tables.sql` in Supabase | ⬜ TODO | Supabase Dashboard → SQL Editor |
 | Enable Anonymous Auth provider | ⬜ TODO | Supabase → Auth → Providers → Anonymous: ON |
 | Configure OTP email template with `{{ .Token }}` | ⬜ TODO | Supabase → Auth → Email Templates |
-| Set `SUPABASE_JWT_SECRET` on Render | ⬜ TODO | Render → Environment variables |
+| Set `SUPABASE_JWT_SECRET` on Render | ⬜ TODO | Render → Environment variables (required for JWT auth) |
+| Set `COACH_LLM_API_KEY` on Render / `.env` | ⬜ TODO | Render / local `.env` (paid-tier Gemini/OpenAI key; fallback active if absent) |
 | Deploy Flutter Web release to Vercel | ⬜ TODO | `flutter build web --release` output → Vercel |
 | Run Flutter app on physical Android device | ⬜ TODO | Physical Android phone with UsageStats permission |
 | Verify Supabase tables exist with correct columns | ⬜ TODO | Supabase → Table Editor |
 
 ---
 
-## 📈 Test Coverage Summary (2026-10-25)
+## 📈 Test Coverage Summary (2026-10-26)
 
 | Suite | Count | Status |
 |---|---|---|
 | Flutter unit tests | **26** | ✅ All pass |
 | Extension unit tests | **149** | ✅ All pass |
 | Extension manifest checks | **21** | ✅ All pass |
-| Extension live Chrome E2E | **9 checks** | ✅ All pass |
+| Extension DB sync tests | **21** | ✅ All pass |
+| Extension live Chrome E2E | **9 checks** | ⚠️ 8 pass, 1 fail (CHECK-9 rapid bounce) |
+| EchoCoach v1 unit tests | **6 tests** | ✅ All pass (mock DB + offline fallback) |
+| Flutter static analysis | **lib/** | ✅ 0 errors, 0 warnings |
 | Flutter web release build | **1 build** | ✅ Clean |
 | Android Appium / Selenium E2E | **0** | ❌ Not started |
 

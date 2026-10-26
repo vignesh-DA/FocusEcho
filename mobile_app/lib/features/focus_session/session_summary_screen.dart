@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 import 'focus_session_state.dart';
+import 'widgets/coach_debrief_card.dart';
 
 class SessionSummaryScreen extends StatelessWidget {
   const SessionSummaryScreen({
@@ -129,7 +130,8 @@ class SessionSummaryScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  CoachDebriefCard(sessionId: summary.sessionId),
+                  const SizedBox(height: 12),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.accentBlue,

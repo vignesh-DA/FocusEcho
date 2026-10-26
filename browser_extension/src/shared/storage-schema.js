@@ -98,6 +98,7 @@
 export function defaultConfig() {
   return {
     distraction_list: [],
+    strict_focus_mode: false,
     habit_mode: { enabled: false, limit_minutes: 60, break_minutes: 5 },
     escalation: { countdown_ms: 15_000, emergency_hold_ms: 2_000, post_expiry_ms: 60_000 },
     dashboard_origins: [

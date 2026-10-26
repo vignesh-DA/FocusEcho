@@ -137,8 +137,11 @@ class SupabaseService {
       final sessionIds = sessionRows.map((row) => row['id'] as String).toList();
       if (sessionIds.isNotEmpty) {
         await _client.from('distraction_events').delete().inFilter('session_id', sessionIds);
+        await _client.from('coach_insights').delete().inFilter('session_id', sessionIds);
       }
 
+      await _client.from('coach_insights').delete().eq('user_id', targetUserId);
+      await _client.from('coach_profiles').delete().eq('user_id', targetUserId);
       await _client.from('focus_sessions').delete().eq('user_id', targetUserId);
       await _client.from('nightly_analytics_summaries').delete().eq('user_id', targetUserId);
       await _client.from('user_xp').delete().eq('user_id', targetUserId);

@@ -18,7 +18,6 @@ plugins {
 android {
     namespace = "com.focusecho.ai"
     compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
