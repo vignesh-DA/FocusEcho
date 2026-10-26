@@ -48,7 +48,7 @@
 | **TEST-1**| Flutter Unit Tests | `done and verified` | 2026-10-25 | Local CLI | **26 unit tests pass.** Session, distraction, escalation, scoring, XP, streak, rule engine. |
 | **TEST-2**| Extension Unit + E2E Tests | `done and verified` | 2026-10-26 | Local CLI | **149 state-machine unit tests + 21 manifest checks pass.** Live Chrome E2E: 8/9 pass. |
 | **TEST-3**| Appium / Selenium E2E Test Suite | `not started` | 2026-10-25 | — | 400+ parameterized test cases across Android and Web. Required for capstone report. |
-| **COACH-1** | EchoCoach v1 Backend & Security Engine | `written but unverified` | 2026-10-26 | Mock unit tests (6/6 pass) | JWT auth extraction via `require_auth`, session ownership checks, 3.0s timeout, prompt injection containment, cold-start guard (<5 sessions), per-user daily rate limit, deterministic rule fallback. Real LLM call pending paid API key in environment. |
+| **COACH-1** | EchoCoach v1 Backend & Security Engine | `written but unverified` | 2026-10-26 | Mock unit tests (14/14 pass) | JWT auth extraction via `require_auth`, server-side coach opt-in gate, session ownership checks, Groq SDK timeout policy (5s debrief / 3s refine), prompt injection containment, cold-start guard (<5 sessions), per-user daily rate limit, validated backup-model retry, sanitized telemetry, and deterministic rule fallback. |
 | **COACH-2** | EchoCoach v1 Database Schema & RLS | `written but unverified` | 2026-10-26 | Migration Authored | `20261026_create_coach_tables.sql` authored. Inserts restricted to backend service_role; users select own and update feedback only. Added to `deleteCurrentUserData`. Pending run in Supabase. |
 | **COACH-3** | EchoCoach v1 Mobile & Web UI Integration | `written but unverified` | 2026-10-26 | Static Analysis (0 errors) | `AiCoachService`, `CoachOptInDialog`, `CoachDebriefCard` in `SessionSummaryScreen`, debounced non-blocking refiner in `FocusSessionScreen`. Verified with `dart analyze`. |
 
@@ -70,7 +70,7 @@ test_under_5_sessions_shows_no_personal_claims (app.tests.test_coach_service.Ech
 Under 5 sessions, debrief shows only objective session arithmetic and no personal habit claims. ... ok
 
 ----------------------------------------------------------------------
-Ran 6 tests in 0.039s
+Ran 14 tests (all pass)
 
 OK
 ```
@@ -78,7 +78,7 @@ OK
 Deterministic Offline Fallback Demo (`demo_coach_call.py`):
 - Latency: **8.92 ms**
 - Output: Strict plain-text JSON with session arithmetic and micro-experiment recommendation.
-- Live Model Call Status: Pending user provision of a paid-tier `COACH_LLM_API_KEY` (Gemini or OpenAI).
+- Live Model Call Status: Pending `GROQ_API_KEY` in the runtime environment; Groq Zero Data Retention must be enabled in Groq Data Controls for the deployment.
 
 ---
 
@@ -137,7 +137,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | Enable Anonymous Auth provider | ⬜ TODO | Supabase → Auth → Providers → Anonymous: ON |
 | Configure OTP email template with `{{ .Token }}` | ⬜ TODO | Supabase → Auth → Email Templates |
 | Set `SUPABASE_JWT_SECRET` on Render | ⬜ TODO | Render → Environment variables (required for JWT auth) |
-| Set `COACH_LLM_API_KEY` on Render / `.env` | ⬜ TODO | Render / local `.env` (paid-tier Gemini/OpenAI key; fallback active if absent) |
+| Set `GROQ_API_KEY`, `COACH_LLM_MODEL`, `COACH_LLM_MODEL_BACKUP`, and `COACH_LLM_TIMEOUT_SECONDS` on Render / `.env` | ⬜ TODO | Groq-only runtime configuration; fallback active if absent |
 | Deploy Flutter Web release to Vercel | ⬜ TODO | `flutter build web --release` output → Vercel |
 | Run Flutter app on physical Android device | ⬜ TODO | Physical Android phone with UsageStats permission |
 | Verify Supabase tables exist with correct columns | ⬜ TODO | Supabase → Table Editor |

@@ -236,47 +236,151 @@ class EchoCoachTests(unittest.TestCase):
             self.assertTrue(_check_and_increment_rate_limit(user_id))
         # 31st request exceeds rate limit
         self.assertFalse(_check_and_increment_rate_limit(user_id))    # ──────────────────────────────────────────────────────────────────────────
-    # TEST 7: Groq Provider - Kimi model invocation routing and response parsing
+    # TEST 7: Groq SDK request contract and Pydantic validation
     # ──────────────────────────────────────────────────────────────────────────
-    @patch("httpx.Client.post")
-    def test_groq_kimi_provider_call(self, mock_post):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.json.return_value = {
-            "choices": [
-                {
-                    "message": {
-                        "content": json.dumps({
-                            "is_sufficiently_clear": True,
-                            "refined_intention": "Draft the quarterly performance report in Docs",
-                            "clarity_score": 90,
-                            "coach_feedback": "Specific tool and document named. Excellent target."
-                        })
-                    }
-                }
-            ]
-        }
-        mock_post.return_value = mock_resp
-
-        mock_db = MockSupabaseClient()
-        service = AiCoachService(supabase_client=mock_db)
+    @staticmethod
+    def _live_service(backup_model=""):
+        service = AiCoachService(supabase_client=MockSupabaseClient())
         service.api_key = "gsk_test_groq_key_123"
-        service.provider = "groq"
-        service.model = "moonshotai/kimi-k2-instruct-0905"
+        service.model = "qwen/qwen3.8-27b"
+        service.backup_model = backup_model
+        service.timeout_seconds = 5.0
+        return service
 
-        result = service.refine_intention("work on report", "user-groq-1")
+    @staticmethod
+    def _completion(content):
+        message = MagicMock()
+        message.content = content
+        choice = MagicMock()
+        choice.message = message
+        completion = MagicMock()
+        completion.choices = [choice]
+        return completion
+
+    def test_server_side_opt_in_blocks_live_groq_call(self):
+        service = self._live_service()
+        with patch.object(service, "get_opt_in_status", return_value=(False, None)):
+            with patch("app.services.ai_coach_service.Groq") as mock_groq:
+                result = service.refine_intention("write report", "opted-out-user")
+        self.assertTrue(result.is_fallback)
+        mock_groq.assert_not_called()
+    def test_groq_sdk_request_contract(self):
+        payload = json.dumps({
+            "is_sufficiently_clear": True,
+            "refined_intention": "Draft the quarterly performance report in Docs",
+            "clarity_score": 90,
+            "coach_feedback": "Specific tool and document named. Excellent target.",
+        })
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.return_value = self._completion(payload)
+            result = self._live_service().refine_intention("work on report", "user-groq-1")
+
         self.assertFalse(result.is_fallback)
-        self.assertEqual(result.refined_intention, "Draft the quarterly performance report in Docs")
         self.assertEqual(result.clarity_score, 90)
+        mock_groq.assert_called_once_with(api_key="gsk_test_groq_key_123", timeout=3.0, max_retries=0)
+        kwargs = mock_groq.return_value.chat.completions.create.call_args.kwargs
+        self.assertEqual(kwargs["model"], "qwen/qwen3.8-27b")
+        self.assertFalse(kwargs["stream"])
+        self.assertEqual(kwargs["temperature"], 0.3)
+        self.assertEqual(kwargs["max_completion_tokens"], 400)
+        self.assertEqual(kwargs["top_p"], 0.95)
+        self.assertEqual(kwargs["reasoning_effort"], "none")
+        self.assertEqual(kwargs["reasoning_format"], "hidden")
+        self.assertEqual(kwargs["response_format"], {"type": "json_object"})
+        self.assertIn("JSON only", kwargs["messages"][0]["content"])
 
-        # Check call arguments
-        mock_post.assert_called_once()
-        call_url = mock_post.call_args[0][0]
-        call_kwargs = mock_post.call_args[1]
-        self.assertEqual(call_url, "https://api.groq.com/openai/v1/chat/completions")
-        self.assertEqual(call_kwargs["headers"]["Authorization"], "Bearer gsk_test_groq_key_123")
-        self.assertEqual(call_kwargs["json"]["model"], "moonshotai/kimi-k2-instruct-0905")
+    def test_reasoning_controls_fall_back_to_default_with_longer_timeout(self):
+        class FakeReasoningRejection(Exception):
+            status_code = 400
+            body = {"message": "reasoning_effort is unsupported"}
 
+        payload = json.dumps({
+            "is_sufficiently_clear": True,
+            "refined_intention": "Write the report",
+            "clarity_score": 82,
+            "coach_feedback": "Clear deliverable.",
+        })
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.side_effect = [
+                FakeReasoningRejection(),
+                self._completion(payload),
+            ]
+            with self.assertLogs("echocoach", level="INFO") as captured:
+                result = self._live_service().refine_intention("write report", "reasoning-user")
+
+        self.assertFalse(result.is_fallback)
+        self.assertEqual(mock_groq.call_args_list[0].kwargs["timeout"], 3.0)
+        self.assertEqual(mock_groq.call_args_list[1].kwargs["timeout"], 6.0)
+        calls = mock_groq.return_value.chat.completions.create.call_args_list
+        self.assertNotIn("reasoning_effort", calls[1].kwargs)
+        self.assertIn("reasoning_mode=default", "\n".join(captured.output))
+    def test_timeout_goes_to_rule_fallback(self):
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.side_effect = TimeoutError()
+            result = self._live_service(backup_model="backup/model").refine_intention("write report", "timeout-user")
+        self.assertTrue(result.is_fallback)
+        self.assertEqual(mock_groq.return_value.chat.completions.create.call_count, 2)
+
+    def test_invalid_json_goes_to_rule_fallback(self):
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.return_value = self._completion("not-json")
+            result = self._live_service(backup_model="backup/model").refine_intention("write report", "json-user")
+        self.assertTrue(result.is_fallback)
+        self.assertEqual(mock_groq.return_value.chat.completions.create.call_count, 2)
+
+    def test_model_not_found_uses_backup(self):
+        class FakeNotFoundError(Exception):
+            status_code = 404
+
+        payload = json.dumps({
+            "is_sufficiently_clear": True,
+            "refined_intention": "Write the report",
+            "clarity_score": 82,
+            "coach_feedback": "Clear deliverable.",
+        })
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.side_effect = [
+                FakeNotFoundError("model missing"),
+                self._completion(payload),
+            ]
+            result = self._live_service(backup_model="backup/model").refine_intention("write report", "backup-user")
+
+        self.assertFalse(result.is_fallback)
+        self.assertEqual(result.refined_intention, "Write the report")
+        calls = mock_groq.return_value.chat.completions.create.call_args_list
+        self.assertEqual(calls[0].kwargs["model"], "qwen/qwen3.8-27b")
+        self.assertEqual(calls[1].kwargs["model"], "backup/model")
+
+    def test_think_tags_are_stripped_before_validation(self):
+        payload = json.dumps({
+            "is_sufficiently_clear": True,
+            "refined_intention": "Write the report",
+            "clarity_score": 82,
+            "coach_feedback": "Clear deliverable.",
+        })
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.return_value = self._completion(
+                f"<think>private reasoning must not reach the parser</think>{payload}"
+            )
+            result = self._live_service().refine_intention("write report", "think-user")
+        self.assertFalse(result.is_fallback)
+        self.assertEqual(result.refined_intention, "Write the report")
+
+    def test_llm_logs_do_not_expose_key_or_raw_exception(self):
+        secret = "gsk_test_secret_should_never_be_logged"
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.side_effect = RuntimeError(secret)
+            service = self._live_service()
+            service.api_key = secret
+            with self.assertLogs("echocoach", level="WARNING") as captured:
+                result = service.refine_intention("write report", "logging-user")
+
+        self.assertTrue(result.is_fallback)
+        output = "\n".join(captured.output)
+        self.assertNotIn(secret, output)
+        self.assertNotIn("model missing", output)
+        self.assertIn("RuntimeError", output)
+        self.assertIn("is_fallback=true", output)
 
 if __name__ == "__main__":
     unittest.main()

@@ -10,15 +10,18 @@ import json
 import os
 import sys
 import time
+from dotenv import load_dotenv
 
 # Ensure backend root is on sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
+load_dotenv(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".env")))
 
 from app.services.ai_coach_service import AiCoachService
 from app.tests.test_coach_service import MockSupabaseClient
 
 
-def run_demo(api_key: str = "", model_name: str = "gemini-1.5-flash"):
+def run_demo(api_key: str | None = None, model_name: str | None = None):
     print("=" * 70)
     print("ECHOCOACH v1 INVOCATION DEMO")
     print("=" * 70)
@@ -48,8 +51,9 @@ def run_demo(api_key: str = "", model_name: str = "gemini-1.5-flash"):
     )
 
     service = AiCoachService(supabase_client=mock_db)
-    if api_key:
+    if api_key is not None:
         service.api_key = api_key
+    if model_name is not None:
         service.model = model_name
 
     mode_label = f"LIVE API ({service.model})" if service.api_key else "OFFLINE DETERMINISTIC FALLBACK"
@@ -63,7 +67,7 @@ def run_demo(api_key: str = "", model_name: str = "gemini-1.5-flash"):
     response = service.generate_session_debrief(session_id, authed_user)
     elapsed_ms = (time.perf_counter() - start_t) * 1000
 
-    print(f"Response Time: {elapsed_ms:.2f} ms")
+    print(f"Latency (ms):  {elapsed_ms:.2f}")
     print(f"Is Fallback:   {response.is_fallback}")
     print(f"Is Cached:     {response.is_cached}")
     print("\nRAW JSON OUTPUT:")
@@ -73,12 +77,6 @@ def run_demo(api_key: str = "", model_name: str = "gemini-1.5-flash"):
 
 
 if __name__ == "__main__":
-    key = (
-        os.getenv("COACH_LLM_API_KEY")
-        or os.getenv("GROQ_API_KEY")
-        or os.getenv("GEMINI_API_KEY")
-        or os.getenv("OPENAI_API_KEY")
-        or ""
-    )
+    key = os.getenv("GROQ_API_KEY", "")
     model = os.getenv("COACH_LLM_MODEL", "")
     run_demo(api_key=key, model_name=model)

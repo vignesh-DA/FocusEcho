@@ -18,6 +18,13 @@ class IntentionRefineRequest(BaseModel):
     )
 
 
+class LLMIntentionRefinePayload(BaseModel):
+    """Strict JSON contract returned by the coach model for intention refinement."""
+    is_sufficiently_clear: bool
+    refined_intention: str = Field(..., min_length=1, max_length=120)
+    clarity_score: int = Field(..., ge=1, le=100)
+    coach_feedback: str = Field(..., min_length=1, max_length=250)
+
 class IntentionRefineResponse(BaseModel):
     is_sufficiently_clear: bool
     refined_intention: str
@@ -33,6 +40,12 @@ class SessionDebriefRequest(BaseModel):
     """
     session_id: str = Field(..., description="UUID of the completed focus session.")
 
+
+class LLMSessionDebriefPayload(BaseModel):
+    """Strict JSON contract returned by the coach model for a debrief."""
+    headline: str = Field(..., min_length=1, max_length=80)
+    body: str = Field(..., min_length=1, max_length=400)
+    actionable_tip: str = Field(..., min_length=1, max_length=250)
 
 class SessionDebriefResponse(BaseModel):
     session_id: str

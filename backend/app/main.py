@@ -14,10 +14,12 @@ from .api.routes.health import router as health_router
 from .api.routes.predictions import router as predictions_router
 from .api.routes.scoring import router as scoring_router
 from .api.routes.sessions import router as sessions_router
+from .services.ai_coach_service import check_configured_model_at_startup
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    check_configured_model_at_startup()
     yield
 
 
