@@ -187,7 +187,19 @@ class SessionSummaryScreen extends StatelessWidget {
       minY: 0,
       maxY: math.max(1, maxCount + 1).toDouble(),
       alignment: BarChartAlignment.spaceAround,
-      barTouchData: BarTouchData(enabled: false),
+      barTouchData: BarTouchData(
+        enabled: true,
+        touchTooltipData: BarTouchTooltipData(
+          getTooltipItem: (group, groupIndex, rod, rodIndex) {
+            final start = group.x * 15;
+            final end = start + 15;
+            return BarTooltipItem(
+              'Min $start–$end: ${rod.toY.toInt()} distraction${rod.toY.toInt() == 1 ? '' : 's'}',
+              AppTextStyles.bodySmall.copyWith(color: Colors.white),
+            );
+          },
+        ),
+      ),
       gridData: FlGridData(
         show: true,
         drawVerticalLine: false,
@@ -231,9 +243,17 @@ class SessionSummaryScreen extends StatelessWidget {
             barRods: [
               BarChartRodData(
                 toY: bars[index].toDouble(),
-                color: AppColors.accentBlue,
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: bars[index] == 0
+                      ? const [Color(0xFF059669), Color(0xFF34D399)]
+                      : bars[index] <= 2
+                          ? const [Color(0xFFD97706), Color(0xFFFBBF24)]
+                          : const [Color(0xFFDC2626), Color(0xFFF87171)],
+                ),
                 width: 18,
-                borderRadius: BorderRadius.zero,
+                borderRadius: BorderRadius.circular(8),
               ),
             ],
           ),

@@ -27,6 +27,8 @@ class FocusDetectionService : Service() {
     private var lastForegroundPackage: String? = null
     private var lastSwitchTimeMs: Long = 0
     private var lastDistractionNotifMs: Long = 0
+    private var continuousDistractionStartMs: Long = 0L
+    private var lastNudgeSentMs: Long = 0L
     private var screenReceiver: BroadcastReceiver? = null
     private var simulationReceiver: BroadcastReceiver? = null
 
@@ -43,6 +45,21 @@ class FocusDetectionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP_ACTION) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (intent?.action == TAKE_BREAK_ACTION) {
+            sendOrBuffer(
+                JSONObject()
+                    .put("eventType", "intervention_action")
+                    .put("level", intent.getIntExtra("level", 1))
+                    .put("action", "take_break")
+                    .put("timestamp", Instant.now().toString())
+                    .toString()
+            )
+            getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .edit().putBoolean("flutter.session_active", false).apply()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -79,13 +96,7 @@ class FocusDetectionService : Service() {
         if (!cachedSessionActive) return
 
         val packageName = getForegroundPackageName() ?: return
-        if (packageName == lastForegroundPackage) return
-
         val now = System.currentTimeMillis()
-        if (now - lastSwitchTimeMs < 500) return
-        lastSwitchTimeMs = now
-        lastForegroundPackage = packageName
-
         val label = getAppLabel(packageName)
 
         // Check if this is a known distracting app and escalate accordingly
@@ -93,10 +104,35 @@ class FocusDetectionService : Service() {
         val distractingRaw = prefs.getString("flutter.distracting_apps", "[]") ?: "[]"
         val isDistraction = distractingRaw.contains(packageName) ||
             ALWAYS_DISTRACTION_PACKAGES.contains(packageName)
+
+        if (packageName == lastForegroundPackage) {
+            if (isDistraction) {
+                if (continuousDistractionStartMs == 0L) continuousDistractionStartMs = now
+                val elapsed = now - continuousDistractionStartMs
+                if (now - lastNudgeSentMs >= NUDGE_REPEAT_INTERVAL_MS) {
+                    sendRepeatingNudgeNotification(label, elapsed)
+                    lastNudgeSentMs = now
+                }
+            } else {
+                continuousDistractionStartMs = 0L
+                lastNudgeSentMs = 0L
+            }
+            return
+        }
+
+        if (now - lastSwitchTimeMs < 500) return
+        lastSwitchTimeMs = now
+        lastForegroundPackage = packageName
+
         if (isDistraction) {
+            continuousDistractionStartMs = now
+            lastNudgeSentMs = now
             handleDistractionDetected(packageName, label, source = "usage_stats")
             return
         }
+
+        continuousDistractionStartMs = 0L
+        lastNudgeSentMs = 0L
 
         val payload = JSONObject()
             .put("eventType", "app_switch")
@@ -121,18 +157,14 @@ class FocusDetectionService : Service() {
      * Feature 2 — single escalation entry point shared by real foreground-app
      * polling (source="usage_stats") and the debug ADB broadcast fixture
      * (source="adb_fixture"). Registers the per-session relapse, drives the
-     * intervention ladder (1 = heads-up notification, 2-3 = full-screen
-     * InterventionActivity), and forwards the event to Flutter with its
+     * notification ladder (all levels post a heads-up notification; level 3
+     * also requests a full-screen intent), and forwards the event to Flutter with its
      * escalation level so the SQLite row records it.
      */
     private fun handleDistractionDetected(packageName: String, label: String, source: String) {
         val relapse = DistractionEventQueue.registerRelapse()
         val level = escalationLevelFor(relapse)
-        if (level == 1) {
-            sendDistractionNotification(label, packageName)
-        } else {
-            InterventionActivity.start(this, level, relapse, label)
-        }
+        sendDistractionNotification(label, packageName, level, relapse)
         val payload = JSONObject()
             .put("eventType", "app_switch")
             .put("packageName", packageName)
@@ -148,30 +180,96 @@ class FocusDetectionService : Service() {
      * Fires a high-priority heads-up notification when a distracting app
      * is detected. Visible even when FocusEcho is fully backgrounded.
      */
-    private fun sendDistractionNotification(appLabel: String, packageName: String) {
-        // Throttle: at most one distraction notification per 30 seconds
+    private fun sendDistractionNotification(
+        appLabel: String,
+        packageName: String,
+        level: Int,
+        relapse: Int,
+    ) {
+        // Throttle only first-level entry alerts. Escalated levels must always
+        // reach the user even when relapses happen within the same 30-second
+        // window.
         val now = System.currentTimeMillis()
-        if (now - lastDistractionNotifMs < DISTRACTION_NOTIF_THROTTLE_MS) return
-        lastDistractionNotifMs = now
+        if (level == 1) {
+            if (now - lastDistractionNotifMs < DISTRACTION_NOTIF_THROTTLE_MS) return
+            lastDistractionNotifMs = now
+        }
 
-        val openAppIntent = packageManager.getLaunchIntentForPackage(this.packageName)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, openAppIntent,
+        val fullScreenIntent = PendingIntent.getActivity(
+            this,
+            3000 + relapse,
+            Intent(this, InterventionActivity::class.java).apply {
+                putExtra(InterventionActivity.EXTRA_LEVEL, level)
+                putExtra(InterventionActivity.EXTRA_COUNT, relapse)
+                putExtra(InterventionActivity.EXTRA_APP_LABEL, appLabel)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val takeBreakIntent = PendingIntent.getService(
+            this,
+            4000 + relapse,
+            Intent(this, FocusDetectionService::class.java).apply {
+                action = TAKE_BREAK_ACTION
+                putExtra(InterventionActivity.EXTRA_LEVEL, level)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val returnIntent = PendingIntent.getActivity(
+            this,
+            5000 + relapse,
+            packageManager.getLaunchIntentForPackage(this.packageName),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         val notification = NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
-            .setContentTitle("⚠️ Focus check — $appLabel detected")
-            .setContentText("You opened $appLabel during your focus session. Tap to return.")
+            .setContentTitle("⚠️ Focus check — $appLabel detected (L$level)")
+            .setContentText("You opened $appLabel during your focus session. Choose an action.")
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
+            .setContentIntent(returnIntent)
+            .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "🎯 Return to Focus", returnIntent).build())
+            .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "☕ Take a Break", takeBreakIntent).build())
+            .setFullScreenIntent(if (level >= 3) fullScreenIntent else null, level >= 3)
             .build()
+
+        // Level 2 is notification-only on modern Android. Record the shown
+        // intervention even when the app cannot launch an Activity from the
+        // background; Level 3 records its lifecycle from InterventionActivity.
+        if (level == 2) {
+            DistractionEventQueue.add(
+                JSONObject()
+                    .put("eventType", "intervention_shown")
+                    .put("level", level)
+                    .put("timestamp", Instant.now().toString())
+                    .toString()
+            )
+        }
 
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(DISTRACTION_NOTIF_ID, notification)
+    }
+
+    private fun sendRepeatingNudgeNotification(appLabel: String, elapsedMs: Long) {
+        val openIntent = PendingIntent.getActivity(
+            this,
+            6000,
+            packageManager.getLaunchIntentForPackage(this.packageName),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val elapsedMinutes = (elapsedMs / 60_000L).coerceAtLeast(1L)
+        val notification = NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
+            .setContentTitle("⚠️ Still on $appLabel? (${elapsedMinutes}m drift)")
+            .setContentText("Your session is active. Tap to reclaim your focus.")
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setAutoCancel(true)
+            .setContentIntent(openIntent)
+            .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "🎯 Return to Focus", openIntent).build())
+            .build()
+        getSystemService(NotificationManager::class.java).notify(REPEAT_NUDGE_NOTIF_ID, notification)
     }
 
     /**
@@ -299,6 +397,7 @@ class FocusDetectionService : Service() {
     companion object {
         const val START_ACTION = "com.focusecho.ai.START_FOCUS_DETECTION"
         const val STOP_ACTION = "com.focusecho.ai.STOP_FOCUS_DETECTION"
+        const val TAKE_BREAK_ACTION = "com.focusecho.ai.TAKE_BREAK"
         /** ADB test fixture — simulation broadcast actions (debug builds only). */
         const val SIMULATE_DISTRACTION_ACTION = "com.focusecho.ai.SIMULATE_DISTRACTION"
         const val SIMULATE_DISTRACTION_DEBUG_ACTION = "com.focusecho.debug.SIMULATE_DISTRACTION"
@@ -306,6 +405,7 @@ class FocusDetectionService : Service() {
 
         private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
         private const val DISTRACTION_NOTIF_ID = 2001
+        private const val REPEAT_NUDGE_NOTIF_ID = 2002
 
         /** Poll every 3 seconds instead of 1 to reduce battery drain. */
         private const val POLL_INTERVAL_MS = 3_000L
@@ -318,6 +418,7 @@ class FocusDetectionService : Service() {
 
         /** Throttle distraction notifications to one per 30 seconds. */
         private const val DISTRACTION_NOTIF_THROTTLE_MS = 30_000L
+        private const val NUDGE_REPEAT_INTERVAL_MS = 30_000L
 
         /** Well-known always-distracting packages (fallback if prefs unavailable). */
         private val ALWAYS_DISTRACTION_PACKAGES = setOf(

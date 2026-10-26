@@ -262,12 +262,9 @@ export async function syncEventQueue(activeSession = null) {
     }
   }
 
-  // 2. Prepare payload rows - strip escalation_level as Supabase schema does not have it
-  const rows = queue.map(item => {
-    const r = formatDistractionEventRow(item, activeSession);
-    const { escalation_level, ...sanitized } = r;
-    return sanitized;
-  });
+  // 2. Prepare payload rows. The deployed migrations include escalation_level,
+  // so preserve it across browser/mobile/cloud paths for consistent analytics.
+  const rows = queue.map(item => formatDistractionEventRow(item, activeSession));
 
   let writeSuccess = false;
 

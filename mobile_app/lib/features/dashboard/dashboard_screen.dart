@@ -17,6 +17,25 @@ class DashboardScreen extends ConsumerWidget {
     final now = DateTime.now();
     final greeting = now.hour < 12 ? 'morning' : (now.hour < 18 ? 'afternoon' : 'evening');
     final name = state.userProfile?.displayName ?? 'there';
+    final totalXp = state.userProfile?.totalXp ?? 0;
+    final xpBase = totalXp >= AppXP.level4Min
+        ? AppXP.level4Min
+        : totalXp >= AppXP.level3Min
+            ? AppXP.level3Min
+            : totalXp >= AppXP.level2Min
+                ? AppXP.level2Min
+                : 0;
+    final xpNext = xpBase == AppXP.level4Min
+        ? AppXP.level4Min
+        : xpBase == AppXP.level3Min
+            ? AppXP.level4Min
+            : xpBase == AppXP.level2Min
+                ? AppXP.level3Min
+                : AppXP.level2Min;
+    final xpProgress = xpBase == AppXP.level4Min
+        ? 1.0
+        : ((totalXp - xpBase) / (xpNext - xpBase)).clamp(0.0, 1.0);
+    final xpRemaining = (xpNext - totalXp).clamp(0, xpNext);
 
     return Scaffold(
       body: SafeArea(
@@ -62,11 +81,33 @@ class DashboardScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('${state.userProfile?.totalXp ?? 0} XP', style: AppTextStyles.displayMedium),
+                      Text('$totalXp XP', style: AppTextStyles.displayMedium),
                       const SizedBox(height: 8),
-                      const LinearProgressIndicator(value: 0.45),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: SizedBox(
+                          height: 10,
+                          child: Stack(
+                            children: [
+                              Container(color: Colors.white.withValues(alpha: 0.08)),
+                              FractionallySizedBox(
+                                widthFactor: xpProgress,
+                                child: const DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [Color(0xFF8B5CF6), Color(0xFFEC4899)],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 8),
-                      const Text('Next: Consistency Pro • 250 XP needed'),
+                      Text(xpRemaining == 0
+                          ? 'Zen Monk level reached'
+                          : 'Next level • $xpRemaining XP needed'),
                     ],
                   ),
                 ),
