@@ -760,9 +760,8 @@ class AiCoachService:
         user_prompt: str,
         timeout_seconds: float,
     ) -> Tuple[str, str, str]:
-        """Call Groq model directly. Non-reasoning models like Kimi skip reasoning controls to prevent 400 rejections."""
         lower = model_name.lower()
-        is_known_non_reasoning = any(brand in lower for brand in ("kimi", "moonshot", "llama", "gemma"))
+        is_known_non_reasoning = any(brand in lower for brand in ("kimi", "moonshot", "llama", "gemma", "openai", "gpt-oss"))
         if is_known_non_reasoning:
             return self._groq_completion(
                 model_name,
