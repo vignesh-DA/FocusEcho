@@ -80,6 +80,15 @@ Deterministic Offline Fallback Demo (`demo_coach_call.py`):
 - Output: Strict plain-text JSON with session arithmetic and micro-experiment recommendation.
 - Live Model Call Status: Pending `GROQ_API_KEY` in the runtime environment; Groq Zero Data Retention must be enabled in Groq Data Controls for the deployment.
 
+## EchoCoach Groq SDK Migration — 2026-10-26
+
+- **Status:** Implemented and locally verified in commit `008a79a`.
+- **Provider:** Official Groq Python SDK `groq==0.37.1`; direct `httpx` provider calls and Gemini/OpenAI branches were removed.
+- **Configuration:** `GROQ_API_KEY`, `COACH_LLM_MODEL` (`qwen/qwen3.8-27b`), optional `COACH_LLM_MODEL_BACKUP`, and `COACH_LLM_TIMEOUT_SECONDS`. Debrief uses a 5-second budget; refine is capped at 3 seconds.
+- **Reliability:** Strict Pydantic JSON validation, `<think>` stripping, primary-to-backup retry for timeout/connection/invalid JSON/schema/model-not-found failures, reasoning-mode retry, and deterministic rule fallback.
+- **Telemetry and privacy:** Logs contain only model, latency, fallback state, reason, exception type, and status code. The server-side opt-in gate runs before live calls, and startup checks the configured model with `models.list()`. No API key or raw exception text is logged. Groq Zero Data Retention must be enabled in Data Controls for deployment; inference is not retained by default, but reliability/abuse logs may be retained.
+- **Verification:** Backend `unittest` suite: **17/17 passed** (14 coach + 3 intelligence tests). `py_compile` and `git diff --check` passed. The demo ran in deterministic fallback mode because no `GROQ_API_KEY` was configured; live-key verification remains pending.
+
 ---
 
 ## 🧪 Automated Live Chrome E2E Test Suite (EXT-1) — 2026-10-26 (Commit `601737d`)
@@ -153,7 +162,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | Extension manifest checks | **21** | ✅ All pass |
 | Extension DB sync tests | **21** | ✅ All pass |
 | Extension live Chrome E2E | **9 checks** | ⚠️ 8 pass, 1 fail (CHECK-9 rapid bounce) |
-| EchoCoach v1 unit tests | **7 tests** | ✅ All pass (auth, cold-start, injection, cache, rate-limit, fallback, Groq/Kimi) |
+| EchoCoach v1 unit tests | **17 tests** | ✅ All pass (14 coach + 3 intelligence tests) |
 | Flutter static analysis | **lib/** | ✅ 0 errors, 0 warnings |
 | Flutter web release build | **1 build** | ✅ Clean |
 | Android Appium / Selenium E2E | **0** | ❌ Not started |
