@@ -12,11 +12,11 @@ class AnalyticsScreen extends ConsumerWidget {
   static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   static const _pieColors = [
-    AppColors.accentBlue,
-    AppColors.accentGreen,
-    AppColors.accentRed,
-    AppColors.accentYellow,
-    AppColors.textSecondary,
+    Color(0xFF6366F1),
+    Color(0xFFEC4899),
+    Color(0xFFF59E0B),
+    Color(0xFF10B981),
+    Color(0xFF06B6D4),
   ];
 
   @override
@@ -72,76 +72,101 @@ class AnalyticsScreen extends ConsumerWidget {
               const SizedBox(height: 8),
               SizedBox(
                 height: 220,
-                child: BarChart(
-                  BarChartData(
-                    alignment: BarChartAlignment.spaceAround,
-                    maxY: (state.weeklyFocusMinutes.reduce((a, b) => a > b ? a : b) * 1.25)
-                        .clamp(5, double.infinity),
-                    barGroups: List.generate(7, (i) {
-                      return BarChartGroupData(
-                        x: i,
-                        barRods: [
-                          BarChartRodData(
-                            toY: state.weeklyFocusMinutes[i],
-                            width: 18,
-                            borderRadius: BorderRadius.circular(4),
-                            gradient: LinearGradient(
-                              begin: Alignment.bottomCenter,
-                              end: Alignment.topCenter,
-                              colors: [
-                                AppColors.accentBlue.withValues(alpha: 0.5),
-                                AppColors.accentBlue,
-                              ],
+                child: Builder(
+                  builder: (context) {
+                    final maxMins = state.weeklyFocusMinutes.reduce((a, b) => a > b ? a : b);
+                    final maxY = (maxMins * 1.25).clamp(10, double.infinity).toDouble();
+                    return BarChart(
+                      BarChartData(
+                        alignment: BarChartAlignment.spaceAround,
+                        maxY: maxY,
+                        barTouchData: BarTouchData(
+                          enabled: true,
+                          touchTooltipData: BarTouchTooltipData(
+                            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                              final day = _days[group.x.toInt() % _days.length];
+                              return BarTooltipItem(
+                                '$day: ${rod.toY.toInt()}m focus',
+                                AppTextStyles.bodySmall.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        barGroups: List.generate(7, (i) {
+                          return BarChartGroupData(
+                            x: i,
+                            barRods: [
+                              BarChartRodData(
+                                toY: state.weeklyFocusMinutes[i],
+                                width: 20,
+                                borderRadius: const BorderRadius.vertical(top: Radius.circular(8)),
+                                gradient: const LinearGradient(
+                                  begin: Alignment.bottomCenter,
+                                  end: Alignment.topCenter,
+                                  colors: [
+                                    Color(0xFF6366F1),
+                                    Color(0xFF06B6D4),
+                                  ],
+                                ),
+                                backDrawRodData: BackgroundBarChartRodData(
+                                  show: true,
+                                  toY: maxY,
+                                  color: Colors.white.withValues(alpha: 0.05),
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                        titlesData: FlTitlesData(
+                          leftTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              reservedSize: 36,
+                              getTitlesWidget: (value, meta) {
+                                if (value == meta.max) return const SizedBox();
+                                return Text(
+                                  '${value.toInt()}m',
+                                  style: AppTextStyles.bodySmall
+                                      .copyWith(color: AppColors.textSecondary, fontSize: 10),
+                                );
+                              },
                             ),
                           ),
-                        ],
-                      );
-                    }),
-                    titlesData: FlTitlesData(
-                      leftTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          reservedSize: 36,
-                          getTitlesWidget: (value, meta) {
-                            if (value == meta.max) return const SizedBox();
-                            return Text(
-                              '${value.toInt()}m',
-                              style: AppTextStyles.bodySmall
-                                  .copyWith(color: AppColors.textSecondary, fontSize: 10),
-                            );
-                          },
+                          bottomTitles: AxisTitles(
+                            sideTitles: SideTitles(
+                              showTitles: true,
+                              getTitlesWidget: (value, meta) {
+                                final idx = value.toInt();
+                                if (idx < 0 || idx >= _days.length) return const SizedBox();
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: Text(
+                                    _days[idx],
+                                    style: AppTextStyles.bodySmall.copyWith(
+                                        color: AppColors.textSecondary, fontSize: 10),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                         ),
-                      ),
-                      bottomTitles: AxisTitles(
-                        sideTitles: SideTitles(
-                          showTitles: true,
-                          getTitlesWidget: (value, meta) {
-                            final idx = value.toInt();
-                            if (idx < 0 || idx >= _days.length) return const SizedBox();
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                _days[idx],
-                                style: AppTextStyles.bodySmall.copyWith(
-                                    color: AppColors.textSecondary, fontSize: 10),
-                              ),
-                            );
-                          },
+                        gridData: FlGridData(
+                          show: true,
+                          drawVerticalLine: false,
+                          getDrawingHorizontalLine: (v) => const FlLine(
+                            color: Colors.white10,
+                            strokeWidth: 1,
+                          ),
                         ),
+                        borderData: FlBorderData(show: false),
                       ),
-                      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    ),
-                    gridData: FlGridData(
-                      show: true,
-                      drawVerticalLine: false,
-                      getDrawingHorizontalLine: (v) => FlLine(
-                        color: Colors.white10,
-                        strokeWidth: 1,
-                      ),
-                    ),
-                    borderData: FlBorderData(show: false),
-                  ),
+                    );
+                  },
                 ),
               ),
 
@@ -162,6 +187,23 @@ class AnalyticsScreen extends ConsumerWidget {
                                 .toDouble() *
                             1.3)
                         .clamp(4, double.infinity),
+                    lineTouchData: LineTouchData(
+                      enabled: true,
+                      touchTooltipData: LineTouchTooltipData(
+                        getTooltipItems: (touchedSpots) {
+                          return touchedSpots.map((spot) {
+                            final day = _days[spot.x.toInt() % _days.length];
+                            return LineTooltipItem(
+                              '$day: ${spot.y.toInt()} distraction${spot.y.toInt() == 1 ? '' : 's'}',
+                              AppTextStyles.bodySmall.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            );
+                          }).toList();
+                        },
+                      ),
+                    ),
                     lineBarsData: [
                       LineChartBarData(
                         spots: List.generate(
@@ -169,22 +211,32 @@ class AnalyticsScreen extends ConsumerWidget {
                           (i) => FlSpot(i.toDouble(),
                               state.dailyDistractions[i].toDouble()),
                         ),
-                        color: AppColors.accentRed,
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFFF5E62), Color(0xFFFF9966)],
+                        ),
                         isCurved: true,
-                        barWidth: 2.5,
+                        preventCurveOverShooting: true,
+                        barWidth: 3.0,
                         dotData: FlDotData(
                           show: true,
                           getDotPainter: (spot, _, __, ___) =>
                               FlDotCirclePainter(
-                            radius: 3,
-                            color: AppColors.accentRed,
+                            radius: 3.5,
+                            color: const Color(0xFFFF5E62),
                             strokeColor: Colors.white,
-                            strokeWidth: 1,
+                            strokeWidth: 1.5,
                           ),
                         ),
                         belowBarData: BarAreaData(
                           show: true,
-                          color: AppColors.accentRed.withValues(alpha: 0.12),
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              const Color(0xFFFF5E62).withValues(alpha: 0.28),
+                              const Color(0xFFFF9966).withValues(alpha: 0.02),
+                            ],
+                          ),
                         ),
                       ),
                     ],
@@ -230,7 +282,7 @@ class AnalyticsScreen extends ConsumerWidget {
                       show: true,
                       drawVerticalLine: false,
                       getDrawingHorizontalLine: (v) =>
-                          FlLine(color: Colors.white10, strokeWidth: 1),
+                          const FlLine(color: Colors.white10, strokeWidth: 1),
                     ),
                     borderData: FlBorderData(show: false),
                   ),
@@ -426,6 +478,22 @@ class AnalyticsScreen extends ConsumerWidget {
                     LineChartData(
                       minY: 0,
                       maxY: 100,
+                      lineTouchData: LineTouchData(
+                        enabled: true,
+                        touchTooltipData: LineTouchTooltipData(
+                          getTooltipItems: (touchedSpots) {
+                            return touchedSpots.map((spot) {
+                              return LineTooltipItem(
+                                'Session #${spot.x.toInt() + 1}: ${spot.y.toInt()} Score',
+                                AppTextStyles.bodySmall.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            }).toList();
+                          },
+                        ),
+                      ),
                       lineBarsData: [
                         LineChartBarData(
                           spots: List.generate(
@@ -433,23 +501,32 @@ class AnalyticsScreen extends ConsumerWidget {
                             (i) => FlSpot(
                                 i.toDouble(), state.sessionScores[i]),
                           ),
-                          color: AppColors.accentGreen,
+                          gradient: const LinearGradient(
+                            colors: [Color(0xFF10B981), Color(0xFF34D399)],
+                          ),
                           isCurved: true,
-                          barWidth: 2.5,
+                          preventCurveOverShooting: true,
+                          barWidth: 3.0,
                           dotData: FlDotData(
                             show: true,
                             getDotPainter: (spot, _, __, ___) =>
                                 FlDotCirclePainter(
-                              radius: 3,
-                              color: AppColors.accentGreen,
+                              radius: 3.5,
+                              color: const Color(0xFF10B981),
                               strokeColor: Colors.white,
-                              strokeWidth: 1,
+                              strokeWidth: 1.5,
                             ),
                           ),
                           belowBarData: BarAreaData(
                             show: true,
-                            color:
-                                AppColors.accentGreen.withValues(alpha: 0.12),
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                const Color(0xFF10B981).withValues(alpha: 0.25),
+                                const Color(0xFF34D399).withValues(alpha: 0.02),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -489,7 +566,7 @@ class AnalyticsScreen extends ConsumerWidget {
                         show: true,
                         drawVerticalLine: false,
                         getDrawingHorizontalLine: (v) =>
-                            FlLine(color: Colors.white10, strokeWidth: 1),
+                            const FlLine(color: Colors.white10, strokeWidth: 1),
                       ),
                       borderData: FlBorderData(show: false),
                     ),
@@ -628,7 +705,7 @@ class _RiskTrendSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Count HIGH/CRITICAL per day for a simple sparkline-style display
+    // Count HIGH/CRITICAL per day for a sleek curved area chart
     final riskByDay = trend.map((d) {
       final high = d.riskScores
           .where((r) => r == 'HIGH' || r == 'CRITICAL')
@@ -636,33 +713,151 @@ class _RiskTrendSection extends StatelessWidget {
       return FlSpot(trend.indexOf(d).toDouble(), high.toDouble());
     }).toList();
 
+    final totalHighRisk = trend.fold<int>(
+      0,
+      (s, d) => s + d.riskScores.where((r) => r == 'HIGH' || r == 'CRITICAL').length,
+    );
+    final riskLabel = totalHighRisk == 0
+        ? 'Low Risk'
+        : totalHighRisk <= 3
+            ? 'Moderate Risk'
+            : 'Elevated Risk';
+    final riskColor = totalHighRisk == 0
+        ? const Color(0xFF10B981)
+        : totalHighRisk <= 3
+            ? const Color(0xFFF59E0B)
+            : const Color(0xFFEF4444);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('14-Day Risk Trend (Synced)',
-                style: AppTextStyles.displayMedium),
-            const SizedBox(width: 6),
-            const Icon(Icons.cloud_outlined,
-                size: 14, color: AppColors.accentBlue),
+            Row(
+              children: [
+                Text('14-Day Risk Trend',
+                    style: AppTextStyles.displayMedium),
+                const SizedBox(width: 6),
+                const Icon(Icons.cloud_outlined,
+                    size: 14, color: AppColors.accentBlue),
+              ],
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: riskColor.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: riskColor.withValues(alpha: 0.4)),
+              ),
+              child: Text(
+                riskLabel,
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: riskColor,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 10,
+                ),
+              ),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        SizedBox(
-          height: 160,
-          child: LineChart(
-            LineChartData(
-              lineBarsData: [
-                LineChartBarData(
-                  spots: riskByDay,
-                  color: AppColors.accentYellow,
-                  isCurved: true,
-                  dotData: const FlDotData(show: false),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: AppDecorations.glassmorphismCard(),
+          child: SizedBox(
+            height: 160,
+            child: LineChart(
+              LineChartData(
+                lineTouchData: LineTouchData(
+                  enabled: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    getTooltipItems: (touchedSpots) {
+                      return touchedSpots.map((spot) {
+                        return LineTooltipItem(
+                          'Day ${spot.x.toInt() + 1}: ${spot.y.toInt()} high-risk events',
+                          AppTextStyles.bodySmall.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        );
+                      }).toList();
+                    },
+                  ),
                 ),
-              ],
-              gridData: const FlGridData(show: false),
-              borderData: FlBorderData(show: false),
+                lineBarsData: [
+                  LineChartBarData(
+                    spots: riskByDay,
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF59E0B), Color(0xFFFBBF24)],
+                    ),
+                    isCurved: true,
+                    preventCurveOverShooting: true,
+                    barWidth: 2.5,
+                    dotData: FlDotData(
+                      show: riskByDay.length <= 14,
+                      getDotPainter: (spot, _, __, ___) => FlDotCirclePainter(
+                        radius: 3,
+                        color: const Color(0xFFF59E0B),
+                        strokeColor: Colors.white,
+                        strokeWidth: 1.5,
+                      ),
+                    ),
+                    belowBarData: BarAreaData(
+                      show: true,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          const Color(0xFFF59E0B).withValues(alpha: 0.22),
+                          const Color(0xFFF59E0B).withValues(alpha: 0.01),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (v) =>
+                      const FlLine(color: Colors.white10, strokeWidth: 1),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 24,
+                      interval: 1,
+                      getTitlesWidget: (value, meta) {
+                        if (value != value.roundToDouble() || value == meta.max) return const SizedBox();
+                        return Text(
+                          value.toInt().toString(),
+                          style: AppTextStyles.bodySmall.copyWith(
+                            color: AppColors.textSecondary,
+                            fontSize: 10,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      interval: 2,
+                      getTitlesWidget: (value, meta) => Text(
+                        'D${value.toInt() + 1}',
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.textSecondary,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
+                  ),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                ),
+              ),
             ),
           ),
         ),
