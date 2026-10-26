@@ -73,6 +73,12 @@ def run_demo(api_key: str = "", model_name: str = "gemini-1.5-flash"):
 
 
 if __name__ == "__main__":
-    key = os.getenv("COACH_LLM_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("OPENAI_API_KEY") or ""
-    model = os.getenv("COACH_LLM_MODEL", "gemini-1.5-flash")
+    key = (
+        os.getenv("COACH_LLM_API_KEY")
+        or os.getenv("GROQ_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or ""
+    )
+    model = os.getenv("COACH_LLM_MODEL", "")
     run_demo(api_key=key, model_name=model)

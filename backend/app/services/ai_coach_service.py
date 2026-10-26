@@ -86,11 +86,25 @@ class AiCoachService:
         # Using enterprise paid tier API endpoints where data is not used for product improvement
         self.api_key = (
             os.getenv("COACH_LLM_API_KEY")
+            or os.getenv("GROQ_API_KEY")
             or os.getenv("GEMINI_API_KEY")
             or os.getenv("OPENAI_API_KEY", "")
         )
-        self.provider = os.getenv("COACH_LLM_PROVIDER", "gemini").lower()
-        self.model = os.getenv("COACH_LLM_MODEL", "gemini-1.5-flash")
+        self.provider = os.getenv("COACH_LLM_PROVIDER", "").lower()
+        if not self.provider:
+            if self.api_key.startswith("gsk_"):
+                self.provider = "groq"
+            elif self.api_key.startswith("sk-"):
+                self.provider = "openai"
+            else:
+                self.provider = "gemini"
+
+        default_model = (
+            "moonshotai/kimi-k2-instruct-0905"
+            if self.provider == "groq"
+            else ("gpt-4o-mini" if self.provider == "openai" else "gemini-1.5-flash")
+        )
+        self.model = os.getenv("COACH_LLM_MODEL", default_model)
 
     # ──────────────────────────────────────────────────────────────────────────
     # 1. OPT-IN MANAGEMENT
@@ -543,9 +557,53 @@ class AiCoachService:
         Calls LLM provider with 3.0s strict timeout.
         Ensures plain JSON output.
         """
-        if self.provider == "openai" or self.api_key.startswith("sk-"):
+        if self.provider == "groq" or self.api_key.startswith("gsk_"):
+            return self._call_groq(system_prompt, user_prompt)
+        elif self.provider == "openai" or self.api_key.startswith("sk-"):
             return self._call_openai(system_prompt, user_prompt)
         return self._call_gemini(system_prompt, user_prompt)
+
+    def _call_groq(self, system_prompt: str, user_prompt: str) -> str:
+        """
+        Groq LPU REST call via httpx with 3.0s timeout.
+        Ultra-low latency inference (< 500 ms) using OpenAI-compatible format.
+        Supports Moonshot AI Kimi (moonshotai/kimi-k2-instruct-0905).
+        Data Privacy Policy: Groq does not train on customer inputs or outputs.
+        """
+        model_name = self.model or "moonshotai/kimi-k2-instruct-0905"
+        url = "https://api.groq.com/openai/v1/chat/completions"
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.2,
+            "max_tokens": 400,
+        }
+
+        with httpx.Client(timeout=LLM_TIMEOUT_SECONDS) as client:
+            resp = client.post(url, headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Groq API returned status {resp.status_code}: {resp.text}")
+
+            data = resp.json()
+            choices = data.get("choices") or []
+            if not choices:
+                raise RuntimeError("No choices in Groq response.")
+
+            text = choices[0].get("message", {}).get("content", "").strip()
+            if text.startswith("```"):
+                text = re.sub(r"^```[a-zA-Z]*\n?", "", text)
+                text = re.sub(r"\n?```$", "", text).strip()
+            return text
 
     def _call_gemini(self, system_prompt: str, user_prompt: str) -> str:
         """

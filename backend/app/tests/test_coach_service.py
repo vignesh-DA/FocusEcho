@@ -235,7 +235,47 @@ class EchoCoachTests(unittest.TestCase):
         for _ in range(30):
             self.assertTrue(_check_and_increment_rate_limit(user_id))
         # 31st request exceeds rate limit
-        self.assertFalse(_check_and_increment_rate_limit(user_id))
+        self.assertFalse(_check_and_increment_rate_limit(user_id))    # ──────────────────────────────────────────────────────────────────────────
+    # TEST 7: Groq Provider - Kimi model invocation routing and response parsing
+    # ──────────────────────────────────────────────────────────────────────────
+    @patch("httpx.Client.post")
+    def test_groq_kimi_provider_call(self, mock_post):
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps({
+                            "is_sufficiently_clear": True,
+                            "refined_intention": "Draft the quarterly performance report in Docs",
+                            "clarity_score": 90,
+                            "coach_feedback": "Specific tool and document named. Excellent target."
+                        })
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = mock_resp
+
+        mock_db = MockSupabaseClient()
+        service = AiCoachService(supabase_client=mock_db)
+        service.api_key = "gsk_test_groq_key_123"
+        service.provider = "groq"
+        service.model = "moonshotai/kimi-k2-instruct-0905"
+
+        result = service.refine_intention("work on report", "user-groq-1")
+        self.assertFalse(result.is_fallback)
+        self.assertEqual(result.refined_intention, "Draft the quarterly performance report in Docs")
+        self.assertEqual(result.clarity_score, 90)
+
+        # Check call arguments
+        mock_post.assert_called_once()
+        call_url = mock_post.call_args[0][0]
+        call_kwargs = mock_post.call_args[1]
+        self.assertEqual(call_url, "https://api.groq.com/openai/v1/chat/completions")
+        self.assertEqual(call_kwargs["headers"]["Authorization"], "Bearer gsk_test_groq_key_123")
+        self.assertEqual(call_kwargs["json"]["model"], "moonshotai/kimi-k2-instruct-0905")
 
 
 if __name__ == "__main__":
