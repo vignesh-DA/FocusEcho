@@ -11,7 +11,7 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._();
 
   static const _dbName = 'focus_echo.db';
-  static const _dbVersion = 4;
+  static const _dbVersion = 5;
 
   Database? _database;
 
@@ -136,7 +136,10 @@ class DatabaseHelper {
         total_xp_earned INTEGER NOT NULL DEFAULT 0,
         focus_score REAL NOT NULL DEFAULT 0.0,
         status TEXT NOT NULL DEFAULT 'active',
-        is_synced INTEGER NOT NULL DEFAULT 0
+        is_synced INTEGER NOT NULL DEFAULT 0,
+        focus_rating INTEGER,
+        drift_reason TEXT,
+        parked_items TEXT
       )
     ''');
 
@@ -199,6 +202,14 @@ class DatabaseHelper {
       await db.execute(
         'ALTER TABLE distraction_events ADD COLUMN escalation_level INTEGER NOT NULL DEFAULT 1',
       );
+    }
+    if (oldVersion < 5) {
+      await db.execute(
+          'ALTER TABLE focus_sessions ADD COLUMN focus_rating INTEGER');
+      await db
+          .execute('ALTER TABLE focus_sessions ADD COLUMN drift_reason TEXT');
+      await db
+          .execute('ALTER TABLE focus_sessions ADD COLUMN parked_items TEXT');
     }
   }
 

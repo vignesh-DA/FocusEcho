@@ -59,6 +59,29 @@ class FocusSessionDao {
     );
   }
 
+  Future<void> updateSessionReflection(
+    String sessionId, {
+    required int? focusRating,
+    required String? driftReason,
+  }) async {
+    final values = <String, dynamic>{
+      'focus_rating': focusRating,
+      'drift_reason': driftReason,
+      'is_synced': 0,
+    };
+    if (kIsWeb) {
+      final index =
+          DatabaseHelper.webSessions.indexWhere((s) => s['id'] == sessionId);
+      if (index != -1) DatabaseHelper.webSessions[index].addAll(values);
+      await DatabaseHelper.persistWeb();
+      AppDependencies.triggerWebSync();
+      return;
+    }
+    final db = await _databaseHelper.getDatabase();
+    await db.update('focus_sessions', values,
+        where: 'id = ?', whereArgs: [sessionId]);
+  }
+
   Future<FocusSession?> getActiveSession() async {
     if (kIsWeb) {
       final active = DatabaseHelper.webSessions.firstWhere(

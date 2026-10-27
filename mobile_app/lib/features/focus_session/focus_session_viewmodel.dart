@@ -181,8 +181,15 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     try {
       final List<dynamic> decoded = jsonDecode(raw) as List<dynamic>;
       var apps = decoded.cast<String>().toList();
-      final legacyWebDefaults = {'Figma', 'VS Code', 'GitHub', 'Google Docs', 'Notion'};
-      final isLegacyList = apps.length == 5 && legacyWebDefaults.every(apps.contains);
+      final legacyWebDefaults = {
+        'Figma',
+        'VS Code',
+        'GitHub',
+        'Google Docs',
+        'Notion'
+      };
+      final isLegacyList =
+          apps.length == 5 && legacyWebDefaults.every(apps.contains);
       if (apps.isEmpty || isLegacyList) {
         apps = <String>{...apps, ...defaultProductiveApps}.toList();
         unawaited(_prefs.setString(AppKeys.productiveApps, jsonEncode(apps)));
@@ -309,7 +316,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       productiveApp: productiveApp,
       intent: trimmedIntent,
     );
-    FELog.i('FocusSession', 'Starting session ${session.id} (intent: "$trimmedIntent", app: $productiveApp, user: $userId)');
+    FELog.i('FocusSession',
+        'Starting session ${session.id} (intent: "$trimmedIntent", app: $productiveApp, user: $userId)');
     await _sessionDao.insertSession(session);
     _requestSync();
     // Persist the intent so the native layer can show it on full-screen
@@ -413,9 +421,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       }
     });
 
-    final level = (distractionCount <= 1)
-        ? 1
-        : (distractionCount <= 3 ? 2 : 3);
+    final level = (distractionCount <= 1) ? 1 : (distractionCount <= 3 ? 2 : 3);
 
     state = state.copyWith(
       isActive: true,
@@ -578,7 +584,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     FELog.w(
       'FocusSession',
       'Distraction registered #$newCount: package=${event.packageName}, label=${event.appLabel}, '
-      'resolved_level=$level, source=${event.eventType}',
+          'resolved_level=$level, source=${event.eventType}',
     );
     state = state.copyWith(
       distractionCount: newCount,
@@ -609,7 +615,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
           await _eventDao.getEventsForSession(state.session?.id ?? '');
       final event = events.where((e) => e.id == eventId).firstOrNull;
       if (event == null) {
-        FELog.w('FocusSession', 'Recovery event $eventId not found in session, dismissing alert');
+        FELog.w('FocusSession',
+            'Recovery event $eventId not found in session, dismissing alert');
         state = state.copyWith(showAlert: false);
         return;
       }
@@ -677,14 +684,14 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       FELog.d(
         'FocusSession',
         'Awarded ${AppXP.sessionCompletionXp} completion XP '
-        '(session ${session.id}, ${minutes}min). Total session XP: $finalSessionXp',
+            '(session ${session.id}, ${minutes}min). Total session XP: $finalSessionXp',
       );
     }
 
     FELog.i(
       'FocusSession',
       'Session stopped: id=${session.id}, duration=${minutes}m, distractions=$totalDistractions, '
-      'focusScore=$focusScore, sessionXp=$finalSessionXp',
+          'focusScore=$focusScore, sessionXp=$finalSessionXp',
     );
 
     await _sessionDao.updateSessionEnd(
@@ -760,6 +767,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
         totalDistractions: totalDistractions,
         sessionXp: finalSessionXp,
         focusScore: focusScore,
+        focusRating: session.focusRating,
+        driftReason: session.driftReason,
       ),
       showAlert: false,
     );
@@ -851,6 +860,33 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       availableProductiveApps: state.availableProductiveApps,
       selectedProductiveApp: state.selectedProductiveApp,
     );
+  }
+
+  Future<void> saveSessionReflection(
+      int? focusRating, String? driftReason) async {
+    final session = state.session;
+    final summary = state.sessionSummary;
+    if (session == null || summary == null) return;
+    if (focusRating != null && (focusRating < 1 || focusRating > 5)) return;
+    const validReasons = {'bored', 'stuck', 'tired', 'notification', 'other'};
+    if (driftReason != null && !validReasons.contains(driftReason)) return;
+    await _sessionDao.updateSessionReflection(
+      session.id,
+      focusRating: focusRating,
+      driftReason: driftReason,
+    );
+    final updatedSession = session.copyWith(
+      focusRating: focusRating,
+      driftReason: driftReason,
+    );
+    state = state.copyWith(
+      session: updatedSession,
+      sessionSummary: summary.copyWith(
+        focusRating: focusRating,
+        driftReason: driftReason,
+      ),
+    );
+    unawaited(_syncService.syncPendingEvents());
   }
 
   void dismissAlert() => state = state.copyWith(showAlert: false);

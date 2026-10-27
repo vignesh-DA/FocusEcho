@@ -16,6 +16,8 @@ class SessionSummary with _$SessionSummary {
     required int totalDistractions,
     required int sessionXp,
     required double focusScore,
+    int? focusRating,
+    String? driftReason,
   }) = _SessionSummary;
 }
 

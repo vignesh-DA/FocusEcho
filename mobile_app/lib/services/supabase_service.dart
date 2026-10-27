@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -22,11 +23,39 @@ class SupabaseService {
     await _client.from('distraction_events').upsert(map);
   }
 
-  Future<void> upsertFocusSession(FocusSession session) async {
+  Future<bool> upsertFocusSession(FocusSession session) async {
     final authUserId = _client.auth.currentUser?.id;
-    if (authUserId == null) return;
+    if (authUserId == null) return true;
     final row = session.toSqliteMap()..['user_id'] = authUserId;
-    await _client.from('focus_sessions').upsert(row);
+    final parked = row['parked_items'];
+    if (parked is String) {
+      try {
+        row['parked_items'] = jsonDecode(parked);
+      } catch (_) {
+        row['parked_items'] = null;
+      }
+    }
+    try {
+      await _client.from('focus_sessions').upsert(row);
+      return true;
+    } on PostgrestException catch (error) {
+      // A deployment that has not run the Batch 1 migration must still be
+      // usable. Retry the legacy row, but keep the local row unsynced so the
+      // new fields are retried after the migration is applied.
+      final message = error.message.toLowerCase();
+      if (!message.contains('focus_rating') &&
+          !message.contains('drift_reason') &&
+          !message.contains('parked_items') &&
+          !message.contains('schema cache')) {
+        rethrow;
+      }
+      final legacy = Map<String, dynamic>.from(row)
+        ..remove('focus_rating')
+        ..remove('drift_reason')
+        ..remove('parked_items');
+      await _client.from('focus_sessions').upsert(legacy);
+      return false;
+    }
   }
 
   Future<void> upsertInterventionEvent(InterventionEvent event) async {
@@ -120,10 +149,17 @@ class SupabaseService {
     }
 
     String? targetUserId = user.id;
-    final userById = await _client.from('users').select('id').eq('id', user.id).maybeSingle();
+    final userById = await _client
+        .from('users')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
     if (userById == null && user.email != null) {
-      final userByEmail =
-          await _client.from('users').select('id').eq('email', user.email!).maybeSingle();
+      final userByEmail = await _client
+          .from('users')
+          .select('id')
+          .eq('email', user.email!)
+          .maybeSingle();
       if (userByEmail != null) {
         targetUserId = userByEmail['id'] as String;
       } else {
@@ -132,18 +168,29 @@ class SupabaseService {
     }
 
     if (targetUserId != null) {
-      final sessionRows =
-          await _client.from('focus_sessions').select('id').eq('user_id', targetUserId) as List;
+      final sessionRows = await _client
+          .from('focus_sessions')
+          .select('id')
+          .eq('user_id', targetUserId) as List;
       final sessionIds = sessionRows.map((row) => row['id'] as String).toList();
       if (sessionIds.isNotEmpty) {
-        await _client.from('distraction_events').delete().inFilter('session_id', sessionIds);
-        await _client.from('coach_insights').delete().inFilter('session_id', sessionIds);
+        await _client
+            .from('distraction_events')
+            .delete()
+            .inFilter('session_id', sessionIds);
+        await _client
+            .from('coach_insights')
+            .delete()
+            .inFilter('session_id', sessionIds);
       }
 
       await _client.from('coach_insights').delete().eq('user_id', targetUserId);
       await _client.from('coach_profiles').delete().eq('user_id', targetUserId);
       await _client.from('focus_sessions').delete().eq('user_id', targetUserId);
-      await _client.from('nightly_analytics_summaries').delete().eq('user_id', targetUserId);
+      await _client
+          .from('nightly_analytics_summaries')
+          .delete()
+          .eq('user_id', targetUserId);
       await _client.from('user_xp').delete().eq('user_id', targetUserId);
       await _client.from('users').delete().eq('id', targetUserId);
     }
@@ -152,6 +199,7 @@ class SupabaseService {
   }
 
   User? get currentUser => _client.auth.currentUser;
+
   /// Returns a broadcast stream of distraction_events rows for [sessionId].
   /// Updates are delivered via Supabase Realtime without polling.
   Stream<List<Map<String, dynamic>>> watchDistractionEvents(String sessionId) {

@@ -1,4 +1,5 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
+import 'dart:convert';
 
 part 'focus_session.freezed.dart';
 part 'focus_session.g.dart';
@@ -19,9 +20,13 @@ class FocusSession with _$FocusSession {
     @Default(0) double focusScore,
     @Default(SessionStatus.active) SessionStatus status,
     @Default(false) bool isSynced,
+    int? focusRating,
+    String? driftReason,
+    List<String>? parkedItems,
   }) = _FocusSession;
 
-  factory FocusSession.fromJson(Map<String, dynamic> json) => _$FocusSessionFromJson(json);
+  factory FocusSession.fromJson(Map<String, dynamic> json) =>
+      _$FocusSessionFromJson(json);
 
   const FocusSession._();
 
@@ -38,6 +43,9 @@ class FocusSession with _$FocusSession {
       'focus_score': focusScore,
       'status': status.name,
       'is_synced': isSynced ? 1 : 0,
+      'focus_rating': focusRating,
+      'drift_reason': driftReason,
+      'parked_items': parkedItems == null ? null : jsonEncode(parkedItems),
     };
   }
 
@@ -46,16 +54,35 @@ class FocusSession with _$FocusSession {
       id: map['id'] as String,
       userId: map['user_id'] as String,
       startTime: DateTime.parse(map['start_time'] as String),
-      endTime: map['end_time'] == null ? null : DateTime.parse(map['end_time'] as String),
+      endTime: map['end_time'] == null
+          ? null
+          : DateTime.parse(map['end_time'] as String),
       productiveApp: map['productive_app'] as String,
       intent: map['intent'] as String? ?? '',
       totalDistractions: map['total_distractions'] as int? ?? 0,
       totalXpEarned: map['total_xp_earned'] as int? ?? 0,
       focusScore: (map['focus_score'] as num?)?.toDouble() ?? 0,
       status: SessionStatus.values.firstWhere(
-        (v) => v.name == (map['status'] as String? ?? SessionStatus.active.name),
+        (v) =>
+            v.name == (map['status'] as String? ?? SessionStatus.active.name),
       ),
       isSynced: (map['is_synced'] as int? ?? 0) == 1,
+      focusRating: (map['focus_rating'] as num?)?.toInt(),
+      driftReason: map['drift_reason'] as String?,
+      parkedItems: _decodeParkedItems(map['parked_items']),
     );
+  }
+
+  static List<String>? _decodeParkedItems(dynamic raw) {
+    if (raw is List) return raw.whereType<String>().toList();
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) return decoded.whereType<String>().toList();
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
   }
 }

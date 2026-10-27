@@ -80,12 +80,16 @@ class SyncService {
 
       final sessions = await _sessionDao.getUnsyncedSessions();
       for (final session in sessions) {
+        var persistedNewFields = true;
         final success = await _retryWithBackoff(() async {
-          await _supabaseService.upsertFocusSession(session);
-          await _sessionDao.markAsSynced(session.id);
+          persistedNewFields =
+              await _supabaseService.upsertFocusSession(session);
+          if (persistedNewFields) await _sessionDao.markAsSynced(session.id);
         });
-        if (success) {
+        if (success && persistedNewFields) {
           synced++;
+        } else if (success) {
+          failed++;
         } else {
           failed++;
         }

@@ -77,6 +77,7 @@ class FocusSessionScreen extends ConsumerWidget {
         summary: state.sessionSummary!,
         stats: state.sessionSummaryStats,
         onDismiss: vm.dismissSummary,
+        onSaveReflection: vm.saveSessionReflection,
       );
     }
 
@@ -285,7 +286,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
     if (currentText.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Type a draft intention first, then tap to refine with EchoCoach.'),
+          content: Text(
+              'Type a draft intention first, then tap to refine with EchoCoach.'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -299,7 +301,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
         setState(() {
           _isRefining = false;
           _intentCtrl.text = res.refinedIntention;
-          _refineFeedback = '${res.coachFeedback} (Clarity: ${res.clarityScore}/100)';
+          _refineFeedback =
+              '${res.coachFeedback} (Clarity: ${res.clarityScore}/100)';
         });
         widget.vm.setIntent(res.refinedIntention);
       }
@@ -325,16 +328,26 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
 
   IconData _iconForApp(String app) {
     final l = app.toLowerCase();
-    if (l.contains('code') || l.contains('cursor') || l.contains('intellij') || l.contains('terminal')) {
+    if (l.contains('code') ||
+        l.contains('cursor') ||
+        l.contains('intellij') ||
+        l.contains('terminal')) {
       return Icons.code_rounded;
     }
     if (l.contains('git') || l.contains('github') || l.contains('gitlab')) {
       return Icons.commit_rounded;
     }
-    if (l.contains('figma') || l.contains('design') || l.contains('canva') || l.contains('photoshop') || l.contains('blender')) {
+    if (l.contains('figma') ||
+        l.contains('design') ||
+        l.contains('canva') ||
+        l.contains('photoshop') ||
+        l.contains('blender')) {
       return Icons.palette_outlined;
     }
-    if (l.contains('doc') || l.contains('word') || l.contains('overleaf') || l.contains('latex')) {
+    if (l.contains('doc') ||
+        l.contains('word') ||
+        l.contains('overleaf') ||
+        l.contains('latex')) {
       return Icons.description_outlined;
     }
     if (l.contains('sheet') || l.contains('excel')) {
@@ -343,13 +356,22 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
     if (l.contains('notion') || l.contains('obsidian') || l.contains('note')) {
       return Icons.auto_stories_outlined;
     }
-    if (l.contains('slack') || l.contains('teams') || l.contains('meet') || l.contains('zoom')) {
+    if (l.contains('slack') ||
+        l.contains('teams') ||
+        l.contains('meet') ||
+        l.contains('zoom')) {
       return Icons.chat_bubble_outline_rounded;
     }
-    if (l.contains('chatgpt') || l.contains('claude') || l.contains('perplexity') || l.contains('ai')) {
+    if (l.contains('chatgpt') ||
+        l.contains('claude') ||
+        l.contains('perplexity') ||
+        l.contains('ai')) {
       return Icons.psychology_outlined;
     }
-    if (l.contains('coursera') || l.contains('khan') || l.contains('duolingo') || l.contains('study')) {
+    if (l.contains('coursera') ||
+        l.contains('khan') ||
+        l.contains('duolingo') ||
+        l.contains('study')) {
       return Icons.school_outlined;
     }
     return Icons.apps_rounded;
@@ -369,7 +391,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
           children: [
             const Icon(Icons.add_circle_outline, color: AppColors.accentBlue),
             const SizedBox(width: 8),
-            Text('Add Productive App', style: AppTextStyles.displayMedium.copyWith(fontSize: 20)),
+            Text('Add Productive App',
+                style: AppTextStyles.displayMedium.copyWith(fontSize: 20)),
           ],
         ),
         content: Column(
@@ -407,13 +430,15 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogCtx).pop(),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+            child: const Text('Cancel',
+                style: TextStyle(color: AppColors.textSecondary)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.accentBlue,
               foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
             onPressed: () {
               if (controller.text.trim().isNotEmpty) {
@@ -421,7 +446,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                 Navigator.of(dialogCtx).pop();
               }
             },
-            child: const Text('Add & Select', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('Add & Select',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -466,16 +492,20 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: AppColors.accentBlue.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: AppColors.accentBlue.withValues(alpha: 0.3)),
+                          border: Border.all(
+                              color:
+                                  AppColors.accentBlue.withValues(alpha: 0.3)),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.bolt_rounded, size: 14, color: AppColors.accentBlue),
+                            const Icon(Icons.bolt_rounded,
+                                size: 14, color: AppColors.accentBlue),
                             const SizedBox(width: 4),
                             Text(
                               'DEEP WORK SETUP',
@@ -496,7 +526,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                   const SizedBox(height: 6),
                   Text(
                     'Pick what you are working in and state your intention for this session.',
-                    style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
+                    style: AppTextStyles.bodyMedium
+                        .copyWith(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 24),
 
@@ -505,10 +536,12 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Top Productive Tools',
-                          style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                          style: AppTextStyles.bodyLarge
+                              .copyWith(fontWeight: FontWeight.w600)),
                       Text(
                         '${allApps.length} tools available',
-                        style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+                        style: AppTextStyles.bodySmall
+                            .copyWith(color: AppColors.textSecondary),
                       ),
                     ],
                   ),
@@ -525,12 +558,16 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                           avatar: Icon(
                             _iconForApp(app),
                             size: 16,
-                            color: isSelected ? Colors.black : AppColors.accentBlue,
+                            color: isSelected
+                                ? Colors.black
+                                : AppColors.accentBlue,
                           ),
                           label: Text(app),
                           labelStyle: TextStyle(
                             color: isSelected ? Colors.black : Colors.white,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                            fontWeight: isSelected
+                                ? FontWeight.bold
+                                : FontWeight.normal,
                             fontSize: 13,
                           ),
                           selectedColor: AppColors.accentBlue,
@@ -538,14 +575,17 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                             side: BorderSide(
-                              color: isSelected ? AppColors.accentBlue : AppColors.border,
+                              color: isSelected
+                                  ? AppColors.accentBlue
+                                  : AppColors.border,
                             ),
                           ),
                         );
                       }),
                       ActionChip(
                         onPressed: _showAddCustomAppDialog,
-                        avatar: const Icon(Icons.add, size: 16, color: AppColors.accentGreen),
+                        avatar: const Icon(Icons.add,
+                            size: 16, color: AppColors.accentGreen),
                         label: const Text('+ Custom app'),
                         labelStyle: const TextStyle(
                           color: AppColors.accentGreen,
@@ -555,7 +595,9 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                         backgroundColor: AppColors.surface,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
-                          side: BorderSide(color: AppColors.accentGreen.withValues(alpha: 0.5)),
+                          side: BorderSide(
+                              color:
+                                  AppColors.accentGreen.withValues(alpha: 0.5)),
                         ),
                       ),
                     ],
@@ -564,14 +606,17 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
 
                   // ── Section 2: All Apps Dropdown Selector ─────────────────
                   Text('Or select from all apps:',
-                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                      style: AppTextStyles.bodySmall
+                          .copyWith(color: AppColors.textSecondary)),
                   const SizedBox(height: 8),
                   InputDecorator(
                     decoration: InputDecoration(
                       filled: true,
                       fillColor: AppColors.surface,
-                      prefixIcon: const Icon(Icons.search_rounded, color: AppColors.accentBlue),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                      prefixIcon: const Icon(Icons.search_rounded,
+                          color: AppColors.accentBlue),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 4),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                         borderSide: const BorderSide(color: AppColors.border),
@@ -582,7 +627,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.accentBlue),
+                        borderSide:
+                            const BorderSide(color: AppColors.accentBlue),
                       ),
                     ),
                     child: DropdownButtonHideUnderline(
@@ -593,15 +639,19 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                         menuMaxHeight: 320,
                         isExpanded: true,
                         dropdownColor: AppColors.surface,
-                        style: const TextStyle(color: Colors.white, fontSize: 14),
+                        style:
+                            const TextStyle(color: Colors.white, fontSize: 14),
                         items: allApps.map((app) {
                           return DropdownMenuItem<String>(
                             value: app,
                             child: Row(
                               children: [
-                                Icon(_iconForApp(app), size: 18, color: AppColors.accentBlue),
+                                Icon(_iconForApp(app),
+                                    size: 18, color: AppColors.accentBlue),
                                 const SizedBox(width: 10),
-                                Text(app, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                                Text(app,
+                                    style: const TextStyle(
+                                        color: Colors.white, fontSize: 14)),
                               ],
                             ),
                           );
@@ -621,17 +671,20 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                       Row(
                         children: [
                           Text('What is your focus intent?',
-                              style: AppTextStyles.bodyLarge.copyWith(fontWeight: FontWeight.w600)),
+                              style: AppTextStyles.bodyLarge
+                                  .copyWith(fontWeight: FontWeight.w600)),
                           const SizedBox(width: 8),
                           InkWell(
                             onTap: () => CoachOptInDialog.show(context),
                             borderRadius: BorderRadius.circular(12),
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  const Icon(Icons.info_outline_rounded, size: 14, color: AppColors.accentBlue),
+                                  const Icon(Icons.info_outline_rounded,
+                                      size: 14, color: AppColors.accentBlue),
                                   const SizedBox(width: 4),
                                   Text(
                                     'EchoCoach Info',
@@ -668,7 +721,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                       counterText: '',
                       filled: true,
                       fillColor: AppColors.surface,
-                      prefixIcon: const Icon(Icons.track_changes_rounded, color: AppColors.accentBlue),
+                      prefixIcon: const Icon(Icons.track_changes_rounded,
+                          color: AppColors.accentBlue),
                       suffixIcon: _isRefining
                           ? const Padding(
                               padding: EdgeInsets.all(12),
@@ -699,7 +753,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
-                        borderSide: const BorderSide(color: AppColors.accentBlue),
+                        borderSide:
+                            const BorderSide(color: AppColors.accentBlue),
                       ),
                     ),
                     onChanged: (val) {
@@ -710,7 +765,8 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                   if (_refineFeedback != null) ...[
                     const SizedBox(height: 6),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(8),
@@ -755,14 +811,16 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                     runSpacing: 6,
                     children: _quickIntents.map((qi) {
                       return ActionChip(
-                        backgroundColor: AppColors.surface.withValues(alpha: 0.6),
+                        backgroundColor:
+                            AppColors.surface.withValues(alpha: 0.6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(8),
                           side: const BorderSide(color: AppColors.border),
                         ),
                         label: Text(
                           qi,
-                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
+                          style: AppTextStyles.bodySmall
+                              .copyWith(color: AppColors.textSecondary),
                         ),
                         onPressed: () {
                           _intentCtrl.text = qi;
@@ -797,12 +855,15 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                             : null,
                         color: canStart ? null : AppColors.surface,
                         border: Border.all(
-                          color: canStart ? AppColors.accentBlue : AppColors.border,
+                          color: canStart
+                              ? AppColors.accentBlue
+                              : AppColors.border,
                         ),
                         boxShadow: canStart
                             ? [
                                 BoxShadow(
-                                  color: AppColors.accentBlue.withValues(alpha: 0.4),
+                                  color: AppColors.accentBlue
+                                      .withValues(alpha: 0.4),
                                   blurRadius: 20,
                                   offset: const Offset(0, 4),
                                 ),
@@ -815,7 +876,9 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                           Icon(
                             Icons.play_arrow_rounded,
                             size: 24,
-                            color: canStart ? Colors.white : AppColors.textSecondary,
+                            color: canStart
+                                ? Colors.white
+                                : AppColors.textSecondary,
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -824,7 +887,9 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 1.1,
-                              color: canStart ? Colors.white : AppColors.textSecondary,
+                              color: canStart
+                                  ? Colors.white
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         ],
@@ -846,11 +911,13 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(Icons.check_circle_outline, size: 14, color: AppColors.accentGreen),
+                        const Icon(Icons.check_circle_outline,
+                            size: 14, color: AppColors.accentGreen),
                         const SizedBox(width: 6),
                         Text(
                           'Ready to work in $selectedApp: "${intent.trim()}"',
-                          style: AppTextStyles.bodySmall.copyWith(color: AppColors.accentGreen),
+                          style: AppTextStyles.bodySmall
+                              .copyWith(color: AppColors.accentGreen),
                         ),
                       ],
                     ),

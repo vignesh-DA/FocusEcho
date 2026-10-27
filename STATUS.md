@@ -163,6 +163,14 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **Constraints:** rating 1–5, approved drift reasons, maximum 20 parked strings, maximum 120 characters per item.
 - **Tests:** Baseline backend **18/18 passed**; extension unit **149/149 passed**; manifest **21/21 passed**; database sync **21/21 passed**; replay **9/9 passed**; Dart analysis completed with existing informational lints. Flutter tests hung in the local environment and were stopped; mobile runtime remains unverified.
 
+### Step 2 — Session reflection
+
+- **Status:** Implemented locally; runtime unverified.
+- **Behavior:** Sessions of at least one minute show a non-blocking optional 1–5 focus rating. The drift reason picker appears only when the session has distractions. Skip stores nullable values.
+- **Persistence:** SQLite version 5 and web local storage support the new nullable fields. Sync retries legacy session columns when the migration is not yet present and keeps the local row unsynced for a later retry.
+- **Commit:** Pending until feature tests complete.
+- **Raw checks:** `dart analyze ...` → **1 existing informational lint, 0 errors**. `dart format ...` → **10 files formatted**. Flutter test execution remains blocked/hanging in this environment.
+
 ---
 
 ## 📈 Test Coverage Summary (2026-10-26)

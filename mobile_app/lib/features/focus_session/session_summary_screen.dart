@@ -13,11 +13,14 @@ class SessionSummaryScreen extends StatelessWidget {
     required this.summary,
     required this.stats,
     required this.onDismiss,
+    this.onSaveReflection,
   });
 
   final SessionSummary summary;
   final Map<String, dynamic>? stats;
   final VoidCallback onDismiss;
+  final Future<void> Function(int? focusRating, String? driftReason)?
+      onSaveReflection;
 
   @override
   Widget build(BuildContext context) {
@@ -102,6 +105,17 @@ class SessionSummaryScreen extends StatelessWidget {
                       ],
                     ),
                   ),
+                  if (summary.actualSeconds >= 60 &&
+                      summary.focusRating == null) ...[
+                    const SizedBox(height: 16),
+                    SessionReflectionCard(
+                      hasDistractions: summary.totalDistractions > 0,
+                      onSave: onSaveReflection,
+                    ),
+                  ] else if (summary.focusRating != null) ...[
+                    const SizedBox(height: 16),
+                    _reflectionSummary(summary),
+                  ],
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -146,6 +160,17 @@ class SessionSummaryScreen extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _reflectionSummary(SessionSummary value) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.glassmorphismCard(),
+      child: _detailRow(
+        'Reflection',
+        '${value.focusRating}/5${value.driftReason == null ? '' : ' • ${value.driftReason}'}',
       ),
     );
   }
@@ -293,5 +318,103 @@ class SessionSummaryScreen extends StatelessWidget {
   String _formatDuration(int totalSeconds) {
     final duration = Duration(seconds: totalSeconds);
     return '${duration.inHours.toString().padLeft(2, '0')}:${(duration.inMinutes % 60).toString().padLeft(2, '0')}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}';
+  }
+}
+
+class SessionReflectionCard extends StatefulWidget {
+  const SessionReflectionCard({
+    super.key,
+    required this.hasDistractions,
+    required this.onSave,
+  });
+
+  final bool hasDistractions;
+  final Future<void> Function(int? focusRating, String? driftReason)? onSave;
+
+  @override
+  State<SessionReflectionCard> createState() => _SessionReflectionCardState();
+}
+
+class _SessionReflectionCardState extends State<SessionReflectionCard> {
+  int? _rating;
+  String? _reason;
+  bool _skipped = false;
+  bool _saving = false;
+
+  Future<void> _save() async {
+    if (_rating == null && _reason == null) return _skip();
+    setState(() => _saving = true);
+    await widget.onSave?.call(_rating, widget.hasDistractions ? _reason : null);
+    if (mounted) setState(() => _skipped = true);
+  }
+
+  Future<void> _skip() async {
+    await widget.onSave?.call(null, null);
+    if (mounted) setState(() => _skipped = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_skipped) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.glassmorphismCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Quick reflection (optional)', style: AppTextStyles.bodyLarge),
+          const SizedBox(height: 4),
+          Text('How focused did this session feel?',
+              style: AppTextStyles.bodyMedium),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            children: List.generate(5, (index) {
+              final value = index + 1;
+              return ChoiceChip(
+                label: Text('$value'),
+                selected: _rating == value,
+                onSelected: (_) => setState(() => _rating = value),
+              );
+            }),
+          ),
+          if (widget.hasDistractions) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _reason,
+              decoration:
+                  const InputDecoration(labelText: 'What caused drift?'),
+              items: const [
+                DropdownMenuItem(value: 'bored', child: Text('Bored')),
+                DropdownMenuItem(value: 'stuck', child: Text('Stuck')),
+                DropdownMenuItem(value: 'tired', child: Text('Tired')),
+                DropdownMenuItem(
+                    value: 'notification', child: Text('Notification')),
+                DropdownMenuItem(value: 'other', child: Text('Other')),
+              ],
+              onChanged: (value) => setState(() => _reason = value),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _saving ? null : _skip,
+                  child: const Text('Skip'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: _saving ? null : _save,
+                  child: const Text('Save'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
   }
 }
