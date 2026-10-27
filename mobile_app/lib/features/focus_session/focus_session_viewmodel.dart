@@ -357,6 +357,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       liveDistractionFeed: const [],
       sessionSummaryStats: null,
       crossSurfaceNudge: null,
+      parkedItems: const [],
     );
 
     // Feature 4 — subscribe to the cross-surface intervention channel.
@@ -769,6 +770,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
         focusScore: focusScore,
         focusRating: session.focusRating,
         driftReason: session.driftReason,
+        parkedItems: state.parkedItems,
       ),
       showAlert: false,
     );
@@ -887,6 +889,32 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       ),
     );
     unawaited(_syncService.syncPendingEvents());
+  }
+
+  Future<void> addParkedItem(String value) async {
+    final session = state.session;
+    final trimmed = value.trim();
+    if (session == null || trimmed.isEmpty || trimmed.length > 120) return;
+    if (state.parkedItems.length >= 20 || state.parkedItems.contains(trimmed)) return;
+    final items = [...state.parkedItems, trimmed];
+    await _sessionDao.updateParkedItems(session.id, items);
+    state = state.copyWith(
+      parkedItems: items,
+      session: session.copyWith(parkedItems: items),
+    );
+    if (kIsWeb) _browserMonitor.updateParkedItems(items);
+  }
+
+  Future<void> removeParkedItem(String value) async {
+    final session = state.session;
+    if (session == null) return;
+    final items = state.parkedItems.where((item) => item != value).toList();
+    await _sessionDao.updateParkedItems(session.id, items);
+    state = state.copyWith(
+      parkedItems: items,
+      session: session.copyWith(parkedItems: items),
+    );
+    if (kIsWeb) _browserMonitor.updateParkedItems(items);
   }
 
   void dismissAlert() => state = state.copyWith(showAlert: false);

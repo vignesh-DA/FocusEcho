@@ -30,6 +30,7 @@
  * @property {number}   started_at        - epoch ms
  * @property {string[]} distraction_list  - normalised hostnames
  * @property {number}   distraction_count - incremented once per confirmed site entry
+ * @property {string[]} parked_items      - short notes to revisit after the session
  * @property {string}   state             - current STATE value
  * @property {string|null} resume_to_state  - state to restore after PAUSED
  * @property {number|null} last_productive_tab_id - for "Back to focus" navigation

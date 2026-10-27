@@ -356,6 +356,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
         started_at:           now,
         distraction_list:     payload.distraction_list,
         distraction_count:    0,
+        parked_items:         [],
         state:                STATE.MONITORING,
         resume_to_state:      null,
         last_productive_tab_id: null,
@@ -949,6 +950,33 @@ async function _handleMessage(message, sender) {
       await syncEventQueue(session);
     }
     return { ok: true, saved: true };
+  }
+
+  if (type === 'fe:parking_set') {
+    const session = await loadSession();
+    if (!session?.active) return { ok: false, error: 'no active session' };
+    const items = Array.isArray(message.items)
+      ? message.items.filter(item => typeof item === 'string' && item.trim().length > 0)
+          .map(item => item.trim().slice(0, 120)).slice(0, 20)
+      : [];
+    session.parked_items = items;
+    await saveSession(session);
+    return { ok: true, parked_items: items };
+  }
+
+  if (type === 'fe:parking_add' || type === 'fe:parking_remove') {
+    const session = await loadSession();
+    if (!session?.active) return { ok: false, error: 'no active session' };
+    const current = Array.isArray(session.parked_items) ? session.parked_items : [];
+    if (type === 'fe:parking_add') {
+      const item = typeof message.item === 'string' ? message.item.trim().slice(0, 120) : '';
+      if (item && current.length < 20 && !current.includes(item)) current.push(item);
+    } else if (typeof message.item === 'string') {
+      session.parked_items = current.filter(item => item !== message.item);
+    }
+    if (type === 'fe:parking_add') session.parked_items = current;
+    await saveSession(session);
+    return { ok: true, parked_items: session.parked_items };
   }
 
   // --- Manual cloud sync trigger ---

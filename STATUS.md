@@ -171,6 +171,14 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **Commit:** Pending until feature tests complete.
 - **Raw checks:** `dart analyze ...` → **1 existing informational lint, 0 errors**. `dart format ...` → **10 files formatted**. Flutter test execution remains blocked/hanging in this environment.
 
+### Step 3 — Parking lot
+
+- **Status:** Implemented locally; runtime unverified.
+- **Flutter:** Active Android/web session input with add/remove, 20-item limit, 120-character limit, and summary rendering.
+- **Extension:** Popup input with Enter support, safe `textContent` rendering, service-worker persistence, web-bridge updates, and bounded session state.
+- **Sync:** `parked_items` is serialized as a JSON array for Supabase. The coach integration is deferred to Step 5 and will receive only the count.
+- **Raw checks:** `npm run test:parking` → **PASS**; `npm run test:db` → **21 passed, 0 failed**; `npm run test:unit` → **149 passed, 0 failed**. Dart analysis reports **0 errors** and the existing rule-engine informational lint.
+
 ---
 
 ## 📈 Test Coverage Summary (2026-10-26)

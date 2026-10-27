@@ -200,6 +200,11 @@ class FocusSessionScreen extends ConsumerWidget {
                       ),
                     ),
                   ],
+                  ParkingLotComposer(
+                    items: state.parkedItems,
+                    onAdd: vm.addParkedItem,
+                    onRemove: vm.removeParkedItem,
+                  ),
                   const Spacer(),
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
@@ -223,6 +228,86 @@ class FocusSessionScreen extends ConsumerWidget {
               onTakeBreak: vm.takeBreakFromIntervention,
               onPauseSession: vm.pauseSessionFromIntervention,
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class ParkingLotComposer extends StatefulWidget {
+  const ParkingLotComposer({
+    super.key,
+    required this.items,
+    required this.onAdd,
+    required this.onRemove,
+  });
+
+  final List<String> items;
+  final Future<void> Function(String value) onAdd;
+  final Future<void> Function(String value) onRemove;
+
+  @override
+  State<ParkingLotComposer> createState() => _ParkingLotComposerState();
+}
+
+class _ParkingLotComposerState extends State<ParkingLotComposer> {
+  final _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _add() async {
+    final value = _controller.text.trim();
+    if (value.isEmpty || value.length > 120 || widget.items.length >= 20) return;
+    await widget.onAdd(value);
+    _controller.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: AppDecorations.glassmorphismCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Things to check later', style: AppTextStyles.bodyLarge),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  maxLength: 120,
+                  decoration: const InputDecoration(
+                    hintText: 'Park an urge or task',
+                    counterText: '',
+                  ),
+                  onSubmitted: (_) => _add(),
+                ),
+              ),
+              IconButton(onPressed: _add, icon: const Icon(Icons.add)),
+            ],
+          ),
+          for (final item in widget.items)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(item),
+              trailing: IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: () => widget.onRemove(item),
+              ),
+            ),
+          if (widget.items.length >= 20)
+            Text('Parking lot is full (20 items).',
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                )),
         ],
       ),
     );

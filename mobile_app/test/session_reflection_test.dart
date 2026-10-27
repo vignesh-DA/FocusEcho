@@ -32,4 +32,18 @@ void main() {
     expect(restored.focusRating, isNull);
     expect(restored.driftReason, isNull);
   });
+
+  test('parking lot serializes as a bounded list for local rows', () {
+    final original = FocusSession(
+      id: 'session-3',
+      userId: 'user-1',
+      startTime: DateTime.utc(2026, 10, 27, 10),
+      productiveApp: 'VS Code',
+      parkedItems: const ['Review the API error', 'Ask about the failing test'],
+    );
+
+    final restored = FocusSession.fromSqliteMap(original.toSqliteMap());
+
+    expect(restored.parkedItems, original.parkedItems);
+  });
 }

@@ -180,6 +180,14 @@ class BrowserMonitor {
     }, '*');
   }
 
+  void updateParkedItems(List<String> items) {
+    window.postMessage({
+      'source': 'focusecho-web',
+      'type': 'fe:parking_items',
+      'items': items,
+    }, window.location.origin);
+  }
+
   void _emit(
       String kind, String host, String? rawTimestamp, int escalationLevel) {
     _activities.add(BrowserActivity(

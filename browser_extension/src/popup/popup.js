@@ -15,6 +15,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   const txtIntention  = document.getElementById('txt-intention');
   const valCount      = document.getElementById('val-count');
   const valState      = document.getElementById('val-state');
+  const inputParking  = document.getElementById('input-parking');
+  const parkingList   = document.getElementById('parking-list');
+  const parkingNote   = document.getElementById('parking-note');
 
   // Open options page link (Required by CHECK-7 test)
   if (optLink) {
@@ -40,6 +43,25 @@ document.addEventListener('DOMContentLoaded', async () => {
         txtIntention.textContent = session.intention || 'Focus Session';
         valCount.textContent = session.distraction_count ?? 0;
         valState.textContent = session.state || 'MONITORING';
+        parkingList.replaceChildren();
+        for (const item of (session.parked_items || [])) {
+          const li = document.createElement('li');
+          const text = document.createElement('span');
+          text.textContent = item;
+          const remove = document.createElement('button');
+          remove.className = 'parking-remove';
+          remove.type = 'button';
+          remove.textContent = '×';
+          remove.addEventListener('click', async () => {
+            await chrome.runtime.sendMessage({ type: 'fe:parking_remove', item });
+            await refresh();
+          });
+          li.append(text, remove);
+          parkingList.append(li);
+        }
+        parkingNote.textContent = session.session_id
+          ? `${(session.parked_items || []).length}/20 saved for this session`
+          : 'No shared session yet; items stay local.';
 
         if (session.state?.includes('L1') || session.state?.includes('L2') || session.state?.includes('L3')) {
           badgeStatus.className = 'status-badge status-distracted';
@@ -53,6 +75,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         viewActive.style.display = 'none';
         badgeStatus.className = 'status-badge status-idle';
         badgeStatus.textContent = 'IDLE';
+        parkingList.replaceChildren();
+        parkingNote.textContent = '';
       }
     } catch (e) {
       console.warn('Failed to get state:', e);
@@ -73,6 +97,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     } finally {
       btnStart.disabled = false;
     }
+  });
+
+  inputParking?.addEventListener('keydown', async (event) => {
+    if (event.key !== 'Enter') return;
+    const item = inputParking.value.trim();
+    if (!item || item.length > 120) return;
+    await chrome.runtime.sendMessage({ type: 'fe:parking_add', item });
+    inputParking.value = '';
+    await refresh();
   });
 
   // Stop Session button

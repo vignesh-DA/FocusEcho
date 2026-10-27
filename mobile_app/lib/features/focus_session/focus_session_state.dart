@@ -18,6 +18,7 @@ class SessionSummary with _$SessionSummary {
     required double focusScore,
     int? focusRating,
     String? driftReason,
+    @Default([]) List<String> parkedItems,
   }) = _SessionSummary;
 }
 
@@ -45,6 +46,7 @@ class FocusSessionState with _$FocusSessionState {
     String? crossSurfaceNudge,
     @Default(false) bool extensionConnected,
     @Default([]) List<Map<String, dynamic>> liveDistractionFeed,
+    @Default([]) List<String> parkedItems,
     Map<String, dynamic>? sessionSummaryStats,
   }) = _FocusSessionState;
 }

@@ -11,6 +11,7 @@
     "test:unit": "node tests/state-machine.test.js",
     "test:manifest": "node tests/check-manifest.js",
     "test:db": "node tests/database-sync.test.js",
+    "test:parking": "node tests/parking-lot.test.js",
     "test:all": "node tests/check-manifest.js && node tests/state-machine.test.js && node tests/database-sync.test.js && node tests/replay-real-use.mjs"
   },
   "keywords": [],

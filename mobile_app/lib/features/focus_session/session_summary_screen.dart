@@ -116,6 +116,10 @@ class SessionSummaryScreen extends StatelessWidget {
                     const SizedBox(height: 16),
                     _reflectionSummary(summary),
                   ],
+                  if (summary.parkedItems.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    _parkingSummary(summary.parkedItems),
+                  ],
                   const SizedBox(height: 16),
                   Container(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
@@ -171,6 +175,25 @@ class SessionSummaryScreen extends StatelessWidget {
       child: _detailRow(
         'Reflection',
         '${value.focusRating}/5${value.driftReason == null ? '' : ' • ${value.driftReason}'}',
+      ),
+    );
+  }
+
+  Widget _parkingSummary(List<String> items) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: AppDecorations.glassmorphismCard(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Things to check later', style: AppTextStyles.bodyLarge),
+          const SizedBox(height: 8),
+          for (final item in items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text('• $item', style: AppTextStyles.bodyMedium),
+            ),
+        ],
       ),
     );
   }

@@ -21,6 +21,8 @@ class BrowserMonitor {
     String? userId,
   }) async {}
   Future<void> stopSession() async {}
+
+  void updateParkedItems(List<String> items) {}
   void pushCredentialsToExtension({
     required String authToken,
     required String userId,

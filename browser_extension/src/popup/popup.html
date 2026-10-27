@@ -134,6 +134,11 @@
       color: #3fb950;
       font-size: 11px;
     }
+    .parking-list { list-style: none; margin-top: 8px; }
+    .parking-list li { display: flex; gap: 6px; align-items: center; padding: 4px 0; color: #c9d1d9; }
+    .parking-list li span { flex: 1; word-break: break-word; }
+    .parking-remove { border: 0; background: transparent; color: #8b949e; cursor: pointer; }
+    .parking-note { color: #8b949e; font-size: 11px; margin-top: 6px; }
   </style>
 </head>
 <body>
@@ -171,6 +176,12 @@
       <button class="btn btn-danger" id="btn-stop" style="margin-top: 12px;">
         ■ End Session
       </button>
+    </div>
+    <div class="card">
+      <label class="label" for="input-parking">Things to check later</label>
+      <input type="text" id="input-parking" maxlength="120" placeholder="Park an urge or task" />
+      <ul class="parking-list" id="parking-list"></ul>
+      <div class="parking-note" id="parking-note"></div>
     </div>
   </div>
 

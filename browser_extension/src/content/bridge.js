@@ -37,12 +37,21 @@ registerDashboard();
 
 // Listen for messages from the Web Dashboard (window.postMessage)
 window.addEventListener('message', async (event) => {
-  if (event.source !== window || !event.data || event.data.source !== 'focusecho-web') {
+  if (event.source !== window || event.origin !== window.location.origin ||
+      !event.data || event.data.source !== 'focusecho-web') {
     return;
   }
 
   const data = event.data;
   const type = data.type;
+
+  if (type === 'fe:parking_items') {
+    chrome.runtime.sendMessage({
+      type: 'fe:parking_set',
+      items: Array.isArray(data.items) ? data.items : [],
+    }).catch(() => {});
+    return;
+  }
 
   // Handshake registration request from Flutter Web
   if (type === 'register') {

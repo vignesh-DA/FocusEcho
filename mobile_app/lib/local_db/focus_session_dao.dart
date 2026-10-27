@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'dart:convert';
 import '../core/models/focus_session.dart';
 import '../core/providers/app_dependencies.dart';
 import 'database_helper.dart';
@@ -79,6 +80,24 @@ class FocusSessionDao {
     }
     final db = await _databaseHelper.getDatabase();
     await db.update('focus_sessions', values,
+        where: 'id = ?', whereArgs: [sessionId]);
+  }
+
+  Future<void> updateParkedItems(String sessionId, List<String> items) async {
+    final encoded = jsonEncode(items);
+    if (kIsWeb) {
+      final index =
+          DatabaseHelper.webSessions.indexWhere((s) => s['id'] == sessionId);
+      if (index != -1) {
+        DatabaseHelper.webSessions[index]['parked_items'] = items;
+        DatabaseHelper.webSessions[index]['is_synced'] = 0;
+      }
+      await DatabaseHelper.persistWeb();
+      AppDependencies.triggerWebSync();
+      return;
+    }
+    final db = await _databaseHelper.getDatabase();
+    await db.update('focus_sessions', {'parked_items': encoded, 'is_synced': 0},
         where: 'id = ?', whereArgs: [sessionId]);
   }
 

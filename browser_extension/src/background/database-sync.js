@@ -174,6 +174,7 @@ async function ensureFocusSessionInCloud(session, creds) {
     productive_app:     'Chrome',
     intent:             session.intention || 'Web Focus Session',
     total_distractions: session.distraction_count || 0,
+    parked_items: Array.isArray(session.parked_items) ? session.parked_items : null,
     status:             session.active ? 'active' : 'completed',
     is_synced:          1,
   };
