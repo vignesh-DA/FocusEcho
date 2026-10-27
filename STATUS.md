@@ -267,3 +267,17 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 2. **Test Case Target:** Is the 400+ automated test case target strictly required, and is a parameterized data-driven test matrix (Appium + Pytest/Selenium) acceptable for the final report?
 3. **Web Hosting:** Preferred production host for the Web dashboard (Vercel vs Render static vs Netlify)?
 4. **Submission & Viva Date:** What is the hard deadline for project submission and oral presentation?
+
+---
+
+## Production safety follow-up — 2026-10-27
+
+- **Commit:** `50b704a fix: harden privacy, sync conflicts, and CI`.
+- **Earlier reported commits:** `9938a3b docs: record prototype reliability verification`; `2dd6e8c fix: harden cross-surface prototype reliability`.
+- **Privacy:** Removed the unsupported 90-day deletion promise from the shipped and documentation policies. Both now state that automatic deletion is not implemented; the cloud workbook uses the same retention statement. Backend regression test checks the two policy copies match and contain no 90-day claim.
+- **Settings sync:** Session sites are passed to the extension as a copied session list. They do not write to the permanent saved list. Conflict rule: a strictly newer local `updated_at` wins; an equal timestamp keeps the server row. The Flutter client calls the atomic `sync_user_focus_preferences` RPC and adopts its canonical row. Migration `20261029_focus_preferences_conflict_resolution.sql` must be applied before this RPC works against Supabase; live database behavior remains unverified.
+- **API regression tests:** Added coverage for missing and invalid auth, ownership collisions on session create/update, 501-event batches, malformed session/event payloads, and auth dependency registration. Backend suite: **30 tests, OK**.
+- **CI:** Added `.github/workflows/ci.yml` for backend, Flutter, and extension checks, result/log uploads on failure, a debug APK artifact, and one **100%** pass threshold used by both the summary and the gate. Flutter is pinned to **3.47.8** in CI and release workflows. YAML syntax was parsed locally; the hosted workflow has not yet run.
+- **Local evidence:** Flutter unit suite **40/40 passed**; targeted Dart analysis found **0 errors** and one existing informational lint in `focus_session_viewmodel.dart`; extension `npm run test:all` passed manifest **21/21**, state machine **177/177**, database sync **31/31**, parking checks, and replay **9/9**. `git diff --check` was clean.
+- **Cleanup:** Deleted tracked `cls` and `memory.md`; added `*.pem` and `*.key` ignores. `test-results/key.pem` and `cert.pem` were absent and not tracked when checked.
+- **Still unverified:** Supabase migrations have not been applied to the live project. The local debug APK build stalled during Gradle and produced no artifact. The new hosted CI workflow is pending its first GitHub run. No external deployment, migration, or device verification is claimed.
