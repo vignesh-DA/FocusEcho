@@ -458,6 +458,14 @@ class AiCoachService:
         intention_raw = session.get("intent") or session.get("productive_app") or "Focus Session"
         sanitized_intention = _sanitize_untrusted_text(intention_raw, max_chars=120)
         focus_score = float(session.get("focus_score", 0.0))
+        focus_rating = session.get("focus_rating")
+        if not isinstance(focus_rating, int) or not 1 <= focus_rating <= 5:
+            focus_rating = None
+        drift_reason = session.get("drift_reason")
+        if drift_reason not in {"bored", "stuck", "tired", "notification", "other"}:
+            drift_reason = None
+        parked_items = session.get("parked_items")
+        parked_item_count = len(parked_items) if isinstance(parked_items, list) else 0
 
         # Check consent and rate limit before calling LLM.
         opted_in = self._server_opted_in(authed_user_id)
@@ -475,6 +483,9 @@ class AiCoachService:
                     hostnames=hostnames,
                     median_recovery=median_recovery,
                     focus_score=focus_score,
+                    focus_rating=focus_rating,
+                    drift_reason=drift_reason,
+                    parked_item_count=parked_item_count,
                     total_user_sessions=total_user_sessions,
                     is_cold_start=is_cold_start,
                     session_id=session_id,
@@ -489,6 +500,9 @@ class AiCoachService:
                     hostnames=hostnames,
                     median_recovery=median_recovery,
                     focus_score=focus_score,
+                    focus_rating=focus_rating,
+                    drift_reason=drift_reason,
+                    parked_item_count=parked_item_count,
                     total_user_sessions=total_user_sessions,
                     is_cold_start=is_cold_start,
                     session_id=session_id,
@@ -519,6 +533,9 @@ class AiCoachService:
                 hostnames=hostnames,
                 median_recovery=median_recovery,
                 focus_score=focus_score,
+                focus_rating=focus_rating,
+                drift_reason=drift_reason,
+                parked_item_count=parked_item_count,
                 total_user_sessions=total_user_sessions,
                 is_cold_start=is_cold_start,
                 session_id=session_id,
@@ -555,6 +572,9 @@ class AiCoachService:
         total_user_sessions: int,
         is_cold_start: bool,
         session_id: str,
+        focus_rating: Optional[int] = None,
+        drift_reason: Optional[str] = None,
+        parked_item_count: int = 0,
     ) -> SessionDebriefResponse:
         """
         Deterministic, rule-based debrief generator.
@@ -625,6 +645,9 @@ class AiCoachService:
         total_user_sessions: int,
         is_cold_start: bool,
         session_id: str,
+        focus_rating: Optional[int] = None,
+        drift_reason: Optional[str] = None,
+        parked_item_count: int = 0,
     ) -> SessionDebriefResponse:
         """Calls LLM with strict containment, cold start enforcement, and 3.0s timeout."""
         cold_start_instruction = (
@@ -653,6 +676,9 @@ class AiCoachService:
             "distraction_hostnames": hostnames,
             "median_recovery_seconds": median_recovery,
             "focus_score": round(focus_score, 1),
+            "focus_rating": focus_rating,
+            "drift_reason": drift_reason,
+            "parked_item_count": max(0, min(20, parked_item_count)),
             "total_user_completed_sessions": total_user_sessions,
         }
 

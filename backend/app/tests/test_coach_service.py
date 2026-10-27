@@ -409,5 +409,43 @@ class EchoCoachTests(unittest.TestCase):
         self.assertIn("RuntimeError", output)
         self.assertIn("is_fallback=true", output)
 
+    def test_debrief_sends_reflection_and_parking_count_but_not_parked_text(self):
+        parked_secret = "private tax filing details"
+        mock_db = MockSupabaseClient(
+            session_data={
+                "id": "session-reflection-1",
+                "user_id": "user-reflection",
+                "start_time": "2026-10-26T10:00:00Z",
+                "end_time": "2026-10-26T10:25:00Z",
+                "intent": "Write report",
+                "focus_score": 80.0,
+                "focus_rating": 2,
+                "drift_reason": "stuck",
+                "parked_items": [parked_secret, "check citations"],
+            },
+            total_sessions=6,
+        )
+        payload = json.dumps({
+            "headline": "Useful reflection",
+            "body": "You rated the session two out of five.",
+            "actionable_tip": "Break the task into a smaller next step.",
+        })
+        with patch("app.services.ai_coach_service.Groq") as mock_groq:
+            mock_groq.return_value.chat.completions.create.return_value = self._completion(payload)
+            service = AiCoachService(supabase_client=mock_db)
+            service.api_key = "gsk_test_groq_key_123"
+            service.model = "qwen/qwen3.8-27b"
+            service.timeout_seconds = 5.0
+            with patch.object(service, "get_opt_in_status", return_value=(True, None)):
+                response = service.generate_session_debrief("session-reflection-1", "user-reflection")
+
+        self.assertFalse(response.is_fallback)
+        request = mock_groq.return_value.chat.completions.create.call_args.kwargs
+        user_message = request["messages"][1]["content"]
+        self.assertIn('"focus_rating": 2', user_message)
+        self.assertIn('"drift_reason": "stuck"', user_message)
+        self.assertIn('"parked_item_count": 2', user_message)
+        self.assertNotIn(parked_secret, user_message)
+
 if __name__ == "__main__":
     unittest.main()

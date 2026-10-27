@@ -188,6 +188,19 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **Commit:** `feat(extension): allow a distraction site for the active session` (pending final commit in this turn).
 - **Raw checks:** `npm run test:unit` → **177 passed, 0 failed**; `npm run test:manifest` → **21 passed**; `npm run test:parking` → **PASS**.
 
+### Step 5 — Coach inputs
+
+- **Status:** Implemented locally; production Groq call remains opt-in and environment-dependent.
+- **Server facts:** Debrief telemetry now includes validated `focus_rating`, validated `drift_reason`, and a bounded `parked_item_count`. Parked item text is never placed in the LLM prompt, persistence log, or fallback metadata.
+- **Consent:** The existing server-side coach opt-in gate is unchanged.
+- **Commit:** `feat(coach): add reflection and parking-count context` (pending final commit in this turn).
+- **Raw checks:** `python -m unittest discover -s app/tests -p 'test_coach_service.py' -v` → **16/16 passed**; the new privacy test confirms parked text is absent from the request.
+
+### Batch 1 open verification items
+
+- The extension token-refresh path is still open: no anonymous-key fallback is used for authenticated writes, but refresh-token renewal has not been implemented.
+- Supabase migration execution, real Groq demo call, Flutter runtime on web/Android, and live Chrome verification require the configured external environments and were not claimed as verified here.
+
 ---
 
 ## 📈 Test Coverage Summary (2026-10-26)
