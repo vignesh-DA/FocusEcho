@@ -168,7 +168,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **Status:** Implemented locally; runtime unverified.
 - **Behavior:** Sessions of at least one minute show a non-blocking optional 1–5 focus rating. The drift reason picker appears only when the session has distractions. Skip stores nullable values.
 - **Persistence:** SQLite version 5 and web local storage support the new nullable fields. Sync retries legacy session columns when the migration is not yet present and keeps the local row unsynced for a later retry.
-- **Commit:** Pending until feature tests complete.
+- **Commit:** `256ec8d feat(reflection): add optional session focus reflection`
 - **Raw checks:** `dart analyze ...` → **1 existing informational lint, 0 errors**. `dart format ...` → **10 files formatted**. Flutter test execution remains blocked/hanging in this environment.
 
 ### Step 3 — Parking lot
@@ -178,6 +178,15 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **Extension:** Popup input with Enter support, safe `textContent` rendering, service-worker persistence, web-bridge updates, and bounded session state.
 - **Sync:** `parked_items` is serialized as a JSON array for Supabase. The coach integration is deferred to Step 5 and will receive only the count.
 - **Raw checks:** `npm run test:parking` → **PASS**; `npm run test:db` → **21 passed, 0 failed**; `npm run test:unit` → **149 passed, 0 failed**. Dart analysis reports **0 errors** and the existing rule-engine informational lint.
+
+### Step 4 — Allow this site for this session
+
+- **Status:** Implemented locally; live Chrome runtime still needs verification.
+- **State machine:** A session-only allow returns to `MONITORING`, removes the matching host and subdomains from the active session list, hides overlays, and logs `allowed_site` without a recovery event or count change. The permanent configuration is untouched and the list resets with the next session.
+- **UI:** Popup and L1/L2 overlays expose “Allow this site for this session” only for a currently listed distraction host.
+- **Privacy/sync:** Only the normalized hostname is logged; no URL path or page content is captured.
+- **Commit:** `feat(extension): allow a distraction site for the active session` (pending final commit in this turn).
+- **Raw checks:** `npm run test:unit` → **177 passed, 0 failed**; `npm run test:manifest` → **21 passed**; `npm run test:parking` → **PASS**.
 
 ---
 

@@ -18,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const inputParking  = document.getElementById('input-parking');
   const parkingList   = document.getElementById('parking-list');
   const parkingNote   = document.getElementById('parking-note');
+  const allowSiteBtn  = document.getElementById('btn-allow-site');
 
   // Open options page link (Required by CHECK-7 test)
   if (optLink) {
@@ -59,9 +60,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           li.append(text, remove);
           parkingList.append(li);
         }
-        parkingNote.textContent = session.session_id
+        parkingNote.textContent = resp.cloud_ready
           ? `${(session.parked_items || []).length}/20 saved for this session`
-          : 'No shared session yet; items stay local.';
+          : 'Local only until you sign in to sync.';
+        const allowState = await chrome.runtime.sendMessage({ type: 'fe:get_allow_site_state' });
+        allowSiteBtn.style.display = allowState?.listed ? 'flex' : 'none';
 
         if (session.state?.includes('L1') || session.state?.includes('L2') || session.state?.includes('L3')) {
           badgeStatus.className = 'status-badge status-distracted';
@@ -77,6 +80,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         badgeStatus.textContent = 'IDLE';
         parkingList.replaceChildren();
         parkingNote.textContent = '';
+        allowSiteBtn.style.display = 'none';
       }
     } catch (e) {
       console.warn('Failed to get state:', e);
@@ -106,6 +110,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     await chrome.runtime.sendMessage({ type: 'fe:parking_add', item });
     inputParking.value = '';
     await refresh();
+  });
+
+  allowSiteBtn?.addEventListener('click', async () => {
+    allowSiteBtn.disabled = true;
+    try { await chrome.runtime.sendMessage({ type: 'fe:allow_site' }); await refresh(); }
+    finally { allowSiteBtn.disabled = false; }
   });
 
   // Stop Session button

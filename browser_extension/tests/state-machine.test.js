@@ -506,6 +506,14 @@ group('T13 — Deduplication: single site leave produces single transition and e
 // ---------------------------------------------------------------------------
 // Results
 // ---------------------------------------------------------------------------
+for (const state of [STATE.MONITORING, STATE.COUNTING_GRACE, STATE.COUNTING, STATE.L1_TOAST, STATE.L2_OVERLAY, STATE.L3_FORCED, STATE.PAUSED]) {
+  const r = transition(state, { type: EV.ALLOW_SITE_FOR_SESSION, payload: { host: 'youtube.com' } }, ctx({ distractionCount: 3 }), NOW);
+  assert(`allow-site ${state} returns to monitoring`, r.nextState === STATE.MONITORING);
+  assert(`allow-site ${state} has session-only action`, r.actions.includes('ALLOW_SITE_FOR_SESSION'));
+  assert(`allow-site ${state} logs allowed_site`, r.actions.includes('LOG_ALLOWED_SITE'));
+  assert(`allow-site ${state} emits no recovery`, !r.actions.some(a => a.startsWith('EMIT_RECOVERY_EVENT')));
+}
+
 console.log('\n╔══════════════════════════════════════════╗');
 console.log('║  FocusEcho SM Unit Tests — Phase 1      ║');
 console.log('╚══════════════════════════════════════════╝');

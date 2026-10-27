@@ -22,7 +22,7 @@ import { snapshotForPause, snapshotForResume } from './timing-engine.js';
 import { ensureHeartbeat, clearHeartbeat } from './alarm-manager.js';
 import { markTabActive, markTabInactive, removeTab } from './tab-tracker.js';
 import { normalizeHost, isDistracting, isWebUrl } from '../shared/host-utils.js';
-import { mkDistractionEvent, mkRecoveryEvent, mkEmergencyExitEvent } from '../shared/event-schema.js';
+import { mkDistractionEvent, mkRecoveryEvent, mkEmergencyExitEvent, mkAllowedSiteEvent } from '../shared/event-schema.js';
 import { defaultConfig } from '../shared/storage-schema.js';
 import { syncEventQueue, saveSyncCredentials } from './database-sync.js';
 import { Logger } from '../shared/logger.js';
@@ -594,6 +594,28 @@ async function _executeAction(name, param, { session, distraction, event, now })
       await notifyDashboard({ type: MSG.HIDE_OVERLAY });
       break;
 
+    case 'ALLOW_SITE_FOR_SESSION': {
+      if (!session) break;
+      const host = normalizeHost(event.payload?.host || distraction?.host || '');
+      if (!host) break;
+      const list = Array.isArray(session.distraction_list) ? session.distraction_list : [];
+      session.distraction_list = list.filter(site => !isDistracting(host, [site]));
+      await saveSession(session);
+      LOG.act(`allowed site for session | host: ${host}`);
+      break;
+    }
+
+    case 'LOG_ALLOWED_SITE': {
+      if (!session) break;
+      const domain = normalizeHost(event.payload?.host || distraction?.host || '');
+      if (!domain) break;
+      const ev = mkAllowedSiteEvent({ domain, session_id: session.session_id });
+      await enqueueEvent(ev);
+      syncEventQueue(session).catch(() => {});
+      LOG.act(`allowed_site event | host: ${domain}`);
+      break;
+    }
+
     case 'SET_RESUME_TO': {
       session.resume_to_state = param;
       await saveSession(session);
@@ -979,6 +1001,25 @@ async function _handleMessage(message, sender) {
     return { ok: true, parked_items: session.parked_items };
   }
 
+  if (type === 'fe:allow_site') {
+    const session = await loadSession();
+    if (!session?.active) return { ok: false, error: 'no active session' };
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const host = normalizeHost(message.host || tabs[0]?.url || '');
+    if (!host || !isDistracting(host, session.distraction_list || [])) {
+      return { ok: false, error: 'active tab is not a listed distraction site' };
+    }
+    await dispatch({ type: EV.ALLOW_SITE_FOR_SESSION, payload: { host } });
+    return { ok: true, host };
+  }
+
+  if (type === 'fe:get_allow_site_state') {
+    const session = await loadSession();
+    const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const host = normalizeHost(tabs[0]?.url || '');
+    return { ok: true, host, listed: Boolean(session?.active && host && isDistracting(host, session.distraction_list || [])) };
+  }
+
   // --- Manual cloud sync trigger ---
   if (type === 'fe:sync_now') {
     const session = await loadSession();
@@ -1014,7 +1055,8 @@ async function _handleMessage(message, sender) {
     const session    = await loadSession();
     const distraction = await loadDistraction();
     const q = (await chrome.storage.local.get(SK.EVENT_QUEUE))[SK.EVENT_QUEUE] ?? [];
-    return { ok: true, session, distraction, recent_events: q.slice(-10).map(e => e.event) };
+    const credentials = await chrome.storage.local.get(['fe_auth_token', 'fe_user_id']);
+    return { ok: true, session, distraction, cloud_ready: Boolean(credentials.fe_auth_token && credentials.fe_user_id), recent_events: q.slice(-10).map(e => e.event) };
   }
 
   if (type === 'fe:debug_dispatch') {

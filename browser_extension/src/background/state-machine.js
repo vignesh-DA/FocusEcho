@@ -104,6 +104,13 @@ export function transition(currentState, event, ctx, now = Date.now()) {
     };
   }
 
+  if (type === EV.ALLOW_SITE_FOR_SESSION) {
+    return {
+      nextState: STATE.MONITORING,
+      actions: ['HIDE_OVERLAY', 'ALLOW_SITE_FOR_SESSION', 'LOG_ALLOWED_SITE', 'CLEAR_DISTRACTION'],
+    };
+  }
+
   switch (currentState) {
 
     // ----------------------------------------------------------------

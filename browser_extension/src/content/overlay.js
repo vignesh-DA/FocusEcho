@@ -92,6 +92,7 @@
       <button class="fe-btn-primary" id="fe-back-focus-btn">
         <span>⚡</span> Return to Focus
       </button>
+      <button class="fe-btn-secondary" id="fe-allow-site-btn">Allow this site for this session</button>
     `;
 
     shadow.appendChild(container);
@@ -104,6 +105,10 @@
 
     container.querySelector('#fe-back-focus-btn')?.addEventListener('click', () => {
       sendToWorker('USER_BACK_TO_FOCUS');
+      hideOverlay();
+    });
+    container.querySelector('#fe-allow-site-btn')?.addEventListener('click', () => {
+      sendToWorker('ALLOW_SITE_FOR_SESSION', { host: location.hostname });
       hideOverlay();
     });
   }
@@ -134,6 +139,7 @@
         <button class="fe-btn-secondary" id="fe-l2-continue-btn" disabled>
           Continue to site (wait ${remaining}s)
         </button>
+        <button class="fe-btn-secondary" id="fe-l2-allow-site-btn">Allow this site for this session</button>
       </div>
     `;
 
@@ -168,6 +174,10 @@
       if (!continueBtn.disabled) {
         hideOverlay();
       }
+    });
+    backdrop.querySelector('#fe-l2-allow-site-btn')?.addEventListener('click', () => {
+      sendToWorker('ALLOW_SITE_FOR_SESSION', { host: location.hostname });
+      hideOverlay();
     });
   }
 

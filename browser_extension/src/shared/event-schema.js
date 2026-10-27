@@ -165,3 +165,7 @@ export function mkRecoveryEvent({ event_type, domain, time_on_site_ms, distracti
 export function mkEmergencyExitEvent({ domain, from_level, session_id }) {
   return { event_type: 'emergency_exit', domain, from_level, session_id, timestamp: new Date().toISOString() };
 }
+
+export function mkAllowedSiteEvent({ domain, session_id }) {
+  return { event_type: 'allowed_site', domain, session_id, timestamp: new Date().toISOString() };
+}
