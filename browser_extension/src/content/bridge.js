@@ -73,6 +73,7 @@ window.addEventListener('message', async (event) => {
           supabaseUrl:     data.supabaseUrl,
           supabaseAnonKey: data.supabaseAnonKey,
           authToken:       data.token,
+          refreshToken:    data.refreshToken,
           userId:          data.userId,
           backendUrl:      data.backendUrl,
         }).catch(() => {});
@@ -112,6 +113,7 @@ window.addEventListener('message', async (event) => {
       supabaseUrl:     data.supabaseUrl,
       supabaseAnonKey: data.supabaseAnonKey,
       authToken:       data.authToken || data.token,
+      refreshToken:    data.refreshToken,
       userId:          data.userId,
       backendUrl:      data.backendUrl,
     }).catch(() => {});

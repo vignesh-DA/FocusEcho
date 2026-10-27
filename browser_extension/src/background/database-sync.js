@@ -55,6 +55,7 @@ export function getFriendlyAppLabel(domain) {
  *   supabaseAnonKey: string,
  *   backendUrl: string,
  *   authToken: string|null,
+ *   refreshToken: string|null,
  *   userId: string|null
  * }>}
  */
@@ -64,6 +65,7 @@ export async function getSyncCredentials() {
     'fe_supabase_anon_key',
     'fe_backend_url',
     'fe_auth_token',
+    'fe_refresh_token',
     'fe_user_id',
     SK.CONFIG,
   ]);
@@ -74,6 +76,7 @@ export async function getSyncCredentials() {
     supabaseAnonKey: r.fe_supabase_anon_key || config.supabase_anon_key || DEFAULT_SUPABASE_ANON_KEY,
     backendUrl:      r.fe_backend_url || config.backend_url || DEFAULT_BACKEND_URL,
     authToken:       r.fe_auth_token || config.auth_token || null,
+    refreshToken:    r.fe_refresh_token || config.refresh_token || null,
     userId:          r.fe_user_id || config.user_id || null,
   };
 }
@@ -88,8 +91,37 @@ export async function saveSyncCredentials(creds) {
   if (creds.supabaseAnonKey) updates.fe_supabase_anon_key = creds.supabaseAnonKey;
   if (creds.backendUrl)      updates.fe_backend_url = creds.backendUrl;
   if (creds.authToken)       updates.fe_auth_token = creds.authToken;
+  if (creds.refreshToken)    updates.fe_refresh_token = creds.refreshToken;
   if (creds.userId)          updates.fe_user_id = creds.userId;
   await chrome.storage.local.set(updates);
+}
+
+/** Refreshes the short-lived access token without logging token material. */
+export async function refreshAuthSession(creds) {
+  if (!creds?.refreshToken || !creds?.supabaseUrl || !creds?.supabaseAnonKey) return null;
+  try {
+    const response = await fetch(`${creds.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: {
+        apikey: creds.supabaseAnonKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refresh_token: creds.refreshToken }),
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    if (!payload?.access_token) return null;
+    const refreshed = {
+      ...creds,
+      authToken: payload.access_token,
+      refreshToken: payload.refresh_token || creds.refreshToken,
+      userId: payload.user?.id || creds.userId,
+    };
+    await saveSyncCredentials(refreshed);
+    return refreshed;
+  } catch (_) {
+    return null;
+  }
 }
 
 /**
@@ -156,12 +188,13 @@ export function formatDistractionEventRow(queuedEvent, activeSession) {
  * @param {object} creds
  */
 async function ensureFocusSessionInCloud(session, creds) {
-  if (!session?.session_id) return;
-  const { supabaseUrl, supabaseAnonKey, authToken, userId } = creds;
+  if (!session?.session_id) return creds;
+  let activeCreds = creds;
+  const { supabaseUrl, supabaseAnonKey, userId } = activeCreds;
 
-  if (!userId || !authToken) {
+  if (!userId || !activeCreds.authToken) {
     console.warn('[FE DB-SYNC] Waiting for a Supabase auth session before syncing.');
-    return;
+    return activeCreds;
   }
 
   const sessionRow = {
@@ -180,22 +213,28 @@ async function ensureFocusSessionInCloud(session, creds) {
   };
 
   try {
-    const resp = await fetch(`${supabaseUrl}/rest/v1/focus_sessions`, {
+    const request = (token) => fetch(`${supabaseUrl}/rest/v1/focus_sessions`, {
       method: 'POST',
       headers: {
         'apikey':        supabaseAnonKey,
-        'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
+        'Authorization': `Bearer ${token}`,
         'Content-Type':  'application/json',
         'Prefer':        'resolution=merge-duplicates',
       },
       body: JSON.stringify(sessionRow),
     });
+    let resp = await request(activeCreds.authToken);
+    if (resp.status === 401 && activeCreds.refreshToken) {
+      activeCreds = await refreshAuthSession(activeCreds) || activeCreds;
+      if (activeCreds.authToken !== creds.authToken) resp = await request(activeCreds.authToken);
+    }
     if (!resp.ok) {
-      log.w(`focus_session parent upsert warning (${resp.status}): ${await resp.text()}`);
+      log.w(`focus_session parent upsert warning (${resp.status})`);
     }
   } catch (err) {
-    log.w(`focus_session parent network skip: ${err.message}`);
+    log.w(`focus_session parent network skip (${err.name || 'Error'})`);
   }
+  return activeCreds;
 }
 
 /**
@@ -245,21 +284,31 @@ export async function syncEventQueue(activeSession = null) {
   }
 
   const creds = await getSyncCredentials();
-  const { supabaseUrl, supabaseAnonKey, authToken, backendUrl, userId } = creds;
+  let activeCreds = creds;
+  if (!activeCreds.authToken && activeCreds.refreshToken) {
+    activeCreds = await refreshAuthSession(activeCreds) || activeCreds;
+  }
+  const { supabaseUrl, supabaseAnonKey, authToken, backendUrl, userId } = activeCreds;
+
+  // Never attempt an authenticated write with the public anon key as the
+  // bearer token. Keep the queue local until a real user session is present.
+  if (!userId || !authToken) {
+    return { synced: 0, remaining: queue.length, error: 'Authentication required — queued for retry' };
+  }
 
   // 1. Ensure active focus_session exists in DB first
   if (activeSession) {
-    await ensureFocusSessionInCloud(activeSession, creds);
+    activeCreds = await ensureFocusSessionInCloud(activeSession, activeCreds) || activeCreds;
   } else if (queue.length > 0) {
     const firstEv = queue[0].event || queue[0];
     if (firstEv.session_id) {
-      await ensureFocusSessionInCloud({
+      activeCreds = await ensureFocusSessionInCloud({
         session_id: firstEv.session_id,
         started_at: firstEv.distraction_started_at || firstEv.timestamp,
         active: false,
         intention: 'Web Focus Session',
         distraction_count: queue.length,
-      }, creds);
+      }, activeCreds) || activeCreds;
     }
   }
 
@@ -282,7 +331,23 @@ export async function syncEventQueue(activeSession = null) {
       body: JSON.stringify(rows),
     });
 
-    if (res.ok) {
+    if (res.status === 401 && activeCreds.refreshToken) {
+      const refreshed = await refreshAuthSession(activeCreds);
+      if (refreshed) {
+        const retry = await fetch(`${supabaseUrl}/rest/v1/distraction_events`, {
+          method: 'POST',
+          headers: {
+            apikey: supabaseAnonKey,
+            Authorization: `Bearer ${refreshed.authToken}`,
+            'Content-Type': 'application/json',
+            Prefer: 'resolution=merge-duplicates',
+          },
+          body: JSON.stringify(rows),
+        });
+        if (retry.ok) writeSuccess = true;
+      }
+    }
+    if (res.ok || writeSuccess) {
       writeSuccess = true;
       log.i(`Successfully wrote ${rows.length} events to Supabase distraction_events!`);
     } else {
@@ -322,7 +387,7 @@ export async function syncEventQueue(activeSession = null) {
     // Broadcast latest distraction event if applicable
     const latestDistraction = rows.filter(r => !r.is_recovered).pop();
     if (latestDistraction) {
-      await broadcastCrossSurfaceIntervention(latestDistraction, creds);
+      await broadcastCrossSurfaceIntervention(latestDistraction, activeCreds);
     }
 
     await chrome.storage.local.set({ [SK.EVENT_QUEUE]: [] });

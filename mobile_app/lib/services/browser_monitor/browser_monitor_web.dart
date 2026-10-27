@@ -119,6 +119,7 @@ class BrowserMonitor {
   /// Push Supabase JWT to the extension so it can write to the database.
   void pushCredentialsToExtension({
     required String authToken,
+    String? refreshToken,
     required String userId,
     required String supabaseUrl,
     required String supabaseAnonKey,
@@ -127,6 +128,7 @@ class BrowserMonitor {
       'source': 'focusecho-web',
       'type': 'fe:save_credentials',
       'authToken': authToken,
+      'refreshToken': refreshToken,
       'userId': userId,
       'supabaseUrl': supabaseUrl,
       'supabaseAnonKey': supabaseAnonKey,
@@ -140,6 +142,7 @@ class BrowserMonitor {
       if (session != null && user != null) {
         pushCredentialsToExtension(
           authToken: session.accessToken,
+          refreshToken: session.refreshToken,
           userId: user.id,
           supabaseUrl: AppConfig.supabaseUrl,
           supabaseAnonKey: AppConfig.supabaseAnonKey,

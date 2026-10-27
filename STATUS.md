@@ -1,6 +1,6 @@
 # FocusEcho — Project Status Tracker
 
-> **Last Updated:** 2026-10-26
+> **Last Updated:** 2026-10-27
 > **Status Taxonomy:** `done and verified` | `written but unverified` | `failed` | `not started`
 > *(Note: "Verified" means seen working on a real physical phone or in a live Chrome browser instance, not just passing unit tests.)*
 
@@ -193,12 +193,11 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **Status:** Implemented locally; production Groq call remains opt-in and environment-dependent.
 - **Server facts:** Debrief telemetry now includes validated `focus_rating`, validated `drift_reason`, and a bounded `parked_item_count`. Parked item text is never placed in the LLM prompt, persistence log, or fallback metadata.
 - **Consent:** The existing server-side coach opt-in gate is unchanged.
-- **Commit:** `feat(coach): add reflection and parking-count context` (pending final commit in this turn).
+- **Commit:** `342703d feat(coach): add reflection and parking-count context`.
 - **Raw checks:** `python -m unittest discover -s app/tests -p 'test_coach_service.py' -v` → **16/16 passed**; the new privacy test confirms parked text is absent from the request.
 
 ### Batch 1 open verification items
 
-- The extension token-refresh path is still open: no anonymous-key fallback is used for authenticated writes, but refresh-token renewal has not been implemented.
 - Supabase migration execution, real Groq demo call, Flutter runtime on web/Android, and live Chrome verification require the configured external environments and were not claimed as verified here.
 
 ### Final Batch 1 verification (2026-10-27)
@@ -208,6 +207,15 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - `git diff --check` → **clean**; working tree → **clean**.
 - `dart analyze lib` and `flutter test` were attempted again but produced no output and hung in this local environment; both were stopped after 30 seconds. Earlier generated-code analysis completed with 0 errors and existing informational lints. No green Flutter runtime result is claimed.
 - Commits pushed to `origin/main`: `d41f542`, `256ec8d`, `fae2d27`, `174243f`, `342703d`.
+
+### Follow-up completion — extension auth refresh (2026-10-27)
+
+- Flutter Web now forwards the Supabase refresh token to the extension.
+- The extension refreshes expired access tokens through Supabase Auth, persists rotated tokens, retries 401 session and event writes, and never uses the public anon key as a bearer token.
+- Without a user ID and access token, queued events remain local with an authentication-required status.
+- Raw checks: database sync **24 passed, 0 failed**; parking **PASS**; extension unit **177 passed, 0 failed**; JavaScript syntax checks passed.
+- Live Chrome runner remains environment-blocked by Puppeteer/Chrome launch error `3221225506`; no live result is claimed.
+- Commit/push: pending in current continuation.
 
 ---
 

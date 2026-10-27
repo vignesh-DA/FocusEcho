@@ -8,6 +8,7 @@ import {
   getFriendlyAppLabel,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
+  refreshAuthSession,
 } from '../src/background/database-sync.js';
 
 console.log('\n--- FocusEcho Database Sync Tests ---\n');
@@ -99,6 +100,26 @@ assert(rowL3.risk_score_numeric === 0.9, 'L3 risk numeric is 0.9');
 console.log('\n── Config Sanity ──');
 assert(DEFAULT_SUPABASE_URL.includes('supabase.co'), 'Default Supabase URL points to supabase.co');
 assert(DEFAULT_SUPABASE_ANON_KEY.startsWith('eyJ'), 'Default anon key is a valid JWT format');
+assert(typeof refreshAuthSession === 'function', 'refresh-token helper is exported');
+
+let savedCredentials = null;
+globalThis.chrome = { storage: { local: { set: async (updates) => { savedCredentials = updates; } } } };
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async (url, options) => ({
+  ok: url.includes('/auth/v1/token?grant_type=refresh_token') && options.method === 'POST',
+  json: async () => ({ access_token: 'fresh-access-token', refresh_token: 'fresh-refresh-token', user: { id: 'user-1' } }),
+});
+const refreshed = await refreshAuthSession({
+  supabaseUrl: DEFAULT_SUPABASE_URL,
+  supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
+  authToken: 'expired-token',
+  refreshToken: 'old-refresh-token',
+  userId: 'user-1',
+});
+assert(refreshed?.authToken === 'fresh-access-token', 'refresh helper returns a fresh access token');
+assert(savedCredentials?.fe_refresh_token === 'fresh-refresh-token', 'refresh helper persists rotated refresh token');
+globalThis.fetch = originalFetch;
+delete globalThis.chrome;
 
 console.log(`\nResults: ${passed} passed, ${failed} failed.\n`);
 if (failed > 0) process.exit(1);
