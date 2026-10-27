@@ -201,6 +201,14 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - The extension token-refresh path is still open: no anonymous-key fallback is used for authenticated writes, but refresh-token renewal has not been implemented.
 - Supabase migration execution, real Groq demo call, Flutter runtime on web/Android, and live Chrome verification require the configured external environments and were not claimed as verified here.
 
+### Final Batch 1 verification (2026-10-27)
+
+- Backend full discovery: `python -m unittest discover -s app/tests -p 'test_*.py' -v` → **19/19 passed**.
+- Extension state-machine: **177/177 passed**; manifest **21/21 passed**; database sync **21/21 passed**; parking test **PASS**; replay **9/9 scenarios passed**.
+- `git diff --check` → **clean**; working tree → **clean**.
+- `dart analyze lib` and `flutter test` were attempted again but produced no output and hung in this local environment; both were stopped after 30 seconds. Earlier generated-code analysis completed with 0 errors and existing informational lints. No green Flutter runtime result is claimed.
+- Commits pushed to `origin/main`: `d41f542`, `256ec8d`, `fae2d27`, `174243f`, `342703d`.
+
 ---
 
 ## 📈 Test Coverage Summary (2026-10-26)
