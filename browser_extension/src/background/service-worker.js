@@ -177,6 +177,18 @@ async function loadConfig() {
   return r[SK.CONFIG] ?? defaultConfig();
 }
 
+async function saveSessionSites(hosts) {
+  const config = await loadConfig();
+  const existing = new Map((config.distraction_list || []).map(site => [
+    normalizeHost(site.hostname), site,
+  ]));
+  config.distraction_list = hosts.map(host => {
+    const hostname = normalizeHost(host);
+    return existing.get(hostname) || { hostname, category: 'unknown', limit_minutes: 0 };
+  }).filter(site => site.hostname);
+  await chrome.storage.local.set({ [SK.CONFIG]: config });
+}
+
 // ---------------------------------------------------------------------------
 // Offline event queue (purge on sync or 7-day TTL; NOT on session end)
 // ---------------------------------------------------------------------------
@@ -945,16 +957,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function _handleMessage(message, sender) {
   const { type } = message;
 
+  if (type === 'fe:get_config') {
+    const config = await loadConfig();
+    return { ok: true, distraction_list: (config.distraction_list || [])
+      .map(site => ({ hostname: normalizeHost(site.hostname), category: site.category || 'unknown' }))
+      .filter(site => site.hostname) };
+  }
+
   // --- Production & Web Bridge session start ---
   if (type === 'fe:start_session') {
     const { intention, distraction_list, session_id, user_id } = message;
     const currentSession = await loadSession();
     const wasActive = currentSession?.active;
+    const sites = (distraction_list || []).map(h => normalizeHost(h)).filter(Boolean);
+    await saveSessionSites(sites);
     await dispatch({
       type: EV.SESSION_STARTED,
       payload: {
         intention: intention || 'Focus Session',
-        distraction_list: (distraction_list || []).map(h => normalizeHost(h)).filter(Boolean),
+        distraction_list: sites,
         mode: 'focus',
         session_id: session_id || crypto.randomUUID(),
         user_id,
@@ -1032,11 +1053,13 @@ async function _handleMessage(message, sender) {
     const { intention, distraction_list } = message;
     const currentSession = await loadSession();
     const wasActive = currentSession?.active;
+    const sites = (distraction_list || []).map(h => normalizeHost(h)).filter(Boolean);
+    await saveSessionSites(sites);
     await dispatch({
       type: EV.SESSION_STARTED,
       payload: {
         intention,
-        distraction_list: distraction_list.map(h => normalizeHost(h)).filter(Boolean),
+        distraction_list: sites,
         mode: 'focus',
         session_id: crypto.randomUUID(),
       },

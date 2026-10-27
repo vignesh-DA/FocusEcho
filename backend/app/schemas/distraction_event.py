@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DistractionEventCreate(BaseModel):
@@ -31,5 +31,5 @@ class DistractionEventResponse(DistractionEventCreate):
 
 
 class DistractionEventBatch(BaseModel):
-    events: List[DistractionEventCreate]
+    events: List[DistractionEventCreate] = Field(..., min_length=1, max_length=500)
     user_id: str

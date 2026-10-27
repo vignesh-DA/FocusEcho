@@ -26,7 +26,20 @@ def create_session(
 ) -> dict[str, Any]:
     if authed_user != payload.user_id:
         raise HTTPException(status_code=403, detail="Access denied: user_id mismatch.")
-    _client().table("focus_sessions").upsert(payload.model_dump(mode="json")).execute()
+    client = _client()
+    existing = (
+        client.table("focus_sessions")
+        .select("id,user_id")
+        .eq("id", payload.id)
+        .maybe_single()
+        .execute()
+        .data
+    )
+    if existing:
+        if str(existing.get("user_id")) != authed_user:
+            raise HTTPException(status_code=403, detail="Session ID is already owned by another user.")
+        return {"id": payload.id}
+    client.table("focus_sessions").insert(payload.model_dump(mode="json")).execute()
     return {"id": payload.id}
 
 

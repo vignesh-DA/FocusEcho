@@ -159,8 +159,8 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       FELog.i(
         'Analytics',
         'Analytics calculated: ${sessions.length} sessions, ${recentEvents.length} events, '
-        'weeklyFocusSum=${weeklyFocus.reduce((a, b) => a + b).toInt()}m, '
-        'recoveryRate=${thisWeek.rate.toStringAsFixed(1)}%, topApps=${appCount.keys.length}',
+            'weeklyFocusSum=${weeklyFocus.reduce((a, b) => a + b).toInt()}m, '
+            'recoveryRate=${thisWeek.rate.toStringAsFixed(1)}%, topApps=${appCount.keys.length}',
       );
 
       state = state.copyWith(
@@ -203,10 +203,12 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
           .map((row) =>
               FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
           .toList();
-      FELog.d('Analytics', 'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
+      FELog.d('Analytics',
+          'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
       if (cloudSessions.isNotEmpty) return cloudSessions;
     } catch (e) {
-      FELog.w('Analytics', 'Cloud session query failed, falling back to local cache: $e');
+      FELog.w('Analytics',
+          'Cloud session query failed, falling back to local cache: $e');
     }
     return _sessionDao.getSessionHistory(60);
   }
@@ -227,16 +229,19 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
                 Map<String, dynamic>.from(row as Map)))
             .where((e) => e.eventType == 'distraction')
             .toList();
-        FELog.d('Analytics', 'Cloud query: fetched ${cloudEvents.length} events across ${sessionIds.length} sessions');
+        FELog.d('Analytics',
+            'Cloud query: fetched ${cloudEvents.length} events across ${sessionIds.length} sessions');
         if (cloudEvents.isNotEmpty) return cloudEvents;
       } catch (e) {
-        FELog.w('Analytics', 'Cloud event query failed, falling back to local cache: $e');
+        FELog.w('Analytics',
+            'Cloud event query failed, falling back to local cache: $e');
       }
     }
     for (final session in sessions) {
       events.addAll(await _eventDao.getEventsForSession(session.id));
     }
-    final recentLocal = await _eventDao.getRecentEvents(100, eventType: 'distraction');
+    final recentLocal =
+        await _eventDao.getRecentEvents(100, eventType: 'distraction');
     final seenIds = events.map((e) => e.id).toSet();
     for (final e in recentLocal) {
       if (!seenIds.contains(e.id)) {
@@ -251,14 +256,16 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   /// Runs after local data is already displayed; failure is silent.
   Future<void> _loadRemote() async {
     // Retrieve Supabase session JWT as the Bearer token for the FastAPI backend.
-    final session = Supabase.instance.client.auth.currentSession;
+    final session = AppDependencies.supabaseService.currentSession;
     if (session == null) {
-      FELog.d('Analytics', 'No auth session; skipping remote backend enrichment');
+      FELog.d(
+          'Analytics', 'No auth session; skipping remote backend enrichment');
       return;
     }
     _backendAnalytics.setToken(session.accessToken);
     final userId = session.user.id;
-    FELog.d('Analytics', 'Fetching remote backend summary & risk trend for user: $userId');
+    FELog.d('Analytics',
+        'Fetching remote backend summary & risk trend for user: $userId');
 
     try {
       // Parallel fetch — both calls are independent.
@@ -281,10 +288,11 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       FELog.i(
         'Analytics',
         'Remote backend enrichment loaded: focusAvg=${summary?.focusScoreAverage}, '
-        'weeklySessions=${summary?.weeklySessions}, riskDays=${riskTrend.length}',
+            'weeklySessions=${summary?.weeklySessions}, riskDays=${riskTrend.length}',
       );
     } catch (e) {
-      FELog.w('Analytics', 'Remote backend enrichment failed (continuing with local data): $e');
+      FELog.w('Analytics',
+          'Remote backend enrichment failed (continuing with local data): $e');
     }
   }
 

@@ -143,6 +143,8 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 |---|---|---|
 | Run `20261023_anonymous_auth.sql` in Supabase | ⬜ TODO | Supabase Dashboard → SQL Editor |
 | Run `20261026_create_coach_tables.sql` in Supabase | ⬜ TODO | Supabase Dashboard → SQL Editor |
+| Run `20261028_align_session_foreign_keys.sql` in Supabase | ⬜ TODO | Run after the earlier schema migrations; validates child session ID foreign keys |
+| Run `20261028_user_focus_preferences.sql` in Supabase | ⬜ TODO | Required for cross-device app/site lists and limits |
 | Enable Anonymous Auth provider | ⬜ TODO | Supabase → Auth → Providers → Anonymous: ON |
 | Configure OTP email template with `{{ .Token }}` | ⬜ TODO | Supabase → Auth → Email Templates |
 | Set `SUPABASE_JWT_SECRET` on Render | ⬜ TODO | Render → Environment variables (required for JWT auth) |
@@ -150,6 +152,18 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 | Deploy Flutter Web release to Vercel | ⬜ TODO | `flutter build web --release` output → Vercel |
 | Run Flutter app on physical Android device | ⬜ TODO | Physical Android phone with UsageStats permission |
 | Verify Supabase tables exist with correct columns | ⬜ TODO | Supabase → Table Editor |
+
+### Prototype reliability pass — 2026-10-27
+
+- **Data ownership:** Backend session writes are now insert/idempotent and reject session ID takeover. Event batches are capped at 500, and each event's parent session and any conflicting existing event IDs are checked against the authenticated user before upsert.
+- **Schema compatibility:** Base session/event IDs now match the UUID schema used by newer migrations. Historical text-ID installs are handled by type-aware focus-recovery/coach migrations; `20261028_align_session_foreign_keys.sql` repairs child session foreign keys. `20261028_user_focus_preferences.sql` adds owner-scoped cross-device lists and app limits with RLS.
+- **Flutter offline behavior:** Supabase-dependent services and login/splash/dashboard/streak/analytics routes no longer crash when the SDK is unavailable or there is no authenticated account. Local session/settings data remains usable; unsuccessful cloud writes are no longer reported as synced. App/site lists and limits load from and persist to the user's preference row when cloud sync is enabled.
+- **Extension config:** Popup sessions use the saved extension config rather than a separate hard-coded list. A session launched by the Flutter web bridge refreshes the extension's local config from that account's site list. First-run extension defaults match Flutter's sample site list.
+- **Deployment and build:** Render environment configuration now includes JWT/Groq variables. CI generates Flutter sources, analyzes/tests Flutter, tests backend and extension, and only publishes an APK release for version tags. The Flutter lockfile is no longer ignored. Generated extension test TLS private keys/config were removed from version control.
+- **Privacy wording:** The policy now discloses parked free-text notes, synced site/app metadata, the EchoCoach parked-count-only behavior, and that automatic 90-day deletion is not implemented.
+- **Verification:** Backend discovery: **20/20 passed**. Extension `npm run test:all`: **21 manifest checks, 177 state-machine checks, 31 database-sync checks, parking test passed, 9/9 service-worker replay scenarios passed**. Flutter `flutter test --no-pub`: **36/36 passed**, including database upgrade and parking tests. Full Flutter analysis had **0 errors** and info-only repository lint findings; focused Dart analysis on all changed Dart files now reports **“No issues found!”**. The release web build could not be completed because this environment attempted to download the missing Flutter Web SDK and stalled; no successful web build or physical-device verification is claimed. Supabase migrations remain authored but need execution against the actual project.
+- **Open integration requirement:** Apply the two `20261028_*.sql` migrations after the existing migrations before cross-device preference syncing works against Supabase. Until then, the Flutter app retains local settings and remote preference errors are handled without crashing.
+- **Additional runtime limits:** The direct live-Chrome Puppeteer command stopped before tests because Chrome exited with code `3221225506`. The Android debug build remained in Gradle without emitting an APK and was stopped. These are not reported as successful runtime checks; the NDK has now been pinned to the plugin's required `28.2.13676358` for the next build attempt.
 
 ---
 

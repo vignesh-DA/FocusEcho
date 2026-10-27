@@ -61,7 +61,8 @@ class SessionDebriefResult {
       body: (json['body'] as String?) ?? '',
       actionableTip: (json['actionable_tip'] as String?) ?? '',
       distractionMinuteOffsets: offsets,
-      totalSessionsAnalyzed: (json['total_sessions_analyzed'] as num?)?.toInt() ?? 1,
+      totalSessionsAnalyzed:
+          (json['total_sessions_analyzed'] as num?)?.toInt() ?? 1,
       isFallback: json['is_fallback'] as bool? ?? false,
       isCached: json['is_cached'] as bool? ?? false,
     );
@@ -73,13 +74,21 @@ class AiCoachService {
     String? baseUrl,
     SupabaseClient? supabaseClient,
   })  : _baseUrl = baseUrl ?? AppConfig.backendBaseUrl,
-        _supabase = supabaseClient ?? Supabase.instance.client;
+        _supabase = supabaseClient ?? _trySupabaseClient();
 
   final String _baseUrl;
-  final SupabaseClient _supabase;
+  final SupabaseClient? _supabase;
+
+  static SupabaseClient? _trySupabaseClient() {
+    try {
+      return Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Dio get _dio {
-    final token = _supabase.auth.currentSession?.accessToken;
+    final token = _supabase?.auth.currentSession?.accessToken;
     final options = BaseOptions(
       baseUrl: _baseUrl,
       connectTimeout: const Duration(seconds: 4),
@@ -125,7 +134,8 @@ class AiCoachService {
         isSufficientlyClear: false,
         refinedIntention: 'Complete one focused task',
         clarityScore: 20,
-        coachFeedback: 'Intention cannot be empty. Define one concrete deliverable.',
+        coachFeedback:
+            'Intention cannot be empty. Define one concrete deliverable.',
         isFallback: true,
       );
     }
@@ -181,13 +191,16 @@ class AiCoachService {
   }
 
   IntentionRefineResult _localFallbackRefine(String intention) {
-    final words = intention.split(RegExp(r'\s+')).where((w) => w.length > 1).toList();
+    final words =
+        intention.split(RegExp(r'\s+')).where((w) => w.length > 1).toList();
     if (words.length < 3) {
       return IntentionRefineResult(
         isSufficientlyClear: false,
-        refinedIntention: 'Focus on: ${intention[0].toUpperCase()}${intention.substring(1)} (complete 1 deliverable)',
+        refinedIntention:
+            'Focus on: ${intention[0].toUpperCase()}${intention.substring(1)} (complete 1 deliverable)',
         clarityScore: 40,
-        coachFeedback: 'Consider adding a measurable output so you know when the session is complete.',
+        coachFeedback:
+            'Consider adding a measurable output so you know when the session is complete.',
         isFallback: true,
       );
     }

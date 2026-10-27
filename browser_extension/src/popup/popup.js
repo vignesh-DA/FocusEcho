@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
+  let configuredSites = [];
+
   // Refresh current state from Service Worker
   async function refresh() {
     try {
@@ -95,7 +97,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       await chrome.runtime.sendMessage({
         type: 'fe:debug_start_session',
         intention,
-        distraction_list: ['youtube.com', 'twitter.com', 'x.com', 'reddit.com', 'instagram.com', 'facebook.com', 'tiktok.com'],
+        distraction_list: configuredSites,
       });
       await refresh();
     } finally {
@@ -129,5 +131,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  try {
+    const config = await chrome.runtime.sendMessage({ type: 'fe:get_config' });
+    configuredSites = (config?.distraction_list || []).map(site => site.hostname).filter(Boolean);
+  } catch (_) { configuredSites = []; }
   await refresh();
 });

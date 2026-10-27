@@ -60,14 +60,20 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
   StreaksXpViewModel(this._supabaseService, this._sessionDao, this._userId)
       : super(const StreaksXpState()) {
     loadStreaks();
-    _xpChannel = Supabase.instance.client
-          .channel('user-xp-' + _userId)
-          .onPostgresChanges(
-              event: PostgresChangeEvent.all,
-              schema: 'public',
-              table: 'user_xp',
-              callback: (_) => loadStreaks())
-          .subscribe();
+    try {
+      if (_supabaseService.currentUser != null) {
+        _xpChannel = Supabase.instance.client
+            .channel('user-xp-$_userId')
+            .onPostgresChanges(
+                event: PostgresChangeEvent.all,
+                schema: 'public',
+                table: 'user_xp',
+                callback: (_) => loadStreaks())
+            .subscribe();
+      }
+    } catch (error) {
+      debugPrint('XP realtime unavailable: ${error.runtimeType}');
+    }
   }
 
   final SupabaseService _supabaseService;
@@ -105,12 +111,13 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
                 (xpRow['streak_days'] as num?)?.toInt() ?? effectiveStreak;
           }
         } catch (e) {
-          debugPrint('XP query failed: ' + e.toString());
+          debugPrint('XP query failed: $e');
         }
       }
-      if (profile != null)
+      if (profile != null) {
         profile =
             profile.copyWith(totalXp: effectiveXp, streakDays: effectiveStreak);
+      }
 
       final sessions = await _sessionDao.getSessionHistory(100);
       final now = DateTime.now();
@@ -160,7 +167,13 @@ class StreaksXpViewModel extends StateNotifier<StreaksXpState> {
   @override
   void dispose() {
     final channel = _xpChannel;
-    if (channel != null) Supabase.instance.client.removeChannel(channel);
+    if (channel != null) {
+      try {
+        Supabase.instance.client.removeChannel(channel);
+      } catch (_) {
+        // No cloud channel exists in offline mode.
+      }
+    }
     super.dispose();
   }
 }
@@ -170,6 +183,8 @@ final streaksXpProvider =
   (ref) => StreaksXpViewModel(
     AppDependencies.supabaseService,
     AppDependencies.sessionDao,
-    AppDependencies.prefs.getString(AppKeys.userId) ?? '',
+    AppDependencies.supabaseService.currentUser?.id ??
+        AppDependencies.prefs.getString(AppKeys.userId) ??
+        '',
   ),
 );

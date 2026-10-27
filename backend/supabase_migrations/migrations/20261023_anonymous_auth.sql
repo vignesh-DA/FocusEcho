@@ -12,14 +12,30 @@ ALTER TABLE public.distraction_events  ADD COLUMN IF NOT EXISTS is_synced INTEGE
 ALTER TABLE public.distraction_events  ADD COLUMN IF NOT EXISTS is_recovered BOOLEAN DEFAULT FALSE;
 
 -- ── 2. Create intervention_events if missing ──────────────────
-CREATE TABLE IF NOT EXISTS public.intervention_events (
-  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  session_id   UUID REFERENCES public.focus_sessions(id) ON DELETE CASCADE,
-  timestamp    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  level        INTEGER     NOT NULL DEFAULT 1,
-  action_taken TEXT,
-  is_synced    INTEGER     NOT NULL DEFAULT 1
-);
+DO $$
+DECLARE
+  session_id_type TEXT;
+BEGIN
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO session_id_type
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public.focus_sessions'::regclass
+      AND a.attname = 'id'
+      AND NOT a.attisdropped;
+
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS public.intervention_events (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       session_id %s REFERENCES public.focus_sessions(id) ON DELETE CASCADE,
+       timestamp TIMESTAMPTZ NOT NULL DEFAULT now(),
+       level INTEGER NOT NULL DEFAULT 1,
+       action_taken TEXT,
+       is_synced INTEGER NOT NULL DEFAULT 1
+     )',
+    session_id_type
+  );
+END
+$$;
 
 -- ── 3. Enable RLS on all tables ───────────────────────────────
 ALTER TABLE public.users               ENABLE ROW LEVEL SECURITY;

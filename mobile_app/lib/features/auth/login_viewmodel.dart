@@ -22,18 +22,35 @@ class LoginViewModel extends StateNotifier<LoginState> {
   LoginViewModel(this._prefs) : super(const LoginState());
 
   final SharedPreferences _prefs;
-  final SupabaseClient _client = Supabase.instance.client;
+  SupabaseClient? _client;
+
+  SupabaseClient? get _availableClient {
+    try {
+      return _client ??= Supabase.instance.client;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<bool> sendOtp(String email) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     FELog.i('Auth', 'Sending OTP to $email');
     try {
-      final currentUser = _client.auth.currentUser;
+      final client = _availableClient;
+      if (client == null) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Sign-in is unavailable while offline.',
+        );
+        return false;
+      }
+      final currentUser = client.auth.currentUser;
       if (currentUser?.isAnonymous == true) {
-        FELog.d('Auth', 'Upgrading anonymous user ${currentUser?.id} with email $email');
-        await _client.auth.updateUser(UserAttributes(email: email));
+        FELog.d('Auth',
+            'Upgrading anonymous user ${currentUser?.id} with email $email');
+        await client.auth.updateUser(UserAttributes(email: email));
       } else {
-        await _client.auth.signInWithOtp(
+        await client.auth.signInWithOtp(
           email: email,
           shouldCreateUser: true,
         );
@@ -60,12 +77,20 @@ class LoginViewModel extends StateNotifier<LoginState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
     FELog.i('Auth', 'Verifying OTP for $email (token length: ${token.length})');
     try {
-      final resp = await _client.auth.verifyOTP(
+      final client = _availableClient;
+      if (client == null) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Sign-in is unavailable while offline.',
+        );
+        return false;
+      }
+      final resp = await client.auth.verifyOTP(
         email: email,
         token: token,
         type: OtpType.email,
       );
-      final userId = resp.user?.id ?? _client.auth.currentUser?.id;
+      final userId = resp.user?.id ?? client.auth.currentUser?.id;
       FELog.i('Auth', 'OTP verified successfully! User ID: $userId');
       if (userId != null) {
         await _prefs.setString(AppKeys.userId, userId);

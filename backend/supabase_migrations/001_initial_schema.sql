@@ -27,7 +27,7 @@ create table if not exists public.user_xp (
 
 -- ── focus_sessions ────────────────────────────────────────────────────────
 create table if not exists public.focus_sessions (
-  id                   text primary key,          -- client-generated UUID
+  id                   uuid primary key,          -- client-generated UUID
   user_id              uuid not null references public.users(id) on delete cascade,
   start_time           timestamptz not null,
   end_time             timestamptz,
@@ -43,8 +43,8 @@ create table if not exists public.focus_sessions (
 
 -- ── distraction_events ────────────────────────────────────────────────────
 create table if not exists public.distraction_events (
-  id                           text primary key,   -- client-generated UUID
-  session_id                   text not null references public.focus_sessions(id) on delete cascade,
+  id                           uuid primary key,   -- client-generated UUID
+  session_id                   uuid not null references public.focus_sessions(id) on delete cascade,
   package_name                 text not null,
   app_label                    text not null,
   triggered_at                 timestamptz not null,
@@ -69,8 +69,8 @@ create table if not exists public.distraction_events (
 
 -- ── intervention_events ───────────────────────────────────────────────────
 create table if not exists public.intervention_events (
-  id          text primary key,
-  session_id  text not null references public.focus_sessions(id) on delete cascade,
+  id          uuid primary key,
+  session_id  uuid not null references public.focus_sessions(id) on delete cascade,
   level       integer not null,
   action_taken text not null,
   timestamp   timestamptz not null,

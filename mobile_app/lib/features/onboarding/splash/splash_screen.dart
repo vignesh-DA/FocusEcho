@@ -33,9 +33,9 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: const Duration(milliseconds: 2000))
-          ..forward();
+    _controller = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 2000))
+      ..forward();
     Timer(const Duration(milliseconds: 2500), _goNext);
   }
 
@@ -46,7 +46,12 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final accessibility = prefs.getBool('has_accessibility') ?? false;
     final battery = prefs.getBool('has_battery_optimization') ?? false;
     final hasSkippedLogin = prefs.getBool(AppKeys.hasSkippedLogin) ?? false;
-    final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    var isLoggedIn = false;
+    try {
+      isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+    } catch (_) {
+      // Local sessions remain available if Supabase is not configured.
+    }
 
     if (!mounted) return;
 
@@ -81,7 +86,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
       final resumed = await vm.resumeSession();
       if (!mounted) return;
       if (resumed) {
-        debugPrint('[Splash] Session resumed — routing to focus session screen.');
+        debugPrint(
+            '[Splash] Session resumed — routing to focus session screen.');
         context.go(AppRoutes.focusSession);
         return;
       }
@@ -111,8 +117,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
               child: ScaleTransition(
                 scale: Tween<double>(begin: 0.8, end: 1).animate(
                   CurvedAnimation(
-                      parent: _controller,
-                      curve: const Interval(0.25, 0.5)),
+                      parent: _controller, curve: const Interval(0.25, 0.5)),
                 ),
                 child: const Icon(Icons.graphic_eq_rounded,
                     size: 80, color: AppColors.accentBlue),

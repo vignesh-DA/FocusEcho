@@ -7,14 +7,30 @@ alter table public.focus_sessions
 
 -- Feature 2 — Escalating Intervention log. One row per intervention shown,
 -- dismissed, or acted upon (level 1 heads-up, 2-3 full-screen, 4+ forced).
-create table if not exists public.intervention_events (
-  id uuid primary key,
-  session_id uuid not null references public.focus_sessions(id) on delete cascade,
-  level integer not null check (level between 1 and 4),
-  action_taken text not null,
-  timestamp timestamptz not null default now(),
-  created_at timestamptz not null default now()
-);
+do $$
+declare
+  session_id_type text;
+begin
+  select format_type(a.atttypid, a.atttypmod)
+    into session_id_type
+    from pg_attribute a
+    where a.attrelid = 'public.focus_sessions'::regclass
+      and a.attname = 'id'
+      and not a.attisdropped;
+
+  execute format(
+    'create table if not exists public.intervention_events (
+       id uuid primary key,
+       session_id %s not null references public.focus_sessions(id) on delete cascade,
+       level integer not null check (level between 1 and 4),
+       action_taken text not null,
+       timestamp timestamptz not null default now(),
+       created_at timestamptz not null default now()
+     )',
+    session_id_type
+  );
+end
+$$;
 
 create index if not exists idx_intervention_events_session_time
   on public.intervention_events(session_id, timestamp desc);

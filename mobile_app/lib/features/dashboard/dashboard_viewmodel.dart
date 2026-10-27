@@ -85,15 +85,17 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
     state = state.copyWith(isLoading: true, errorMessage: null);
 
     try {
-      final authUser = Supabase.instance.client.auth.currentUser;
+      final authUser = _supabaseService.currentUser;
       final liveUserId = authUser?.id ?? _userId;
-      FELog.i('Dashboard', 'Starting loadDashboard (userId: $liveUserId, authed: ${authUser != null})');
+      FELog.i('Dashboard',
+          'Starting loadDashboard (userId: $liveUserId, authed: ${authUser != null})');
 
       UserProfile? profile;
       if (authUser != null) {
         try {
           profile = await _supabaseService.getUserProfile(liveUserId);
-          FELog.d('Dashboard', 'UserProfile fetched from Supabase: ${profile?.email}');
+          FELog.d('Dashboard',
+              'UserProfile fetched from Supabase: ${profile?.email}');
         } catch (e) {
           FELog.w('Dashboard', 'Could not fetch profile from Supabase: $e');
         }
@@ -110,7 +112,8 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
               streakDays:
                   (xpRow['streak_days'] as num?)?.toInt() ?? profile.streakDays,
             );
-            FELog.i('Dashboard', 'user_xp updated: totalXp=${profile.totalXp}, streak=${profile.streakDays}');
+            FELog.i('Dashboard',
+                'user_xp updated: totalXp=${profile.totalXp}, streak=${profile.streakDays}');
           } else if (xpRow != null) {
             final xp = (xpRow['total_xp'] as num?)?.toInt() ?? 0;
             final streak = (xpRow['streak_days'] as num?)?.toInt() ?? 0;
@@ -127,7 +130,8 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
               totalFocusMinutes: 0,
               joinedAt: DateTime.now(),
             );
-            FELog.i('Dashboard', 'Synthesised profile from user_xp: totalXp=$xp, streak=$streak');
+            FELog.i('Dashboard',
+                'Synthesised profile from user_xp: totalXp=$xp, streak=$streak');
           } else {
             FELog.d('Dashboard', 'No user_xp row found for $liveUserId');
           }
@@ -147,7 +151,8 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
               s.startTime.day == today.day)
           .toList();
 
-      final sessionsForStats = todaySessions.isNotEmpty ? todaySessions : history;
+      final sessionsForStats =
+          todaySessions.isNotEmpty ? todaySessions : history;
       final distractions =
           sessionsForStats.fold<int>(0, (sum, s) => sum + s.totalDistractions);
       final minutes = todaySessions.fold<int>(
@@ -171,8 +176,8 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
       FELog.i(
         'Dashboard',
         'Dashboard computed: todaySessions=${todaySessions.length}, totalHistory=${history.length}, '
-        'distractions=$distractions, minutes=$minutes, recoveryRate=${thisWeek.rate.toStringAsFixed(1)}%, '
-        'median=${thisWeek.median}s',
+            'distractions=$distractions, minutes=$minutes, recoveryRate=${thisWeek.rate.toStringAsFixed(1)}%, '
+            'median=${thisWeek.median}s',
       );
 
       state = state.copyWith(
@@ -207,10 +212,12 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
           .map((row) =>
               FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
           .toList();
-      FELog.d('Dashboard', 'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
+      FELog.d('Dashboard',
+          'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
       if (cloudSessions.isNotEmpty) return cloudSessions;
     } catch (e) {
-      FELog.w('Dashboard', 'Cloud session query failed, falling back to local cache: $e');
+      FELog.w('Dashboard',
+          'Cloud session query failed, falling back to local cache: $e');
     }
     return _focusSessionDao.getSessionHistory(50);
   }
@@ -228,11 +235,13 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
             .map((row) => DistractionEvent.fromSqliteMap(
                 Map<String, dynamic>.from(row as Map)))
             .toList();
-        FELog.d('Dashboard', 'Cloud query: fetched ${cloudEvents.length} distraction events');
+        FELog.d('Dashboard',
+            'Cloud query: fetched ${cloudEvents.length} distraction events');
         if (cloudEvents.isNotEmpty) return cloudEvents;
       }
     } catch (e) {
-      FELog.w('Dashboard', 'Cloud event query failed, falling back to local cache: $e');
+      FELog.w('Dashboard',
+          'Cloud event query failed, falling back to local cache: $e');
     }
     // Fallback: local cache per-session + recent events (mirrors Analytics)
     final events = <DistractionEvent>[];
@@ -250,19 +259,24 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
   }
 
   void _subscribeRealtimeDashboard() {
-    _realtimeChannel = Supabase.instance.client
-        .channel('dashboard-$_userId')
-        .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'focus_sessions',
-            callback: (_) => loadDashboard())
-        .onPostgresChanges(
-            event: PostgresChangeEvent.all,
-            schema: 'public',
-            table: 'distraction_events',
-            callback: (_) => loadDashboard())
-        .subscribe();
+    try {
+      if (_supabaseService.currentUser == null) return;
+      _realtimeChannel = Supabase.instance.client
+          .channel('dashboard-$_userId')
+          .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'focus_sessions',
+              callback: (_) => loadDashboard())
+          .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'distraction_events',
+              callback: (_) => loadDashboard())
+          .subscribe();
+    } catch (error) {
+      FELog.d('Dashboard', 'Realtime unavailable: ${error.runtimeType}');
+    }
   }
 
   ({double rate, double median}) _recoveryStatsForWindow(
@@ -300,7 +314,13 @@ class DashboardViewModel extends StateNotifier<DashboardState> {
   @override
   void dispose() {
     final channel = _realtimeChannel;
-    if (channel != null) Supabase.instance.client.removeChannel(channel);
+    if (channel != null) {
+      try {
+        Supabase.instance.client.removeChannel(channel);
+      } catch (_) {
+        // There is no channel to remove in offline mode.
+      }
+    }
     super.dispose();
   }
 }
@@ -312,7 +332,7 @@ final dashboardProvider =
     AppDependencies.sessionDao,
     AppDependencies.eventDao,
     // Use live auth id; prefs value may be stale before OTP login completes.
-    Supabase.instance.client.auth.currentUser?.id ??
+    AppDependencies.supabaseService.currentUser?.id ??
         AppDependencies.prefs.getString(AppKeys.userId) ??
         '',
   ),

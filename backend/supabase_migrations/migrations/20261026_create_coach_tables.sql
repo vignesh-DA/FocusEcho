@@ -14,21 +14,37 @@ CREATE TABLE IF NOT EXISTS public.coach_profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 2. Coach insights (post-session debriefs & intention refinements)
--- Verified: focus_sessions(id) is UUID in public.focus_sessions
-CREATE TABLE IF NOT EXISTS public.coach_insights (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    session_id UUID REFERENCES public.focus_sessions(id) ON DELETE CASCADE,
-    insight_type TEXT NOT NULL CHECK (insight_type IN ('intention_refinement', 'session_debrief')),
-    headline TEXT NOT NULL,
-    body TEXT NOT NULL,
-    actionable_tip TEXT,
-    distraction_offsets_json JSONB DEFAULT '[]'::jsonb,
-    user_feedback SMALLINT DEFAULT 0 CHECK (user_feedback BETWEEN -1 AND 1),
-    is_fallback BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+-- 2. Coach insights (post-session debriefs & intention refinements).
+-- Match the session_id SQL type to whichever supported base schema is installed.
+DO $$
+DECLARE
+  session_id_type TEXT;
+BEGIN
+  SELECT format_type(a.atttypid, a.atttypmod)
+    INTO session_id_type
+    FROM pg_attribute a
+    WHERE a.attrelid = 'public.focus_sessions'::regclass
+      AND a.attname = 'id'
+      AND NOT a.attisdropped;
+
+  EXECUTE format(
+    'CREATE TABLE IF NOT EXISTS public.coach_insights (
+       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+       user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+       session_id %s REFERENCES public.focus_sessions(id) ON DELETE CASCADE,
+       insight_type TEXT NOT NULL CHECK (insight_type IN (''intention_refinement'', ''session_debrief'')),
+       headline TEXT NOT NULL,
+       body TEXT NOT NULL,
+       actionable_tip TEXT,
+       distraction_offsets_json JSONB DEFAULT ''[]''::jsonb,
+       user_feedback SMALLINT DEFAULT 0 CHECK (user_feedback BETWEEN -1 AND 1),
+       is_fallback BOOLEAN NOT NULL DEFAULT false,
+       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+     )',
+    session_id_type
+  );
+END
+$$;
 
 -- Create indexes for performance and session lookup
 CREATE INDEX IF NOT EXISTS idx_coach_insights_session_user
@@ -72,6 +88,10 @@ CREATE POLICY coach_insights_update_feedback ON public.coach_insights
     FOR UPDATE
     USING (auth.uid() = user_id)
     WITH CHECK (auth.uid() = user_id);
+
+-- RLS restricts rows; column grants restrict what a user may change on a row.
+REVOKE UPDATE ON public.coach_insights FROM authenticated;
+GRANT UPDATE (user_feedback) ON public.coach_insights TO authenticated;
 
 DROP POLICY IF EXISTS coach_insights_delete_own ON public.coach_insights;
 CREATE POLICY coach_insights_delete_own ON public.coach_insights

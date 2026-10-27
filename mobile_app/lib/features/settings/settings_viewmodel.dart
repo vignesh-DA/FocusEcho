@@ -31,10 +31,10 @@ class SettingsState {
   final bool cloudSyncEnabled;
   final bool analyticsEnabled;
   final bool localOnlyMode;
-    final bool nudgesEnabled;
-    final bool streakRemindersEnabled;
-    final bool crossSurfaceNudges;
-    final String? userEmail;
+  final bool nudgesEnabled;
+  final bool streakRemindersEnabled;
+  final bool crossSurfaceNudges;
+  final String? userEmail;
   final bool isAuthenticating;
   final bool isDeletingData;
   final Map<String, int> appLimits;
@@ -62,7 +62,8 @@ class SettingsState {
       analyticsEnabled: analyticsEnabled ?? this.analyticsEnabled,
       localOnlyMode: localOnlyMode ?? this.localOnlyMode,
       nudgesEnabled: nudgesEnabled ?? this.nudgesEnabled,
-      streakRemindersEnabled: streakRemindersEnabled ?? this.streakRemindersEnabled,
+      streakRemindersEnabled:
+          streakRemindersEnabled ?? this.streakRemindersEnabled,
       crossSurfaceNudges: crossSurfaceNudges ?? this.crossSurfaceNudges,
       userEmail: userEmail == _noChange ? this.userEmail : userEmail as String?,
       isAuthenticating: isAuthenticating ?? this.isAuthenticating,
@@ -81,7 +82,8 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
       analyticsEnabled: _prefs.getBool(AppKeys.analyticsEnabled) ?? true,
       localOnlyMode: _prefs.getBool(AppKeys.localOnlyMode) ?? false,
       nudgesEnabled: _prefs.getBool('nudges_enabled') ?? true,
-      streakRemindersEnabled: _prefs.getBool('streak_reminders_enabled') ?? true,
+      streakRemindersEnabled:
+          _prefs.getBool('streak_reminders_enabled') ?? true,
       crossSurfaceNudges: _prefs.getBool(AppKeys.crossSurfaceNudges) ?? false,
       recoveryDuration: _prefs.getInt('recovery_duration') ?? 10,
       strictness: _prefs.getString('strictness') ?? 'Normal',
@@ -112,6 +114,10 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     if (state.localOnlyMode) return;
     state = state.copyWith(cloudSyncEnabled: value);
     await _prefs.setBool(AppKeys.syncEnabled, value);
+    if (value) {
+      await AppDependencies.supabaseService
+          .syncFocusPreferencesFromPrefs(_prefs);
+    }
   }
 
   Future<void> updateAnalytics(bool value) async {
@@ -130,6 +136,10 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     await _prefs.setBool(AppKeys.localOnlyMode, value);
     await _prefs.setBool(AppKeys.syncEnabled, next.cloudSyncEnabled);
     await _prefs.setBool(AppKeys.analyticsEnabled, next.analyticsEnabled);
+    if (!value && next.cloudSyncEnabled) {
+      await AppDependencies.supabaseService
+          .syncFocusPreferencesFromPrefs(_prefs);
+    }
   }
 
   Future<void> updateNudges(bool value) async {
@@ -171,6 +181,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     }
     state = state.copyWith(appLimits: newLimits);
     await _prefs.setString(AppKeys.appTimeLimitsSeconds, jsonEncode(newLimits));
+    await AppDependencies.supabaseService.syncFocusPreferencesFromPrefs(_prefs);
   }
 
   Future<void> updateWebDistractingSites(List<String> sites) async {
@@ -182,6 +193,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
       ..sort();
     state = state.copyWith(webDistractingSites: normalized);
     await _prefs.setString(AppKeys.webDistractingSites, jsonEncode(normalized));
+    await AppDependencies.supabaseService.syncFocusPreferencesFromPrefs(_prefs);
   }
 
   Map<String, int> _loadAppLimits() {
@@ -197,7 +209,9 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
   List<String> _loadWebDistractingSites() {
     final raw = _prefs.getString(AppKeys.webDistractingSites) ?? '[]';
     try {
-      return (jsonDecode(raw) as List<dynamic>).map((site) => site.toString()).toList();
+      return (jsonDecode(raw) as List<dynamic>)
+          .map((site) => site.toString())
+          .toList();
     } catch (_) {
       return const [];
     }
@@ -239,6 +253,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
   }
 }
 
-final settingsProvider = StateNotifierProvider<SettingsViewModel, SettingsState>(
+final settingsProvider =
+    StateNotifierProvider<SettingsViewModel, SettingsState>(
   (ref) => SettingsViewModel(AppDependencies.prefs),
 );

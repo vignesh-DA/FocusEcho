@@ -98,7 +98,15 @@
 /** @returns {ExtensionConfig} */
 export function defaultConfig() {
   return {
-    distraction_list: [],
+    // Match Flutter's first-run web defaults; the signed-in web app replaces
+    // this list with the account's synced preferences at session start.
+    distraction_list: [
+      { hostname: 'instagram.com', category: 'social', limit_minutes: 0 },
+      { hostname: 'youtube.com', category: 'video', limit_minutes: 0 },
+      { hostname: 'x.com', category: 'social', limit_minutes: 0 },
+      { hostname: 'reddit.com', category: 'social', limit_minutes: 0 },
+      { hostname: 'tiktok.com', category: 'video', limit_minutes: 0 },
+    ],
     strict_focus_mode: false,
     habit_mode: { enabled: false, limit_minutes: 60, break_minutes: 5 },
     escalation: { countdown_ms: 15_000, emergency_hold_ms: 2_000, post_expiry_ms: 60_000 },

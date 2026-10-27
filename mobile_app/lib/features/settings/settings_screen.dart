@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/providers/app_dependencies.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/privacy_policy_sheet.dart';
 import 'settings_viewmodel.dart';
@@ -15,7 +15,7 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(settingsProvider);
     final vm = ref.read(settingsProvider.notifier);
-    final authUser = Supabase.instance.client.auth.currentUser;
+    final authUser = AppDependencies.supabaseService.currentUser;
     final isAnonymous = authUser?.isAnonymous ?? true;
 
     return Scaffold(
@@ -71,12 +71,16 @@ class SettingsScreen extends ConsumerWidget {
           ),
           ListTile(
             title: const Text('Export My Data'),
-            onTap: () => _dialog(context, 'Export My Data', 'Export is a placeholder for MVP.'),
+            onTap: () => _dialog(
+                context, 'Export My Data', 'Export is a placeholder for MVP.'),
           ),
           ListTile(
             title: const Text('Delete My Data'),
             trailing: state.isDeletingData
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
                 : null,
             onTap: state.isDeletingData
                 ? null
@@ -104,13 +108,15 @@ class SettingsScreen extends ConsumerWidget {
             onChanged: (v) async {
               final error = await vm.updateCrossSurfaceNudges(v);
               if (error != null && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error)));
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(error)));
               }
             },
           ),
           ListTile(
             title: const Text('Daily summary time'),
-            onTap: () => showTimePicker(context: context, initialTime: TimeOfDay.now()),
+            onTap: () =>
+                showTimePicker(context: context, initialTime: TimeOfDay.now()),
           ),
           const Divider(),
           const ListTile(title: Text('ACCOUNT')),
@@ -142,7 +148,7 @@ class SettingsScreen extends ConsumerWidget {
                           const Icon(Icons.verified_user,
                               color: AppColors.accentGreen),
                           const SizedBox(height: 8),
-                          Text('Signed in as ' + (authUser?.email ?? 'Unknown')),
+                          Text('Signed in as ${authUser?.email ?? 'Unknown'}'),
                           const SizedBox(height: 12),
                           TextButton(
                             onPressed: state.isAuthenticating
@@ -185,12 +191,16 @@ class SettingsScreen extends ConsumerWidget {
       builder: (context) => AlertDialog(
         title: Text(title),
         content: Text(body),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('OK'))
+        ],
       ),
     );
   }
 
-  Future<void> _confirmAndDelete(BuildContext context, SettingsViewModel vm) async {
+  Future<void> _confirmAndDelete(
+      BuildContext context, SettingsViewModel vm) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -199,8 +209,12 @@ class SettingsScreen extends ConsumerWidget {
           'This permanently deletes your local and cloud Focus Echo data for this account. This action cannot be undone.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel')),
+          TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete')),
         ],
       ),
     );
@@ -209,11 +223,13 @@ class SettingsScreen extends ConsumerWidget {
     try {
       final message = await vm.deleteMyData();
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
       context.go(AppRoutes.consent);
     } on StateError catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 }

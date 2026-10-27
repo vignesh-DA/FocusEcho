@@ -31,6 +31,44 @@ def upsert_batch(
 
     client = _client()
     rows = [event.model_dump(mode="json") for event in payload.events]
+
+    session_ids = list({row["session_id"] for row in rows})
+    owned_session_rows = (
+        client.table("focus_sessions")
+        .select("id")
+        .eq("user_id", authed_user)
+        .in_("id", session_ids)
+        .execute()
+        .data
+        or []
+    )
+    owned_session_ids = {str(row["id"]) for row in owned_session_rows}
+    if owned_session_ids != set(session_ids):
+        raise HTTPException(status_code=403, detail="One or more sessions are not owned by this user.")
+
+    event_ids = list({row["id"] for row in rows})
+    existing_events = (
+        client.table("distraction_events")
+        .select("id,session_id")
+        .in_("id", event_ids)
+        .execute()
+        .data
+        or []
+    )
+    existing_session_ids = list({str(row["session_id"]) for row in existing_events})
+    if existing_session_ids:
+        existing_owned_sessions = (
+            client.table("focus_sessions")
+            .select("id")
+            .eq("user_id", authed_user)
+            .in_("id", existing_session_ids)
+            .execute()
+            .data
+            or []
+        )
+        if {str(row["id"]) for row in existing_owned_sessions} != set(existing_session_ids):
+            raise HTTPException(status_code=403, detail="One or more events are not owned by this user.")
+
     client.table("distraction_events").upsert(rows).execute()
     return {"inserted": len(rows)}
 

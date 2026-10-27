@@ -20,8 +20,10 @@ class AppSelectorState {
     Set<String>? selectedDistractingApps,
   }) {
     return AppSelectorState(
-      selectedProductiveApps: selectedProductiveApps ?? this.selectedProductiveApps,
-      selectedDistractingApps: selectedDistractingApps ?? this.selectedDistractingApps,
+      selectedProductiveApps:
+          selectedProductiveApps ?? this.selectedProductiveApps,
+      selectedDistractingApps:
+          selectedDistractingApps ?? this.selectedDistractingApps,
     );
   }
 }
@@ -55,24 +57,34 @@ class AppSelectorViewModel extends StateNotifier<AppSelectorState> {
 
   void toggleProductiveApp(String packageName) {
     final selected = {...state.selectedProductiveApps};
-    selected.contains(packageName) ? selected.remove(packageName) : selected.add(packageName);
+    selected.contains(packageName)
+        ? selected.remove(packageName)
+        : selected.add(packageName);
     state = state.copyWith(selectedProductiveApps: selected);
   }
 
   void toggleDistractingApp(String packageName) {
     final selected = {...state.selectedDistractingApps};
-    selected.contains(packageName) ? selected.remove(packageName) : selected.add(packageName);
+    selected.contains(packageName)
+        ? selected.remove(packageName)
+        : selected.add(packageName);
     state = state.copyWith(selectedDistractingApps: selected);
   }
 
   Future<void> saveSelection() async {
-    await _prefs.setString(AppKeys.productiveApps, jsonEncode(state.selectedProductiveApps.toList()));
-    await _prefs.setString(AppKeys.distractingApps, jsonEncode(state.selectedDistractingApps.toList()));
+    await _prefs.setString(AppKeys.productiveApps,
+        jsonEncode(state.selectedProductiveApps.toList()));
+    await _prefs.setString(AppKeys.distractingApps,
+        jsonEncode(state.selectedDistractingApps.toList()));
+    await AppDependencies.supabaseService.syncFocusPreferencesFromPrefs(_prefs);
   }
 
-  bool get isValid => state.selectedProductiveApps.isNotEmpty && state.selectedDistractingApps.isNotEmpty;
+  bool get isValid =>
+      state.selectedProductiveApps.isNotEmpty &&
+      state.selectedDistractingApps.isNotEmpty;
 }
 
-final appSelectorProvider = StateNotifierProvider<AppSelectorViewModel, AppSelectorState>(
+final appSelectorProvider =
+    StateNotifierProvider<AppSelectorViewModel, AppSelectorState>(
   (ref) => AppSelectorViewModel(AppDependencies.prefs),
 );

@@ -15,9 +15,19 @@ services:
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+      - key: SUPABASE_JWT_SECRET
+        sync: false
       - key: DATABASE_URL
         sync: false
       - key: SECRET_KEY
         sync: false
       - key: ALLOWED_ORIGINS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: COACH_LLM_MODEL
+        sync: false
+      - key: COACH_LLM_MODEL_BACKUP
+        sync: false
+      - key: COACH_LLM_TIMEOUT_SECONDS
         sync: false

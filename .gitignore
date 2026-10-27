@@ -1,8 +1,8 @@
 # Flutter
 .dart_tool/
+.kotlin/
 build/
 .packages
-pubspec.lock
 *.g.dart
 *.freezed.dart
 
@@ -53,7 +53,7 @@ Pods/
 node_modules/
 **/node_modules/
 package-lock.json.bak
-browser_extension/test-results/profile/
+browser_extension/test-results/
 
 # General
 .DS_Store

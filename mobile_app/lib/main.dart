@@ -77,7 +77,8 @@ Future<void> main() async {
   // Every online launch gets a real Supabase identity, including guests.
   // The local-only marker is retained only when Supabase is unreachable; it is
   // never used as a cloud identity or sent to Supabase.
-  User? currentUser = supabaseReady ? Supabase.instance.client.auth.currentUser : null;
+  User? currentUser =
+      supabaseReady ? Supabase.instance.client.auth.currentUser : null;
   if (supabaseReady && currentUser == null) {
     try {
       final response = await Supabase.instance.client.auth.signInAnonymously();
@@ -97,6 +98,10 @@ Future<void> main() async {
   } else {
     await prefs.setString(AppKeys.userId, 'local-user');
   }
+
+  // Shared account settings are the source of truth across web and APK;
+  // SharedPreferences remains the offline cache on both platforms.
+  await supabaseService.loadOrSeedFocusPreferences(prefs);
 
   AppRouter.initialize(prefs);
 
@@ -122,7 +127,7 @@ Future<void> main() async {
   AppDependencies.syncServiceReady = true;
   syncService.startPeriodicSync();
 
-  if (kIsWeb) {
+  if (kIsWeb && supabaseReady) {
     BrowserMonitor.instance.syncCredentialsIfAvailable();
   }
 
@@ -130,38 +135,42 @@ Future<void> main() async {
   // anonymous re-issuance, refreshes, and sign-outs.
   if (supabaseReady) {
     Supabase.instance.client.auth.onAuthStateChange.listen((data) async {
-    final event = data.event;
-    final user = data.session?.user;
-    if ((event == AuthChangeEvent.signedIn ||
-            event == AuthChangeEvent.userUpdated ||
-            event == AuthChangeEvent.tokenRefreshed) &&
-        user != null) {
-      final previousId = prefs.getString(AppKeys.userId);
-      await prefs.setString(AppKeys.userId, user.id);
-      if (previousId != null && previousId != user.id) {
-        await _migrateLocalUserToAuthId(sessionDao, eventDao, previousId, user.id);
-      }
-      unawaited(syncService.syncPendingEvents());
-      if (kIsWeb) {
-        BrowserMonitor.instance.syncCredentialsIfAvailable();
-      }
-      debugPrint('[Auth] Identity set: ${user.email ?? 'anonymous'} (${user.id})');
-    } else if (event == AuthChangeEvent.signedOut) {
-      try {
-        final response = await Supabase.instance.client.auth.signInAnonymously();
-        final anonymousUser = response.user;
-        if (anonymousUser != null) {
-          await prefs.setString(AppKeys.userId, anonymousUser.id);
-          if (kIsWeb) {
-            BrowserMonitor.instance.syncCredentialsIfAvailable();
-          }
-          debugPrint('[Auth] Signed out — issued anonymous identity ${anonymousUser.id}');
+      final event = data.event;
+      final user = data.session?.user;
+      if ((event == AuthChangeEvent.signedIn ||
+              event == AuthChangeEvent.userUpdated ||
+              event == AuthChangeEvent.tokenRefreshed) &&
+          user != null) {
+        final previousId = prefs.getString(AppKeys.userId);
+        await prefs.setString(AppKeys.userId, user.id);
+        if (previousId != null && previousId != user.id) {
+          await _migrateLocalUserToAuthId(
+              sessionDao, eventDao, previousId, user.id);
         }
-      } catch (e) {
-        await prefs.setString(AppKeys.userId, 'local-user');
-        debugPrint('[Auth] Anonymous re-issue failed: $e');
+        unawaited(syncService.syncPendingEvents());
+        if (kIsWeb) {
+          BrowserMonitor.instance.syncCredentialsIfAvailable();
+        }
+        debugPrint(
+            '[Auth] Identity set: ${user.email ?? 'anonymous'} (${user.id})');
+      } else if (event == AuthChangeEvent.signedOut) {
+        try {
+          final response =
+              await Supabase.instance.client.auth.signInAnonymously();
+          final anonymousUser = response.user;
+          if (anonymousUser != null) {
+            await prefs.setString(AppKeys.userId, anonymousUser.id);
+            if (kIsWeb) {
+              BrowserMonitor.instance.syncCredentialsIfAvailable();
+            }
+            debugPrint(
+                '[Auth] Signed out — issued anonymous identity ${anonymousUser.id}');
+          }
+        } catch (e) {
+          await prefs.setString(AppKeys.userId, 'local-user');
+          debugPrint('[Auth] Anonymous re-issue failed: $e');
+        }
       }
-    }
     });
   }
 
@@ -191,7 +200,8 @@ Future<void> _migrateLocalUserToAuthId(
   String authUserId,
 ) async {
   final sessions = await sessionDao.getSessionHistory(10000);
-  final sessionIds = sessions.where((s) => s.userId == fromUserId).map((s) => s.id).toList();
+  final sessionIds =
+      sessions.where((s) => s.userId == fromUserId).map((s) => s.id).toList();
   if (sessionIds.isEmpty) return;
   await sessionDao.reassignUserId(fromUserId, authUserId);
   await eventDao.markEventsUnsyncedForSessions(sessionIds);
