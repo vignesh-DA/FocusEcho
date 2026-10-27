@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.time.Instant
@@ -26,12 +27,12 @@ class FocusDetectionService : Service() {
     private lateinit var runnable: Runnable
     private var lastForegroundPackage: String? = null
     private var lastSwitchTimeMs: Long = 0
-    private var lastDistractionNotifMs: Long = 0
     private var continuousDistractionStartMs: Long = 0L
     private var lastNudgeSentMs: Long = 0L
     private var currentDistractionLevel: Int = 1
     private var screenReceiver: BroadcastReceiver? = null
     private var simulationReceiver: BroadcastReceiver? = null
+    private var wakeLock: PowerManager.WakeLock? = null
 
     // Cached values — refreshed every CACHE_TTL_MS to avoid disk reads every tick
     private var cachedSessionActive = false
@@ -42,6 +43,9 @@ class FocusDetectionService : Service() {
         createNotificationChannel()
         registerScreenReceiver()
         registerSimulationReceiver()
+        wakeLock = (getSystemService(Context.POWER_SERVICE) as PowerManager)
+            .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FocusEcho:DistractionAlertLock")
+            .apply { setReferenceCounted(false) }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -70,6 +74,11 @@ class FocusDetectionService : Service() {
 
         // Feature 2 — a fresh session resets the relapse ladder.
         DistractionEventQueue.resetSession()
+        lastForegroundPackage = null
+        lastSwitchTimeMs = 0L
+        continuousDistractionStartMs = 0L
+        lastNudgeSentMs = 0L
+        currentDistractionLevel = 1
         refreshCache(force = true)
         startForeground(1001, buildNotification())
         runnable = Runnable {
@@ -113,7 +122,13 @@ class FocusDetectionService : Service() {
                 if (continuousDistractionStartMs == 0L) continuousDistractionStartMs = now
                 val elapsed = now - continuousDistractionStartMs
                 if (now - lastNudgeSentMs >= NUDGE_REPEAT_INTERVAL_MS) {
-                    sendRepeatingNudgeNotification(label, elapsed, currentDistractionLevel)
+                    sendDistractionNotification(
+                        label,
+                        currentDistractionLevel,
+                        relapse = 1,
+                        isRepeat = true,
+                        elapsedMs = elapsed,
+                    )
                     lastNudgeSentMs = now
                 }
             } else {
@@ -172,7 +187,7 @@ class FocusDetectionService : Service() {
         val relapse = DistractionEventQueue.registerRelapse()
         val level = escalationLevelFor(relapse)
         currentDistractionLevel = level
-        sendDistractionNotification(label, packageName, level, relapse)
+        sendDistractionNotification(label, level, relapse)
         val payload = JSONObject()
             .put("eventType", "app_switch")
             .put("packageName", packageName)
@@ -190,18 +205,12 @@ class FocusDetectionService : Service() {
      */
     private fun sendDistractionNotification(
         appLabel: String,
-        packageName: String,
         level: Int,
         relapse: Int,
+        isRepeat: Boolean = false,
+        elapsedMs: Long = 0L,
     ) {
-        // Throttle only first-level entry alerts. Escalated levels must always
-        // reach the user even when relapses happen within the same 30-second
-        // window.
-        val now = System.currentTimeMillis()
-        if (level == 1) {
-            if (now - lastDistractionNotifMs < DISTRACTION_NOTIF_THROTTLE_MS) return
-            lastDistractionNotifMs = now
-        }
+        acquireDistractionWakeLock()
 
         val fullScreenIntent = PendingIntent.getActivity(
             this,
@@ -229,15 +238,26 @@ class FocusDetectionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val elapsedNudges = (elapsedMs / NUDGE_REPEAT_INTERVAL_MS).coerceAtLeast(1L)
+        val title = if (isRepeat) {
+            "⚠️ Still on $appLabel? (${elapsedNudges}m drift)"
+        } else {
+            "⚠️ Focus check — $appLabel detected (L$level)"
+        }
+        val content = if (isRepeat) {
+            "Your session is active. Tap to reclaim your focus."
+        } else {
+            "You opened $appLabel during your focus session. Choose an action."
+        }
         val notification = NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
-            .setContentTitle("⚠️ Focus check — $appLabel detected (L$level)")
-            .setContentText("You opened $appLabel during your focus session. Choose an action.")
+            .setContentTitle(title)
+            .setContentText(content)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
             // Re-alert when updating the same notification ID on each 30 s tick.
             .setOnlyAlertOnce(false)
-            .setVibrate(longArrayOf(0L, 300L, 200L, 300L))
+            .setVibrate(VIBRATION_PATTERN)
             .setAutoCancel(true)
             .setContentIntent(returnIntent)
             .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "🎯 Return to Focus", returnIntent).build())
@@ -259,46 +279,25 @@ class FocusDetectionService : Service() {
         }
 
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(DISTRACTION_NOTIF_ID, notification)
-    }
-
-    private fun sendRepeatingNudgeNotification(appLabel: String, elapsedMs: Long, level: Int) {
-        val openIntent = PendingIntent.getActivity(
-            this,
-            6000,
-            packageManager.getLaunchIntentForPackage(this.packageName),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val elapsedMinutes = (elapsedMs / 60_000L).coerceAtLeast(1L)
-        val takeBreakIntent = PendingIntent.getService(
-            this,
-            7000,
-            Intent(this, FocusDetectionService::class.java).apply {
-                action = TAKE_BREAK_ACTION
-                putExtra(InterventionActivity.EXTRA_LEVEL, level)
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val notification = NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
-            .setContentTitle("⚠️ Still on $appLabel? (${elapsedMinutes}m drift)")
-            .setContentText("Your session is active. Tap to reclaim your focus.")
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_MAX)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setOnlyAlertOnce(false)
-            .setVibrate(longArrayOf(0L, 300L, 200L, 300L))
-            .setAutoCancel(true)
-            .setContentIntent(openIntent)
-            .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "🎯 Return to Focus", openIntent).build())
-            .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "☕ Take a Break", takeBreakIntent).build())
-            .build()
-        getSystemService(NotificationManager::class.java).notify(REPEAT_NUDGE_NOTIF_ID, notification)
+        manager.notify(ACTIVE_DISTRACTION_NOTIF_ID, notification)
     }
 
     private fun clearDistractionNotifications() {
         val manager = getSystemService(NotificationManager::class.java)
-        manager.cancel(DISTRACTION_NOTIF_ID)
-        manager.cancel(REPEAT_NUDGE_NOTIF_ID)
+        manager.cancel(ACTIVE_DISTRACTION_NOTIF_ID)
+        // Remove alerts posted by older app versions.
+        manager.cancel(LEGACY_REPEAT_NUDGE_NOTIF_ID)
+        releaseDistractionWakeLock()
+    }
+
+    private fun acquireDistractionWakeLock() {
+        val lock = wakeLock ?: return
+        if (lock.isHeld) lock.release()
+        lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+    }
+
+    private fun releaseDistractionWakeLock() {
+        wakeLock?.takeIf { it.isHeld }?.release()
     }
 
     /** Persist before attempting delivery; Flutter deletes the row after SQLite ack. */
@@ -354,6 +353,12 @@ class FocusDetectionService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val manager = getSystemService(NotificationManager::class.java)
 
+            // Existing installs may retain frozen channel settings. A versioned
+            // channel gives the new alert configuration a clean OS-owned record.
+            manager.deleteNotificationChannel(LEGACY_DISTRACTION_CHANNEL_ID)
+            manager.cancel(ACTIVE_DISTRACTION_NOTIF_ID)
+            manager.cancel(LEGACY_REPEAT_NUDGE_NOTIF_ID)
+
             // Persistent foreground service notification (low importance — silent)
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
@@ -370,7 +375,8 @@ class FocusDetectionService : Service() {
             ).apply {
                 description = "Notifies you when a distracting app is opened during a focus session"
                 enableVibration(true)
-                setVibrationPattern(longArrayOf(0L, 300L, 200L, 300L))
+                setVibrationPattern(VIBRATION_PATTERN)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             manager.createNotificationChannel(alertChannel)
         }
@@ -379,6 +385,7 @@ class FocusDetectionService : Service() {
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
         clearDistractionNotifications()
+        wakeLock = null
         unregisterScreenReceiver()
         unregisterSimulationReceiver()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -396,9 +403,12 @@ class FocusDetectionService : Service() {
         const val SIMULATE_DISTRACTION_DEBUG_ACTION = "com.focusecho.debug.SIMULATE_DISTRACTION"
         private const val CHANNEL_ID = "focus_detection_channel"
 
-        private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
-        private const val DISTRACTION_NOTIF_ID = 2001
-        private const val REPEAT_NUDGE_NOTIF_ID = 2002
+        private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel_v2"
+        private const val LEGACY_DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
+        private const val ACTIVE_DISTRACTION_NOTIF_ID = 2001
+        private const val LEGACY_REPEAT_NUDGE_NOTIF_ID = 2002
+        private val VIBRATION_PATTERN = longArrayOf(0L, 350L, 200L, 350L)
+        private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L
 
         /** Poll every 3 seconds instead of 1 to reduce battery drain. */
         private const val POLL_INTERVAL_MS = 3_000L
@@ -406,8 +416,6 @@ class FocusDetectionService : Service() {
         /** Refresh cached SharedPreferences values every 5 seconds. */
         private const val CACHE_TTL_MS = 5_000L
 
-        /** Throttle distraction notifications to one per 30 seconds. */
-        private const val DISTRACTION_NOTIF_THROTTLE_MS = 30_000L
         private const val NUDGE_REPEAT_INTERVAL_MS = 30_000L
 
         /** Well-known always-distracting packages (fallback if prefs unavailable). */

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'dart:convert';
+import 'package:sqflite/sqflite.dart';
 import '../core/models/focus_session.dart';
 import '../core/providers/app_dependencies.dart';
 import 'database_helper.dart';
@@ -19,6 +20,28 @@ class FocusSessionDao {
     }
     final db = await _databaseHelper.getDatabase();
     await db.insert('focus_sessions', session.toSqliteMap());
+  }
+
+  /// Persists a session adopted from the browser extension without replacing
+  /// a matching session already created by the web dashboard.
+  Future<bool> insertSessionIfAbsent(FocusSession session) async {
+    if (kIsWeb) {
+      if (DatabaseHelper.webSessions.any((row) => row['id'] == session.id)) {
+        return false;
+      }
+      DatabaseHelper.webSessions
+          .add(Map<String, dynamic>.from(session.toSqliteMap()));
+      await DatabaseHelper.persistWeb();
+      AppDependencies.triggerWebSync();
+      return true;
+    }
+    final db = await _databaseHelper.getDatabase();
+    final rowId = await db.insert(
+      'focus_sessions',
+      session.toSqliteMap(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    return rowId != -1;
   }
 
   Future<void> updateSessionEnd(

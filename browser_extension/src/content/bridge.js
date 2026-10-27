@@ -34,6 +34,10 @@ function registerDashboard() {
 }
 
 registerDashboard();
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') registerDashboard();
+});
+window.addEventListener('focus', registerDashboard);
 
 // Listen for messages from the Web Dashboard (window.postMessage)
 window.addEventListener('message', async (event) => {
@@ -143,9 +147,12 @@ chrome.runtime.onMessage.addListener((message) => {
       type: 'activity',
       event: {
         kind:             message.kind || 'away',
+        session_id:       message.session_id || '',
+        event_id:         message.event_id || '',
         host:             message.host || 'unknown',
         timestamp:        message.timestamp || new Date().toISOString(),
         escalation_level: message.escalation_level || 1,
+        time_away_seconds: message.time_away_seconds,
         intention:        message.intention || '',
         category:         message.category || 'unknown',
       },

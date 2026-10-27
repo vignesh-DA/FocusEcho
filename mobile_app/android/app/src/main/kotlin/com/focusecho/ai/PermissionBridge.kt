@@ -1,11 +1,15 @@
 package com.focusecho.ai
 
+import android.app.Activity
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -20,7 +24,9 @@ import io.flutter.plugin.common.MethodChannel
  * detection path via UsageStats).  The [checkAccessibility] method has been
  * deleted; the wizard view-model always reports true for that flag.
  */
-class PermissionBridge(private val context: Context) {
+class PermissionBridge(private val activity: Activity) {
+    private val context: Context get() = activity
+
     fun register(engine: FlutterEngine) {
         MethodChannel(engine.dartExecutor.binaryMessenger, "focus_echo/permissions")
             .setMethodCallHandler { call, result ->
@@ -34,6 +40,15 @@ class PermissionBridge(private val context: Context) {
                         result.success(true)
                     }
                     "isIgnoringBatteryOptimizations" -> result.success(isIgnoringBatteryOptimizations())
+                    "checkNotificationPermission" -> result.success(checkNotificationPermission())
+                    "openNotificationSettings" -> {
+                        openNotificationSettings()
+                        result.success(true)
+                    }
+                    "requestNotificationPermission" -> {
+                        requestNotificationPermission()
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -54,5 +69,39 @@ class PermissionBridge(private val context: Context) {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             pm.isIgnoringBatteryOptimizations(context.packageName)
         } else true
+    }
+
+    private fun checkNotificationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            NotificationManagerCompat.from(context).areNotificationsEnabled()
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (!checkNotificationPermission()) {
+                ActivityCompat.requestPermissions(
+                    activity,
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE,
+                )
+            }
+        } else if (!checkNotificationPermission()) {
+            openNotificationSettings()
+        }
+    }
+
+    private fun openNotificationSettings() {
+        activity.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName),
+        )
+    }
+
+    private companion object {
+        const val NOTIFICATION_PERMISSION_REQUEST_CODE = 101
     }
 }

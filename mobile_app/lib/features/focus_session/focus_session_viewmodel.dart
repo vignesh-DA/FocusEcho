@@ -53,7 +53,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
           state = state.copyWith(
               extensionConnected: _browserMonitor.extensionConnected);
           if (_browserMonitor.activeExtensionSession != null) {
-            _adoptExtensionSession(_browserMonitor.activeExtensionSession!);
+            _queueExtensionSessionAdoption(
+                _browserMonitor.activeExtensionSession!);
           }
         }
       }));
@@ -67,7 +68,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
           _browserMonitor.activeSessionUpdates.listen((sessionMap) {
         if (!mounted) return;
         if (sessionMap != null) {
-          _adoptExtensionSession(sessionMap);
+          _queueExtensionSessionAdoption(sessionMap);
+        } else if (state.isActive) {
+          unawaited(stopSession(fromExtension: true));
         }
       });
     }
@@ -90,6 +93,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   StreamSubscription<bool>? _browserStatusSubscription;
   StreamSubscription<Map<String, dynamic>?>? _browserSessionSubscription;
   StreamSubscription<List<Map<String, dynamic>>>? _feedSubscription;
+  Future<void> _extensionSessionAdoption = Future<void>.value();
+  bool _stopInProgress = false;
 
   SupabaseService? get _supabaseService {
     if (_supabaseServiceOverride != null) return _supabaseServiceOverride;
@@ -422,11 +427,27 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     }
   }
 
-  void _adoptExtensionSession(Map<String, dynamic> sessionMap) {
+  void _queueExtensionSessionAdoption(Map<String, dynamic> sessionMap) {
+    _extensionSessionAdoption = _extensionSessionAdoption
+        .then((_) => _adoptExtensionSession(sessionMap))
+        .catchError((Object error) {
+      FELog.w('FocusSession',
+          'Could not adopt extension session (${error.runtimeType})');
+    });
+  }
+
+  Future<void> _adoptExtensionSession(Map<String, dynamic> sessionMap) async {
     final sessionId = sessionMap['session_id']?.toString();
     if (sessionId == null || sessionId.isEmpty) return;
 
-    if (state.isActive && state.session?.id == sessionId) return;
+    if (state.isActive && state.session?.id == sessionId) {
+      final extensionCount =
+          (sessionMap['distraction_count'] as num?)?.toInt() ?? 0;
+      if (extensionCount > state.distractionCount) {
+        state = state.copyWith(distractionCount: extensionCount);
+      }
+      return;
+    }
 
     final intention = sessionMap['intention']?.toString() ?? 'Deep Work';
     final startedAtRaw = sessionMap['started_at'];
@@ -451,7 +472,22 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       productiveApp: 'Chrome',
       intent: intention,
       totalDistractions: distractionCount,
+      parkedItems:
+          (sessionMap['parked_items'] as List?)?.whereType<String>().toList(),
     );
+
+    final previousSession = state.session;
+    if (state.isActive && previousSession != null) {
+      await _sessionDao.updateSessionEnd(
+        previousSession.id,
+        DateTime.now(),
+        state.distractionCount,
+        state.sessionXp,
+        0,
+        SessionStatus.abandoned.name,
+      );
+      _requestSync();
+    }
 
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -472,8 +508,13 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       escalationLevel: level,
       sessionSummary: null,
       liveDistractionFeed: const [],
+      parkedItems: session.parkedItems ?? const [],
+      showAlert: false,
+      lastEventId: null,
     );
 
+    await _sessionDao.insertSessionIfAbsent(session);
+    _requestSync();
     unawaited(_subscribeToLiveFeed(sessionId));
   }
   // ── MOB-3b — Session Resume on App Relaunch ──────────────────────────────
@@ -575,6 +616,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     String packageName,
     String appLabel, {
     int escalationLevel = 1,
+    String? eventId,
+    DateTime? triggeredAt,
   }) async {
     final sessionId = state.session?.id;
     if (sessionId == null) return;
@@ -590,16 +633,20 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     );
     final risk = RuleEngine.riskLabel(riskScore);
     final event = DistractionEvent(
-      id: _uuid.v4(),
+      id: eventId ?? _uuid.v4(),
       sessionId: sessionId,
       packageName: packageName,
       appLabel: appLabel,
-      triggeredAt: DateTime.now(),
+      triggeredAt: triggeredAt ?? DateTime.now(),
       riskScore: risk,
       riskScoreNumeric: riskScore,
       escalationLevel: escalationLevel,
     );
-    await _eventDao.insertEvent(event);
+    if (eventId == null) {
+      await _eventDao.insertEvent(event);
+    } else if (!await _eventDao.insertEventIfAbsent(event)) {
+      return;
+    }
     await _registerDistraction(event);
   }
 
@@ -694,7 +741,17 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     }
   }
 
-  Future<void> stopSession() async {
+  Future<void> stopSession({bool fromExtension = false}) async {
+    if (_stopInProgress) return;
+    _stopInProgress = true;
+    try {
+      await _stopSessionInternal(fromExtension: fromExtension);
+    } finally {
+      _stopInProgress = false;
+    }
+  }
+
+  Future<void> _stopSessionInternal({required bool fromExtension}) async {
     if (kIsWeb) WebNotificationService.instance.clear();
     final session = state.session;
     if (session == null) return;
@@ -751,7 +808,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     );
     if (!kIsWeb) {
       await _sessionChannel.invokeMethod<void>('stopSession');
-    } else {
+    } else if (!fromExtension) {
       await _browserMonitor.stopSession();
     }
     _requestSync();
@@ -1118,14 +1175,30 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   }
 
   Future<void> _handleBrowserActivity(BrowserActivity activity) async {
+    await _extensionSessionAdoption;
     if (!state.isActive) return;
+    if (activity.sessionId != null && activity.sessionId != state.session?.id) {
+      return;
+    }
     final kind = activity.kind;
     if (kind == 'distraction') {
-      await onDistractionDetected('web:${activity.host}', activity.host);
+      await onDistractionDetected(
+        'web:${activity.host}',
+        activity.host,
+        escalationLevel: activity.escalationLevel,
+        eventId: activity.eventId?.isNotEmpty == true ? activity.eventId : null,
+        triggeredAt: activity.timestamp,
+      );
     } else if (kind == 'return' &&
         state.showAlert &&
         state.lastEventId != null) {
-      await onRecovery(state.lastEventId!, returnedToOrigin: true);
+      await onRecovery(
+        activity.eventId?.isNotEmpty == true
+            ? activity.eventId!
+            : state.lastEventId!,
+        returnedToOrigin: true,
+        timeAwaySeconds: activity.timeAwaySeconds,
+      );
     }
   }
 

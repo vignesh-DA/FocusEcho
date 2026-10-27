@@ -183,7 +183,7 @@ export function formatDistractionEventRow(queuedEvent, activeSession) {
   }
 
   return {
-    id:                           ev.id || crypto.randomUUID(),
+    id:                           ev.id || ev.related_event_id || crypto.randomUUID(),
     session_id:                   ev.session_id || activeSession?.session_id,
     package_name:                 ev.domain || 'unknown_site',
     app_label:                    getFriendlyAppLabel(ev.domain),
@@ -191,7 +191,7 @@ export function formatDistractionEventRow(queuedEvent, activeSession) {
     recovered_at:                 isRecovered ? (ev.timestamp || now.toISOString()) : null,
     recovery_time_seconds:        recoveryTimeSec,
     risk_score:                   riskScore,
-    event_type:                   ev.event_type || 'distraction',
+    event_type:                   isRecovered ? 'distraction' : (ev.event_type || 'distraction'),
     app_category:                 ev.category || 'unknown',
     time_away_seconds:            timeAwaySec,
     risk_score_numeric:           riskScoreNumeric,
@@ -205,6 +205,19 @@ export function formatDistractionEventRow(queuedEvent, activeSession) {
     is_recovered:                 isRecovered,
     is_synced:                    1,
   };
+}
+
+/** Converts and coalesces queued lifecycle updates by their stable event ID. */
+export function formatQueuedEventRows(queue, activeSession) {
+  const rowsById = new Map();
+  for (const item of queue) {
+    const row = formatDistractionEventRow(item, activeSession);
+    const prior = rowsById.get(row.id);
+    // A queued recovery updates the original distraction row. Collapse the
+    // pair before PostgREST upsert so one batch never contains duplicate IDs.
+    if (!prior || row.is_recovered || !prior.is_recovered) rowsById.set(row.id, row);
+  }
+  return [...rowsById.values()];
 }
 
 /**
@@ -336,7 +349,7 @@ export async function syncEventQueue(activeSession = null) {
 
   // 2. Prepare payload rows. The deployed migrations include escalation_level,
   // so preserve it across browser/mobile/cloud paths for consistent analytics.
-  const rows = queue.map(item => formatDistractionEventRow(item, activeSession));
+  const rows = formatQueuedEventRows(queue, activeSession);
 
   let writeSuccess = false;
 

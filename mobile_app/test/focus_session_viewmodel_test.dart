@@ -63,6 +63,13 @@ class _FakeDistractionEventDao extends DistractionEventDao {
   @override
   Future<void> insertEvent(DistractionEvent event) async => _events.add(event);
   @override
+  Future<bool> insertEventIfAbsent(DistractionEvent event) async {
+    if (_events.any((existing) => existing.id == event.id)) return false;
+    _events.add(event);
+    return true;
+  }
+
+  @override
   Future<void> updateRecovery(
       String eventId, DateTime recoveredAt, int recoverySeconds,
       {bool returnedToOrigin = false}) async {
@@ -122,6 +129,13 @@ class _FakeFocusSessionDao extends FocusSessionDao {
   @override
   Future<void> insertSession(FocusSession session) async =>
       _sessions.add(Map<String, dynamic>.from(session.toSqliteMap()));
+  @override
+  Future<bool> insertSessionIfAbsent(FocusSession session) async {
+    if (_sessions.any((existing) => existing['id'] == session.id)) return false;
+    _sessions.add(Map<String, dynamic>.from(session.toSqliteMap()));
+    return true;
+  }
+
   @override
   Future<void> updateParkedItems(String sessionId, List<String> items) async {
     final index = _sessions.indexWhere((s) => s['id'] == sessionId);
@@ -489,6 +503,38 @@ void main() {
 
   // ── TC_DISTRACT — Distraction Simulation & Counter ──────────────────────────
   group('TC_DISTRACT — Distraction Simulation & Counter', () {
+    test('extension event identity is deduplicated and recovery is applied',
+        () async {
+      final b = await _makeVm();
+      await b.vm.startSession('com.example.notes', intent: 'finish the report');
+      final triggeredAt = DateTime(2026, 10, 27, 12);
+
+      for (var i = 0; i < 2; i++) {
+        await b.vm.onDistractionDetected(
+          'web:youtube.com',
+          'youtube.com',
+          escalationLevel: 2,
+          eventId: 'extension-event-1',
+          triggeredAt: triggeredAt,
+        );
+      }
+
+      expect(b.eventDao.all, hasLength(1));
+      expect(b.eventDao.all.single.id, 'extension-event-1');
+      expect(b.eventDao.all.single.triggeredAt, triggeredAt);
+      expect(b.vm.state.distractionCount, 1);
+
+      await b.vm.onRecovery(
+        'extension-event-1',
+        returnedToOrigin: true,
+        timeAwaySeconds: 23,
+      );
+
+      expect(b.eventDao.all.single.isRecovered, isTrue);
+      expect(b.eventDao.all.single.recoveryTimeSeconds, 23);
+      b.vm.dispose();
+    });
+
     test('TC_DISTRACT_001: simulateWebDistraction creates event in state',
         () async {
       final (:vm, :eventDao, :sessionDao, :interventionDao) = await _makeVm();

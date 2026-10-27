@@ -121,14 +121,16 @@
  * @param {number} p.distraction_count
  * @returns {DistractionEvent}
  */
-export function mkDistractionEvent({ domain, category, escalation_level, session_id, distraction_count }) {
+export function mkDistractionEvent({ domain, category, escalation_level, session_id, distraction_count, distraction_started_at }) {
   return {
+    id: crypto.randomUUID(),
     event_type: 'distraction',
     domain,
     category,
     escalation_level,
     session_id,
     timestamp: new Date().toISOString(),
+    distraction_started_at: new Date(distraction_started_at ?? Date.now()).toISOString(),
     distraction_count,
   };
 }
@@ -143,8 +145,9 @@ export function mkDistractionEvent({ domain, category, escalation_level, session
  * @param {EscalationLevel} [p.from_level]
  * @returns {RecoveryEvent}
  */
-export function mkRecoveryEvent({ event_type, domain, time_on_site_ms, distraction_started_at, session_id, from_level }) {
+export function mkRecoveryEvent({ event_type, domain, time_on_site_ms, distraction_started_at, session_id, from_level, related_event_id }) {
   return {
+    ...(related_event_id && { related_event_id }),
     event_type,
     domain,
     time_on_site_ms,

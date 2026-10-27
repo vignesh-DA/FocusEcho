@@ -11,10 +11,12 @@ class PermissionWizardScreen extends ConsumerStatefulWidget {
   const PermissionWizardScreen({super.key});
 
   @override
-  ConsumerState<PermissionWizardScreen> createState() => _PermissionWizardScreenState();
+  ConsumerState<PermissionWizardScreen> createState() =>
+      _PermissionWizardScreenState();
 }
 
-class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen> {
+class _PermissionWizardScreenState
+    extends ConsumerState<PermissionWizardScreen> {
   late AppLifecycleListener _lifecycleListener;
   late PageController _pageController;
 
@@ -42,17 +44,19 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
     final vm = ref.read(permissionWizardProvider.notifier);
 
     // Decision 2026-10-03: single detection path via UsageStats only.
-    // Accessibility service has been removed — wizard is now 3 pages:
+    // Accessibility service has been removed — wizard is now 4 pages:
     //   Page 0 — Usage Access
-    //   Page 1 — Battery Optimisation
-    //   Page 2 — All Set
+    //   Page 1 — Notifications
+    //   Page 2 — Battery Optimisation
+    //   Page 3 — All Set
     return Scaffold(
       body: SafeArea(
         child: Column(
           children: [
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text('${state.currentPage + 1}/3', style: AppTextStyles.displayMedium),
+              child: Text('${state.currentPage + 1}/4',
+                  style: AppTextStyles.displayMedium),
             ),
             Expanded(
               child: PageView(
@@ -70,14 +74,28 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
                     onTap: vm.openUsageAccessSettings,
                   ),
                   _permissionPage(
+                    key: const ValueKey('notification_step'),
+                    icon: Icons.notifications_active_rounded,
+                    title: 'Stay in the Loop',
+                    body:
+                        'Focus Echo needs Notification permission to alert you when you drift into distracting apps during active sessions.',
+                    button: 'Allow Notifications',
+                    granted: state.hasNotificationPermission,
+                    onTap: vm.requestNotificationPermission,
+                    secondaryButton: 'Open Notification Settings',
+                    onSecondaryTap: vm.openNotificationSettings,
+                  ),
+                  _permissionPage(
                     key: const ValueKey('battery_step'),
                     icon: Icons.battery_charging_full_rounded,
                     title: 'Keep Focus Echo Running',
-                    body: 'Disable battery optimization so the app is not killed in the background.',
+                    body:
+                        'Disable battery optimization so the app is not killed in the background.',
                     button: 'Disable Battery Restriction',
                     granted: state.hasBatteryOptimization,
                     onTap: vm.requestBatteryOptimization,
-                    secondaryButton: 'Open OEM Battery Settings (Xiaomi/Samsung)',
+                    secondaryButton:
+                        'Open OEM Battery Settings (Xiaomi/Samsung)',
                     onSecondaryTap: vm.openManufacturerBatterySettings,
                   ),
                   _allSetPage(context, vm, state),
@@ -122,16 +140,19 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
           const SizedBox(height: 16),
           Text(title, style: AppTextStyles.displayMedium),
           const SizedBox(height: 8),
-          Text(body, textAlign: TextAlign.center, style: AppTextStyles.bodyMedium),
+          Text(body,
+              textAlign: TextAlign.center, style: AppTextStyles.bodyMedium),
           const SizedBox(height: 16),
           ElevatedButton(onPressed: onTap, child: Text(button)),
           if (secondaryButton != null && onSecondaryTap != null) ...[
             const SizedBox(height: 8),
-            OutlinedButton(onPressed: onSecondaryTap, child: Text(secondaryButton)),
+            OutlinedButton(
+                onPressed: onSecondaryTap, child: Text(secondaryButton)),
           ],
           const SizedBox(height: 12),
           Chip(
-            backgroundColor: granted ? AppColors.accentGreen : AppColors.accentRed,
+            backgroundColor:
+                granted ? AppColors.accentGreen : AppColors.accentRed,
             label: Text(granted ? 'Granted' : 'Not Granted'),
           ),
         ],
@@ -139,7 +160,8 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
     );
   }
 
-  Widget _allSetPage(BuildContext context, PermissionWizardViewModel vm, dynamic state) {
+  Widget _allSetPage(
+      BuildContext context, PermissionWizardViewModel vm, dynamic state) {
     final allGranted = vm.isAllGranted;
     return Padding(
       key: const ValueKey('all_set_page'),
@@ -147,7 +169,8 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.check_circle_rounded, color: AppColors.accentGreen, size: 80),
+          const Icon(Icons.check_circle_rounded,
+              color: AppColors.accentGreen, size: 80),
           const SizedBox(height: 16),
           Text("You're Ready!", style: AppTextStyles.displayMedium),
           const SizedBox(height: 8),
@@ -157,9 +180,14 @@ class _PermissionWizardScreenState extends ConsumerState<PermissionWizardScreen>
             style: AppTextStyles.bodyMedium,
           ),
           const SizedBox(height: 16),
-          const ListTile(leading: Icon(Icons.check), title: Text('Usage Access granted')),
           const ListTile(
-              leading: Icon(Icons.check), title: Text('Battery optimization disabled')),
+              leading: Icon(Icons.check), title: Text('Usage Access granted')),
+          const ListTile(
+              leading: Icon(Icons.check),
+              title: Text('Notification permission granted')),
+          const ListTile(
+              leading: Icon(Icons.check),
+              title: Text('Battery optimization disabled')),
           const SizedBox(height: 16),
           if (allGranted)
             ElevatedButton(

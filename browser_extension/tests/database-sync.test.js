@@ -5,6 +5,7 @@
 
 import {
   formatDistractionEventRow,
+  formatQueuedEventRows,
   getFriendlyAppLabel,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
@@ -45,6 +46,7 @@ const mockSession = {
 };
 
 const mockDistractionEvent = {
+  id: 'stable-event-uuid',
   event_type: 'distraction',
   domain: 'youtube.com',
   category: 'video',
@@ -57,6 +59,7 @@ const mockDistractionEvent = {
 const rowL2 = formatDistractionEventRow(mockDistractionEvent, mockSession);
 
 assert(rowL2.session_id === 'sess-1234-uuid', 'session_id matches active session');
+assert(rowL2.id === 'stable-event-uuid', 'extension event ID is preserved for cross-surface deduplication');
 assert(rowL2.package_name === 'youtube.com', 'package_name set to domain');
 assert(rowL2.app_label === 'YouTube', 'app_label mapped to friendly label');
 assert(rowL2.risk_score === 'medium', 'L2 distraction maps to medium risk');
@@ -69,6 +72,7 @@ assert(typeof rowL2.session_minute_when_occurred === 'number', 'session_minute i
 // Test 3: Formatting Recovery Event for Supabase
 console.log('\n── Recovery Event Schema Validation ──');
 const mockRecoveryEvent = {
+  related_event_id: 'stable-event-uuid',
   event_type: 'recovery',
   domain: 'youtube.com',
   time_on_site_ms: 22500,
@@ -81,9 +85,17 @@ const mockRecoveryEvent = {
 const rowRec = formatDistractionEventRow(mockRecoveryEvent, mockSession);
 
 assert(rowRec.is_recovered === true, 'recovery event is_recovered is true');
+assert(rowRec.id === 'stable-event-uuid', 'recovery updates the original distraction row');
+assert(rowRec.event_type === 'distraction', 'recovered event keeps the distraction row type');
 assert(rowRec.recovery_time_seconds === 23, 'recovery_time_seconds rounded from ms (23s)');
 assert(rowRec.time_away_seconds === 23, 'time_away_seconds set to recovery seconds');
 assert(rowRec.recovered_at !== null, 'recovered_at ISO string populated');
+const coalescedLifecycleRows = formatQueuedEventRows([
+  { event: mockDistractionEvent },
+  { event: mockRecoveryEvent },
+], mockSession);
+assert(coalescedLifecycleRows.length === 1, 'queued distraction and recovery coalesce into one upsert row');
+assert(coalescedLifecycleRows[0].is_recovered, 'coalesced row retains the recovery update');
 
 // Test 4: L3 Escalation Event Schema
 console.log('\n── Level 3 Full Escalation Risk ──');

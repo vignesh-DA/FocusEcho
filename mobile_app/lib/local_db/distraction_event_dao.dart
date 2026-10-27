@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:sqflite/sqflite.dart';
 import '../core/models/distraction_event.dart';
 import '../core/providers/app_dependencies.dart';
 import 'database_helper.dart';
@@ -18,6 +19,29 @@ class DistractionEventDao {
     }
     final db = await _databaseHelper.getDatabase();
     await db.insert('distraction_events', event.toSqliteMap());
+  }
+
+  /// Idempotent insert for events relayed from the extension. The extension
+  /// also uploads these IDs to Supabase, so local relay and cloud sync converge
+  /// on the same event rather than counting it twice.
+  Future<bool> insertEventIfAbsent(DistractionEvent event) async {
+    if (kIsWeb) {
+      if (DatabaseHelper.webEvents.any((row) => row['id'] == event.id)) {
+        return false;
+      }
+      DatabaseHelper.webEvents
+          .add(Map<String, dynamic>.from(event.toSqliteMap()));
+      await DatabaseHelper.persistWeb();
+      AppDependencies.triggerWebSync();
+      return true;
+    }
+    final db = await _databaseHelper.getDatabase();
+    final rowId = await db.insert(
+      'distraction_events',
+      event.toSqliteMap(),
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+    return rowId != -1;
   }
 
   Future<void> updateRecovery(

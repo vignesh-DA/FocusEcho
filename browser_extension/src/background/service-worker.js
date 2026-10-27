@@ -324,14 +324,29 @@ async function sendToActiveDistractionTab(msg) {
   }
 }
 
+const DASHBOARD_URL_PATTERNS = [
+  'https://focusecho-app.vercel.app/*',
+  'http://localhost/*',
+  'http://127.0.0.1/*',
+];
+
 async function notifyDashboard(msg) {
   try {
-    const r = await chrome.storage.local.get(SK.DASHBOARD_TAB_ID);
-    const tabId = r[SK.DASHBOARD_TAB_ID];
-    if (tabId !== undefined) {
-      await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
-    }
-  } catch (_) {}
+    const [tabs, stored] = await Promise.all([
+      chrome.tabs.query({ url: DASHBOARD_URL_PATTERNS }),
+      chrome.storage.local.get(SK.DASHBOARD_TAB_ID),
+    ]);
+    const tabIds = new Set((tabs || []).map(tab => tab.id).filter(Number.isInteger));
+    const rememberedTabId = stored[SK.DASHBOARD_TAB_ID];
+    // Retain compatibility with custom development URLs registered by a tab.
+    if (Number.isInteger(rememberedTabId)) tabIds.add(rememberedTabId);
+
+    await Promise.allSettled([...tabIds].map(tabId =>
+      chrome.tabs.sendMessage(tabId, msg).catch(() => {})
+    ));
+  } catch (err) {
+    LOG.d(`notifyDashboard broadcast skipped: ${err?.name || 'Error'}`);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +446,10 @@ async function _executeAction(name, param, { session, distraction, event, now })
         escalation_level: level,
         session_id:       session.session_id,
         distraction_count: session.distraction_count,
+        distraction_started_at: distraction.started_at ?? distraction.grace_entered_at ?? now,
       });
+      distraction.event_id = ev.id;
+      await saveDistraction(distraction);
       await enqueueEvent(ev);
       // Update distraction level
       distraction.level = level;
@@ -446,8 +464,10 @@ async function _executeAction(name, param, { session, distraction, event, now })
       notifyDashboard({
         type: 'fe:dashboard_activity',
         kind: 'away',
+        session_id: session.session_id,
+        event_id: ev.id,
         host: distraction.host,
-        timestamp: ev.timestamp,
+        timestamp: ev.distraction_started_at,
         escalation_level: level,
         intention: session.intention,
         category: distraction.category,
@@ -471,6 +491,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
         distraction_started_at: startedAt,
         session_id:             session.session_id,
         from_level:             distraction.level || 0,
+        related_event_id:       distraction.event_id,
       });
       await enqueueEvent(ev);
       await clearDistractionNotification();
@@ -483,8 +504,11 @@ async function _executeAction(name, param, { session, distraction, event, now })
       notifyDashboard({
         type: 'fe:dashboard_activity',
         kind: 'return',
+        session_id: session.session_id,
+        event_id: distraction.event_id,
         host: distraction.host,
         timestamp: ev.timestamp,
+        time_away_seconds: Math.round(timeOnSiteMs / 1000),
         escalation_level: distraction.level || 1,
         intention: session.intention,
       });

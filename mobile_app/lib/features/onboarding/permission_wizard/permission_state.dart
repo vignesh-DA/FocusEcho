@@ -9,6 +9,7 @@ class PermissionWizardState with _$PermissionWizardState {
     @Default(false) bool hasUsageAccess,
     @Default(false) bool hasAccessibility,
     @Default(false) bool hasBatteryOptimization,
+    @Default(false) bool hasNotificationPermission,
     @Default(false) bool isChecking,
   }) = _PermissionWizardState;
 }
