@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -19,6 +21,21 @@ class AnalyticsScreen extends ConsumerWidget {
     Color(0xFF06B6D4),
   ];
 
+  static double _niceAxisInterval(double maxY) {
+    // Aim for about four readable intervals instead of labeling every count.
+    final roughInterval = maxY / 4;
+    final magnitude = math.pow(10, (math.log(roughInterval) / math.ln10).floor());
+    final normalized = roughInterval / magnitude;
+    final niceStep = normalized <= 1
+        ? 1
+        : normalized <= 2
+            ? 2
+            : normalized <= 5
+                ? 5
+                : 10;
+    return (niceStep * magnitude).toDouble();
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(analyticsProvider);
@@ -26,6 +43,12 @@ class AnalyticsScreen extends ConsumerWidget {
     final appEntries = state.appDistribution.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final topApps = appEntries.take(5).toList();
+    final maxDailyDistractions = state.dailyDistractions
+        .fold<int>(0, (maximum, count) => math.max(maximum, count))
+        .toDouble();
+    final dailyDistractionsMaxY =
+        (maxDailyDistractions * 1.3).clamp(4.0, double.infinity).toDouble();
+    final dailyDistractionsInterval = _niceAxisInterval(dailyDistractionsMaxY);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Analytics')),
@@ -182,11 +205,7 @@ class AnalyticsScreen extends ConsumerWidget {
                     minX: 0,
                     maxX: 6,
                     minY: 0,
-                    maxY: (state.dailyDistractions
-                                .reduce((a, b) => a > b ? a : b)
-                                .toDouble() *
-                            1.3)
-                        .clamp(4, double.infinity),
+                    maxY: dailyDistractionsMaxY,
                     lineTouchData: LineTouchData(
                       enabled: true,
                       touchTooltipData: LineTouchTooltipData(
@@ -263,7 +282,7 @@ class AnalyticsScreen extends ConsumerWidget {
                         sideTitles: SideTitles(
                           showTitles: true,
                           reservedSize: 28,
-                          interval: 1,
+                          interval: dailyDistractionsInterval,
                           getTitlesWidget: (value, meta) {
                             if (value != value.roundToDouble()) return const SizedBox();
                             if (value == meta.max) return const SizedBox();
