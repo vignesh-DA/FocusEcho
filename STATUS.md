@@ -215,7 +215,8 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - Without a user ID and access token, queued events remain local with an authentication-required status.
 - Raw checks: database sync **24 passed, 0 failed**; parking **PASS**; extension unit **177 passed, 0 failed**; JavaScript syntax checks passed.
 - Live Chrome runner remains environment-blocked by Puppeteer/Chrome launch error `3221225506`; no live result is claimed.
-- Commit/push: pending in current continuation.
+- Final rerun after auth refresh: backend **19/19 passed**; `npm run test:all` passed manifest **21/21**, state machine **177/177**, database sync **24/24**, replay **9/9**.
+- Commit/push: `98bbde1 fix(extension): refresh expired Supabase auth sessions`.
 
 ---
 
