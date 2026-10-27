@@ -185,7 +185,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - **State machine:** A session-only allow returns to `MONITORING`, removes the matching host and subdomains from the active session list, hides overlays, and logs `allowed_site` without a recovery event or count change. The permanent configuration is untouched and the list resets with the next session.
 - **UI:** Popup and L1/L2 overlays expose “Allow this site for this session” only for a currently listed distraction host.
 - **Privacy/sync:** Only the normalized hostname is logged; no URL path or page content is captured.
-- **Commit:** `feat(extension): allow a distraction site for the active session` (pending final commit in this turn).
+- **Commit:** `174243f feat(extension): allow a distraction site for the active session`.
 - **Raw checks:** `npm run test:unit` → **177 passed, 0 failed**; `npm run test:manifest` → **21 passed**; `npm run test:parking` → **PASS**.
 
 ### Step 5 — Coach inputs
@@ -206,7 +206,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - Extension state-machine: **177/177 passed**; manifest **21/21 passed**; database sync **21/21 passed**; parking test **PASS**; replay **9/9 scenarios passed**.
 - `git diff --check` → **clean**; working tree → **clean**.
 - `dart analyze lib` and `flutter test` were attempted again but produced no output and hung in this local environment; both were stopped after 30 seconds. Earlier generated-code analysis completed with 0 errors and existing informational lints. No green Flutter runtime result is claimed.
-- Commits pushed to `origin/main`: `d41f542`, `256ec8d`, `fae2d27`, `174243f`, `342703d`.
+- Batch commits pushed to `origin/main`: `d41f542`, `256ec8d`, `fae2d27`, `174243f`, `342703d`; follow-up commits are listed below in this section.
 
 ### Follow-up completion — extension auth refresh (2026-10-27)
 
