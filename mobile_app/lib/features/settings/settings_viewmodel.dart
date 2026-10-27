@@ -182,6 +182,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     state = state.copyWith(appLimits: newLimits);
     await _prefs.setString(AppKeys.appTimeLimitsSeconds, jsonEncode(newLimits));
     await AppDependencies.supabaseService.syncFocusPreferencesFromPrefs(_prefs);
+    state = state.copyWith(appLimits: _loadAppLimits());
   }
 
   Future<void> updateWebDistractingSites(List<String> sites) async {
@@ -194,6 +195,7 @@ class SettingsViewModel extends StateNotifier<SettingsState> {
     state = state.copyWith(webDistractingSites: normalized);
     await _prefs.setString(AppKeys.webDistractingSites, jsonEncode(normalized));
     await AppDependencies.supabaseService.syncFocusPreferencesFromPrefs(_prefs);
+    state = state.copyWith(webDistractingSites: _loadWebDistractingSites());
   }
 
   Map<String, int> _loadAppLimits() {

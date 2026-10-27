@@ -43,6 +43,8 @@ backend/.env
 dart_defines.json
 prompt.md
 TODO.md
+*.pem
+*.key
 
 
 # iOS

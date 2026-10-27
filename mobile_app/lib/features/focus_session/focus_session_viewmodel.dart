@@ -17,6 +17,7 @@ import '../../local_db/focus_session_dao.dart';
 import '../../local_db/intervention_event_dao.dart';
 import '../../services/sync_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/focus_preferences_conflict.dart';
 import '../../services/browser_monitor/browser_monitor.dart';
 import '../../core/utils/fe_logger.dart';
 import 'focus_session_state.dart';
@@ -329,9 +330,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     await _prefs.setBool(AppKeys.sessionActive, true);
     if (kIsWeb) {
       FELog.d('FocusSession', 'Dispatching startSession to browser extension');
+      // The extension receives a session-owned copy. Allowing or editing a
+      // site for this session cannot mutate the permanent settings list.
+      final sessionSiteSnapshot = createSessionSiteSnapshot(_decodeStringList(
+          _prefs.getString(AppKeys.webDistractingSites) ?? '[]'));
       await _browserMonitor.startSession(
-        _decodeStringList(
-            _prefs.getString(AppKeys.webDistractingSites) ?? '[]'),
+        sessionSiteSnapshot,
         sessionId: session.id,
         intention: trimmedIntent,
         userId: userId,
@@ -895,7 +899,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     final session = state.session;
     final trimmed = value.trim();
     if (session == null || trimmed.isEmpty || trimmed.length > 120) return;
-    if (state.parkedItems.length >= 20 || state.parkedItems.contains(trimmed)) return;
+    if (state.parkedItems.length >= 20 || state.parkedItems.contains(trimmed))
+      return;
     final items = [...state.parkedItems, trimmed];
     await _sessionDao.updateParkedItems(session.id, items);
     state = state.copyWith(

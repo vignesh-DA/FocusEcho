@@ -10,6 +10,7 @@ import '../core/models/focus_session.dart';
 import '../core/models/intervention_event.dart';
 import '../core/models/user_profile.dart';
 import '../core/constants/app_constants.dart';
+import 'focus_preferences_conflict.dart';
 
 class SupabaseService {
   SupabaseService({SupabaseClient? client}) : _client = client ?? _tryClient();
@@ -168,8 +169,9 @@ class SupabaseService {
   }
 
   /// Pulls the account's shared app/site lists into the local offline cache.
-  /// If this is the first device for the account, uploads the current local
-  /// settings as the initial shared copy. Cloud sync opt-out is respected.
+  /// A pending local edit wins only when its timestamp is strictly newer than
+  /// the server row; equal timestamps resolve to the server. The SQL RPC makes
+  /// the same comparison while holding the preference row lock.
   Future<void> loadOrSeedFocusPreferences(SharedPreferences prefs) async {
     final client = _client;
     final userId = client?.auth.currentUser?.id;
@@ -186,24 +188,32 @@ class SupabaseService {
           .select()
           .eq('user_id', userId)
           .maybeSingle();
+      final localUpdatedAt =
+          _parseUpdatedAt(prefs.getString(AppKeys.focusPreferencesUpdatedAt));
       if (row == null) {
-        await syncFocusPreferencesFromPrefs(prefs);
+        final modifiedAt = localUpdatedAt ?? DateTime.now().toUtc();
+        await prefs.setString(
+            AppKeys.focusPreferencesUpdatedAt, modifiedAt.toIso8601String());
+        await _uploadFocusPreferences(prefs, modifiedAt);
         return;
       }
-      await prefs.setString(AppKeys.productiveApps,
-          jsonEncode(row['productive_apps'] ?? const []));
-      await prefs.setString(AppKeys.distractingApps,
-          jsonEncode(row['distracting_apps'] ?? const []));
-      await prefs.setString(AppKeys.webDistractingSites,
-          jsonEncode(row['web_distracting_sites'] ?? const []));
-      await prefs.setString(AppKeys.appTimeLimitsSeconds,
-          jsonEncode(row['app_time_limits_seconds'] ?? const {}));
+      final remoteUpdatedAt = _parseUpdatedAt(row['updated_at']?.toString()) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      if (resolveFocusPreferenceConflict(
+            localUpdatedAt: localUpdatedAt,
+            remoteUpdatedAt: remoteUpdatedAt,
+          ) ==
+          FocusPreferenceWinner.local) {
+        await _uploadFocusPreferences(prefs, localUpdatedAt!);
+      } else {
+        await _applyFocusPreferenceRow(prefs, row);
+      }
     } catch (error) {
       debugPrint('[Sync] Focus preferences unavailable: ${error.runtimeType}');
     }
   }
 
-  /// Persists the local cache to the account row after a settings change.
+  /// Persists an explicit local settings edit to the account row.
   Future<void> syncFocusPreferencesFromPrefs(SharedPreferences prefs) async {
     final client = _client;
     final userId = client?.auth.currentUser?.id;
@@ -213,6 +223,20 @@ class SupabaseService {
         prefs.getBool(AppKeys.syncEnabled) == false) {
       return;
     }
+    final modifiedAt = DateTime.now().toUtc();
+    await prefs.setString(
+        AppKeys.focusPreferencesUpdatedAt, modifiedAt.toIso8601String());
+    await _uploadFocusPreferences(prefs, modifiedAt);
+  }
+
+  Future<void> _uploadFocusPreferences(
+    SharedPreferences prefs,
+    DateTime modifiedAt,
+  ) async {
+    final client = _client;
+    final userId = client?.auth.currentUser?.id;
+    if (client == null || userId == null) return;
+
     dynamic decode(String key, dynamic fallback) {
       try {
         return jsonDecode(prefs.getString(key) ?? jsonEncode(fallback));
@@ -222,21 +246,51 @@ class SupabaseService {
     }
 
     try {
-      await client.from('user_focus_preferences').upsert({
-        'user_id': userId,
-        'productive_apps': decode(AppKeys.productiveApps, const []),
-        'distracting_apps': decode(AppKeys.distractingApps, const []),
-        'web_distracting_sites': decode(AppKeys.webDistractingSites, const []),
-        'app_time_limits_seconds':
+      final result = await client.rpc('sync_user_focus_preferences', params: {
+        'p_productive_apps': decode(AppKeys.productiveApps, const []),
+        'p_distracting_apps': decode(AppKeys.distractingApps, const []),
+        'p_web_distracting_sites':
+            decode(AppKeys.webDistractingSites, const []),
+        'p_app_time_limits_seconds':
             decode(AppKeys.appTimeLimitsSeconds, const {}),
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
+        'p_updated_at': modifiedAt.toIso8601String(),
       });
+      final row = result is List && result.isNotEmpty
+          ? result.first
+          : result is Map
+              ? result
+              : null;
+      if (row is Map) {
+        await _applyFocusPreferenceRow(prefs, Map<String, dynamic>.from(row));
+      }
     } catch (error) {
-      // Keep local settings usable while offline; the next settings change or
-      // authenticated startup retries the upload.
+      // Keep local settings and their timestamp for conflict-aware retry at
+      // the next authenticated startup or settings edit.
       debugPrint(
           '[Sync] Focus preferences upload failed: ${error.runtimeType}');
     }
+  }
+
+  Future<void> _applyFocusPreferenceRow(
+      SharedPreferences prefs, Map<String, dynamic> row) async {
+    await prefs.setString(
+        AppKeys.productiveApps, jsonEncode(row['productive_apps'] ?? const []));
+    await prefs.setString(AppKeys.distractingApps,
+        jsonEncode(row['distracting_apps'] ?? const []));
+    await prefs.setString(AppKeys.webDistractingSites,
+        jsonEncode(row['web_distracting_sites'] ?? const []));
+    await prefs.setString(AppKeys.appTimeLimitsSeconds,
+        jsonEncode(row['app_time_limits_seconds'] ?? const {}));
+    final updatedAt = _parseUpdatedAt(row['updated_at']?.toString());
+    if (updatedAt != null) {
+      await prefs.setString(
+          AppKeys.focusPreferencesUpdatedAt, updatedAt.toIso8601String());
+    }
+  }
+
+  DateTime? _parseUpdatedAt(String? raw) {
+    if (raw == null) return null;
+    return DateTime.tryParse(raw)?.toUtc();
   }
 
   Future<void> signOut() async {

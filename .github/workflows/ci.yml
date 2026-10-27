@@ -1,0 +1,186 @@
+name: FocusEcho CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FLUTTER_VERSION: 3.47.8
+  PASS_THRESHOLD_PERCENT: 100
+
+jobs:
+  checks:
+    name: Backend, Flutter, and extension checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create report directory
+        run: mkdir -p test-results
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install backend dependencies
+        id: backend_deps
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pip install -r backend/requirements.txt pytest==8.3.5 2>&1 | tee test-results/backend-install.log
+
+      - name: Run backend tests
+        id: backend
+        if: always()
+        continue-on-error: true
+        working-directory: backend
+        run: |
+          set -o pipefail
+          python -m pytest app/tests -q --junitxml=../test-results/backend-junit.xml 2>&1 | tee ../test-results/backend.log
+
+      - uses: subosito/flutter-action@v2
+        id: flutter_setup
+        if: always()
+        continue-on-error: true
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Get Flutter dependencies and generate sources
+        id: flutter_deps
+        if: always()
+        continue-on-error: true
+        working-directory: mobile_app
+        run: |
+          set -o pipefail
+          flutter pub get 2>&1 | tee ../test-results/flutter-dependencies.log
+          dart run build_runner build --delete-conflicting-outputs 2>&1 | tee -a ../test-results/flutter-dependencies.log
+
+      - name: Analyze Flutter
+        id: flutter_analyze
+        if: always()
+        continue-on-error: true
+        working-directory: mobile_app
+        run: |
+          set -o pipefail
+          flutter analyze --no-pub --no-fatal-infos 2>&1 | tee ../test-results/flutter-analyze.log
+
+      - name: Test Flutter
+        id: flutter_test
+        if: always()
+        continue-on-error: true
+        working-directory: mobile_app
+        run: |
+          set -o pipefail
+          flutter test --no-pub --reporter expanded 2>&1 | tee ../test-results/flutter-test.log
+
+      - uses: actions/setup-node@v4
+        id: node_setup
+        if: always()
+        continue-on-error: true
+        with:
+          node-version: '22'
+
+      - name: Install extension dependencies
+        id: extension_deps
+        if: always()
+        continue-on-error: true
+        working-directory: browser_extension
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: 'true'
+        run: |
+          set -o pipefail
+          npm install --no-package-lock --no-audit --no-fund 2>&1 | tee ../test-results/extension-install.log
+
+      - name: Test browser extension
+        id: extension
+        if: always()
+        continue-on-error: true
+        working-directory: browser_extension
+        run: |
+          set -o pipefail
+          npm run test:all 2>&1 | tee ../test-results/extension.log
+
+      - name: Evaluate shared pass threshold
+        id: gate
+        if: always()
+        env:
+          BACKEND_RESULT: ${{ steps.backend.outcome }}
+          FLUTTER_ANALYZE_RESULT: ${{ steps.flutter_analyze.outcome }}
+          FLUTTER_TEST_RESULT: ${{ steps.flutter_test.outcome }}
+          EXTENSION_RESULT: ${{ steps.extension.outcome }}
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          checks = {
+              "Backend": os.environ["BACKEND_RESULT"],
+              "Flutter analyze": os.environ["FLUTTER_ANALYZE_RESULT"],
+              "Flutter tests": os.environ["FLUTTER_TEST_RESULT"],
+              "Extension": os.environ["EXTENSION_RESULT"],
+          }
+          passed = sum(result == "success" for result in checks.values())
+          total = len(checks)
+          threshold = float(os.environ["PASS_THRESHOLD_PERCENT"])
+          pass_rate = passed * 100 / total
+          gate = pass_rate >= threshold
+          lines = ["## CI check results", "", "| Check | Result |", "|---|---|"]
+          lines += [f"| {name} | {result} |" for name, result in checks.items()]
+          lines += ["", f"Pass rate: **{passed}/{total} ({pass_rate:.0f}%)** — threshold: **{threshold:g}%** — **{'PASS' if gate else 'FAIL'}**"]
+          summary = "\n".join(lines) + "\n"
+          print(summary)
+          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(summary, encoding="utf-8")
+          Path("test-results/ci-summary.md").write_text(summary, encoding="utf-8")
+          Path("test-results/ci-gate.txt").write_text(
+              f"pass_rate={pass_rate:.0f}%\nthreshold={threshold:g}%\nresult={'PASS' if gate else 'FAIL'}\n",
+              encoding="utf-8",
+          )
+          raise SystemExit(0 if gate else 1)
+
+      - name: Upload test reports and raw output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusecho-test-results
+          path: test-results/
+          if-no-files-found: warn
+
+  debug-apk:
+    name: Build and upload debug APK
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Build debug APK
+        working-directory: mobile_app
+        run: |
+          flutter pub get
+          dart run build_runner build --delete-conflicting-outputs
+          flutter build apk --debug --no-tree-shake-icons
+
+      - name: Upload debug APK
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusecho-debug-apk
+          path: mobile_app/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error

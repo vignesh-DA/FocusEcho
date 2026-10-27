@@ -157,9 +157,9 @@ FocusEcho AI is a **real-time focus recovery platform** for Android. It monitors
 ### Data retention
 | Data | Retention |
 |------|-----------|
-| `distraction_events` | 90 days (future policy) |
-| `focus_sessions` | 1 year |
-| `user_xp` | Lifetime |
+| `distraction_events` | Until user deletion; no automatic purge is implemented |
+| `focus_sessions` | Until user deletion; no automatic purge is implemented |
+| `user_xp` | Until user deletion; no automatic purge is implemented |
 | Local SQLite | Until app uninstall or "Delete My Data" |
 
 ---

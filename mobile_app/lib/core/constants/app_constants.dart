@@ -20,6 +20,7 @@ class AppKeys {
   static const distractingApps = 'distracting_apps';
   static const appTimeLimitsSeconds = 'app_time_limits_seconds';
   static const webDistractingSites = 'web_distracting_sites';
+  static const focusPreferencesUpdatedAt = 'focus_preferences_updated_at';
   static const userId = 'user_id';
   static const xpTotal = 'xp_total';
   static const streakDays = 'streak_days';
