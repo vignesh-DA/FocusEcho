@@ -155,6 +155,7 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 
 ### Prototype reliability pass — 2026-10-27
 
+- **Commit:** `2dd6e8c fix: harden cross-surface prototype reliability`.
 - **Data ownership:** Backend session writes are now insert/idempotent and reject session ID takeover. Event batches are capped at 500, and each event's parent session and any conflicting existing event IDs are checked against the authenticated user before upsert.
 - **Schema compatibility:** Base session/event IDs now match the UUID schema used by newer migrations. Historical text-ID installs are handled by type-aware focus-recovery/coach migrations; `20261028_align_session_foreign_keys.sql` repairs child session foreign keys. `20261028_user_focus_preferences.sql` adds owner-scoped cross-device lists and app limits with RLS.
 - **Flutter offline behavior:** Supabase-dependent services and login/splash/dashboard/streak/analytics routes no longer crash when the SDK is unavailable or there is no authenticated account. Local session/settings data remains usable; unsuccessful cloud writes are no longer reported as synced. App/site lists and limits load from and persist to the user's preference row when cloud sync is enabled.
