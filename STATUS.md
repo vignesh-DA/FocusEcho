@@ -218,6 +218,16 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 - Final rerun after auth refresh: backend **19/19 passed**; `npm run test:all` passed manifest **21/21**, state machine **177/177**, database sync **24/24**, replay **9/9**.
 - Commit/push: `98bbde1 fix(extension): refresh expired Supabase auth sessions`.
 
+### Follow-up completion — strict sync auth and parking verification (2026-10-27)
+
+- Extension PostgREST and RPC writes now require a user access token; the anon key is sent only in Supabase's `apikey` header. A missing user token leaves queued data local.
+- A 401 triggers one refresh attempt and at most one retry of the failed request. Rotated refresh tokens are persisted, and tests verify the refresh token is absent from logs.
+- `backend/.env.example` no longer contains the retired Kimi model. Model IDs are placeholders to be selected from Groq's models list; the startup model-list check remains enabled.
+- Flutter now has parking-lot coverage for add/remove, JSON persistence, 120-character and 20-item limits, summary rendering, and a test for the pre-Batch-1 database upgrade path. The active session's feed/parking area scrolls on short screens while Stop remains visible.
+- Raw checks: `npm run test:db` → **31 passed, 0 failed**; `python -m unittest discover -s app/tests -p 'test_coach_service.py' -v` → **17 tests, OK**; `flutter test --reporter=expanded` → **36 passed, 0 failed**; `git diff --check` → **clean**.
+- Commit: `b92fee8 fix(sync): require auth and retry refreshed writes`.
+- Live Supabase, Groq account settings, real Chrome, and physical Android testing remain external verification items.
+
 ---
 
 ## 📈 Test Coverage Summary (2026-10-26)
