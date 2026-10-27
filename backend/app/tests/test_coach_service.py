@@ -9,7 +9,6 @@ from app.services.ai_coach_service import (
     AiCoachService,
     _sanitize_untrusted_text,
     _check_and_increment_rate_limit,
-    _user_daily_usage,
 )
 
 
@@ -50,6 +49,17 @@ class MockSupabaseClient:
         self.total_sessions = total_sessions
         self.cached_insight = cached_insight
         self.inserted_insights = []
+        self.daily_usage = {}
+
+    def rpc(self, name, params):
+        if name != "focusecho_consume_coach_daily_limit":
+            raise AssertionError(f"Unexpected RPC: {name}")
+        user_id = params["p_user_id"]
+        count = self.daily_usage.get(user_id, 0)
+        allowed = count < params["p_limit"]
+        if allowed:
+            self.daily_usage[user_id] = count + 1
+        return MockDbQuery(data=allowed)
 
     def table(self, table_name: str):
         if table_name == "focus_sessions":
@@ -74,7 +84,7 @@ class MockSupabaseClient:
 
 class EchoCoachTests(unittest.TestCase):
     def setUp(self):
-        _user_daily_usage.clear()
+        self.rate_limit_db = MockSupabaseClient()
 
     # ──────────────────────────────────────────────────────────────────────────
     # TEST 1: Security - Auth Rejects Other Users (403 Forbidden)
@@ -234,9 +244,9 @@ class EchoCoachTests(unittest.TestCase):
     def test_daily_rate_limit_enforced(self):
         user_id = "heavy-user-1"
         for _ in range(30):
-            self.assertTrue(_check_and_increment_rate_limit(user_id))
+            self.assertTrue(_check_and_increment_rate_limit(user_id, self.rate_limit_db))
         # 31st request exceeds rate limit
-        self.assertFalse(_check_and_increment_rate_limit(user_id))    # ──────────────────────────────────────────────────────────────────────────
+        self.assertFalse(_check_and_increment_rate_limit(user_id, self.rate_limit_db))
     # TEST 7: Groq SDK request contract and Pydantic validation
     # ──────────────────────────────────────────────────────────────────────────
     @staticmethod

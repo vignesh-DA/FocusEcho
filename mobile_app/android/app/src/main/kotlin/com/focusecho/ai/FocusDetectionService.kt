@@ -29,6 +29,7 @@ class FocusDetectionService : Service() {
     private var lastDistractionNotifMs: Long = 0
     private var continuousDistractionStartMs: Long = 0L
     private var lastNudgeSentMs: Long = 0L
+    private var currentDistractionLevel: Int = 1
     private var screenReceiver: BroadcastReceiver? = null
     private var simulationReceiver: BroadcastReceiver? = null
 
@@ -45,6 +46,7 @@ class FocusDetectionService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == STOP_ACTION) {
+            clearDistractionNotifications()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -60,6 +62,7 @@ class FocusDetectionService : Service() {
             )
             getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 .edit().putBoolean("flutter.session_active", false).apply()
+            clearDistractionNotifications()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
@@ -72,7 +75,7 @@ class FocusDetectionService : Service() {
         runnable = Runnable {
             refreshCache()
             detectForegroundApp()
-            drainInterventionQueue()
+            flushPendingEvents()
             handler.postDelayed(runnable, POLL_INTERVAL_MS)
         }
         handler.post(runnable)
@@ -110,12 +113,14 @@ class FocusDetectionService : Service() {
                 if (continuousDistractionStartMs == 0L) continuousDistractionStartMs = now
                 val elapsed = now - continuousDistractionStartMs
                 if (now - lastNudgeSentMs >= NUDGE_REPEAT_INTERVAL_MS) {
-                    sendRepeatingNudgeNotification(label, elapsed)
+                    sendRepeatingNudgeNotification(label, elapsed, currentDistractionLevel)
                     lastNudgeSentMs = now
                 }
             } else {
                 continuousDistractionStartMs = 0L
                 lastNudgeSentMs = 0L
+                currentDistractionLevel = 1
+                clearDistractionNotifications()
             }
             return
         }
@@ -133,6 +138,8 @@ class FocusDetectionService : Service() {
 
         continuousDistractionStartMs = 0L
         lastNudgeSentMs = 0L
+        currentDistractionLevel = 1
+        clearDistractionNotifications()
 
         val payload = JSONObject()
             .put("eventType", "app_switch")
@@ -164,6 +171,7 @@ class FocusDetectionService : Service() {
     private fun handleDistractionDetected(packageName: String, label: String, source: String) {
         val relapse = DistractionEventQueue.registerRelapse()
         val level = escalationLevelFor(relapse)
+        currentDistractionLevel = level
         sendDistractionNotification(label, packageName, level, relapse)
         val payload = JSONObject()
             .put("eventType", "app_switch")
@@ -225,8 +233,11 @@ class FocusDetectionService : Service() {
             .setContentTitle("⚠️ Focus check — $appLabel detected (L$level)")
             .setContentText("You opened $appLabel during your focus session. Choose an action.")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            // Re-alert when updating the same notification ID on each 30 s tick.
+            .setOnlyAlertOnce(false)
+            .setVibrate(longArrayOf(0L, 300L, 200L, 300L))
             .setAutoCancel(true)
             .setContentIntent(returnIntent)
             .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "🎯 Return to Focus", returnIntent).build())
@@ -238,7 +249,7 @@ class FocusDetectionService : Service() {
         // intervention even when the app cannot launch an Activity from the
         // background; Level 3 records its lifecycle from InterventionActivity.
         if (level == 2) {
-            DistractionEventQueue.add(
+            sendOrBuffer(
                 JSONObject()
                     .put("eventType", "intervention_shown")
                     .put("level", level)
@@ -251,7 +262,7 @@ class FocusDetectionService : Service() {
         manager.notify(DISTRACTION_NOTIF_ID, notification)
     }
 
-    private fun sendRepeatingNudgeNotification(appLabel: String, elapsedMs: Long) {
+    private fun sendRepeatingNudgeNotification(appLabel: String, elapsedMs: Long, level: Int) {
         val openIntent = PendingIntent.getActivity(
             this,
             6000,
@@ -259,65 +270,45 @@ class FocusDetectionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val elapsedMinutes = (elapsedMs / 60_000L).coerceAtLeast(1L)
+        val takeBreakIntent = PendingIntent.getService(
+            this,
+            7000,
+            Intent(this, FocusDetectionService::class.java).apply {
+                action = TAKE_BREAK_ACTION
+                putExtra(InterventionActivity.EXTRA_LEVEL, level)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification = NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
             .setContentTitle("⚠️ Still on $appLabel? (${elapsedMinutes}m drift)")
             .setContentText("Your session is active. Tap to reclaim your focus.")
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setOnlyAlertOnce(false)
+            .setVibrate(longArrayOf(0L, 300L, 200L, 300L))
             .setAutoCancel(true)
             .setContentIntent(openIntent)
             .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "🎯 Return to Focus", openIntent).build())
+            .addAction(NotificationCompat.Action.Builder(R.mipmap.ic_launcher, "☕ Take a Break", takeBreakIntent).build())
             .build()
         getSystemService(NotificationManager::class.java).notify(REPEAT_NUDGE_NOTIF_ID, notification)
     }
 
-    /**
-     * Drain intervention lifecycle events posted to [DistractionEventQueue] by
-     * [InterventionActivity] (intervention_shown / intervention_action) and
-     * forward them to Flutter via the EventChannel sink.
-     *
-     * Called once per poll tick so intervention events are never lost even if
-     * the Flutter UI was not active when [InterventionActivity] was shown.
-     *
-     * Note: [FocusAccessibilityService] has been removed (single detection path
-     * via UsageStats only). This queue now carries only intervention events.
-     */
-    private fun drainInterventionQueue() {
-        if (!cachedSessionActive) return
-        val events = DistractionEventQueue.drainAll()
-        for (event in events) {
-            sendOrBuffer(event)
-        }
+    private fun clearDistractionNotifications() {
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.cancel(DISTRACTION_NOTIF_ID)
+        manager.cancel(REPEAT_NUDGE_NOTIF_ID)
     }
 
-    /**
-     * Deliver payload to Flutter via EventChannel sink, or buffer if the
-     * sink is null (Flutter UI not active).  Buffered events are flushed
-     * when the sink reconnects (see [MainActivity]).
-     */
+    /** Persist before attempting delivery; Flutter deletes the row after SQLite ack. */
     private fun sendOrBuffer(payload: String) {
-        val sink = MainActivity.distractionEventSink
-        if (sink != null) {
-            // Flush any buffered events first
-            flushPendingEvents()
-            sink.success(payload)
-        } else {
-            synchronized(pendingEvents) {
-                pendingEvents.add(payload)
-                if (pendingEvents.size > MAX_BUFFER_SIZE) pendingEvents.removeAt(0)
-            }
-        }
+        OfflineEventStore(this).use { store -> store.stage(payload) }
+        flushPendingEvents()
     }
 
     private fun flushPendingEvents() {
-        val sink = MainActivity.distractionEventSink ?: return
-        synchronized(pendingEvents) {
-            for (p in pendingEvents) {
-                sink.success(p)
-            }
-            pendingEvents.clear()
-        }
+        flushBufferedEvents(this)
     }
 
     private fun getForegroundPackageName(): String? {
@@ -379,6 +370,7 @@ class FocusDetectionService : Service() {
             ).apply {
                 description = "Notifies you when a distracting app is opened during a focus session"
                 enableVibration(true)
+                setVibrationPattern(longArrayOf(0L, 300L, 200L, 300L))
             }
             manager.createNotificationChannel(alertChannel)
         }
@@ -386,6 +378,7 @@ class FocusDetectionService : Service() {
 
     override fun onDestroy() {
         handler.removeCallbacksAndMessages(null)
+        clearDistractionNotifications()
         unregisterScreenReceiver()
         unregisterSimulationReceiver()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -413,9 +406,6 @@ class FocusDetectionService : Service() {
         /** Refresh cached SharedPreferences values every 5 seconds. */
         private const val CACHE_TTL_MS = 5_000L
 
-        /** Max buffered events when Flutter UI is not active. */
-        private const val MAX_BUFFER_SIZE = 100
-
         /** Throttle distraction notifications to one per 30 seconds. */
         private const val DISTRACTION_NOTIF_THROTTLE_MS = 30_000L
         private const val NUDGE_REPEAT_INTERVAL_MS = 30_000L
@@ -430,8 +420,43 @@ class FocusDetectionService : Service() {
             "com.reddit.frontpage",
         )
 
-        /** Events buffered when EventChannel sink is null. */
-        val pendingEvents = mutableListOf<String>()
+        /** Redeliver unacknowledged SQLite-staged records after transient delivery failures. */
+        private const val DELIVERY_RETRY_INTERVAL_MS = 10_000L
+        private val deliveryAttempts = mutableMapOf<String, Long>()
+
+        fun stageEvent(context: Context, payload: String) {
+            OfflineEventStore(context).use { it.stage(payload) }
+            flushBufferedEvents(context)
+        }
+
+        fun flushBufferedEvents(context: Context) {
+            val sink = MainActivity.distractionEventSink ?: return
+            OfflineEventStore(context).use { store ->
+                val now = System.currentTimeMillis()
+                for ((deliveryId, payload) in store.pending()) {
+                    val shouldSend = synchronized(deliveryAttempts) {
+                        val previous = deliveryAttempts[deliveryId]
+                        if (previous != null && now - previous < DELIVERY_RETRY_INTERVAL_MS) false
+                        else {
+                            deliveryAttempts[deliveryId] = now
+                            true
+                        }
+                    }
+                    if (shouldSend) {
+                        try {
+                            sink.success(payload)
+                        } catch (_: Exception) {
+                            synchronized(deliveryAttempts) { deliveryAttempts.remove(deliveryId) }
+                        }
+                    }
+                }
+            }
+        }
+
+        fun acknowledgeBufferedEvent(context: Context, deliveryId: String): Boolean {
+            synchronized(deliveryAttempts) { deliveryAttempts.remove(deliveryId) }
+            return OfflineEventStore(context).use { it.acknowledge(deliveryId) }
+        }
     }
 
     private fun registerSimulationReceiver() {

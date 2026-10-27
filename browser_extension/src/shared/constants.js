@@ -84,6 +84,7 @@ export const MSG = /** @type {const} */ ({
 // ---------------------------------------------------------------------------
 export const ALARM = /** @type {const} */ ({
   HEARTBEAT:             'fe-heartbeat',
+  DISTRACTION_NUDGE:     'fe-distraction-nudge',
   HEARTBEAT_PERIOD_MIN:  1,
 });
 

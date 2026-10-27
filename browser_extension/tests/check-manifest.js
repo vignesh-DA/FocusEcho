@@ -33,6 +33,10 @@ const manifest = JSON.parse(raw);
 const missing  = [];
 const checked  = [];
 
+if (!(manifest.permissions ?? []).includes('notifications')) {
+  missing.push({ relPath: 'permissions.notifications', context: 'notifications permission' });
+}
+
 function check(relPath, context) {
   if (!relPath || typeof relPath !== 'string') return;
   // Skip globs / wildcards

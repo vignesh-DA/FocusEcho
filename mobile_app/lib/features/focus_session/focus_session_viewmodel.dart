@@ -18,6 +18,7 @@ import '../../local_db/intervention_event_dao.dart';
 import '../../services/sync_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/focus_preferences_conflict.dart';
+import '../../services/web_notification_service.dart';
 import '../../services/browser_monitor/browser_monitor.dart';
 import '../../core/utils/fe_logger.dart';
 import 'focus_session_state.dart';
@@ -237,7 +238,17 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   void _listenToDistractionStream() {
     if (kIsWeb) return;
     _subscription = _streamChannel.receiveBroadcastStream().listen((event) {
-      final map = jsonDecode(event as String) as Map<String, dynamic>;
+      unawaited(_processNativeEvent(event as String));
+    });
+  }
+
+  Future<void> _processNativeEvent(String rawEvent) async {
+    final map = jsonDecode(rawEvent) as Map<String, dynamic>;
+    final deliveryId = map['delivery_id'] as String?;
+    // Keep the native durable record until the matching app session has been
+    // restored and this event can be applied to it.
+    if (deliveryId != null && state.session == null) return;
+    try {
       final eventType = (map['eventType'] as String?) ?? 'app_switch';
       final timestampRaw = map['timestamp'] as String?;
       final timestamp = DateTime.tryParse(timestampRaw ?? '') ?? DateTime.now();
@@ -249,7 +260,8 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       // Feature 2 — intervention lifecycle events emitted by the native layer.
       if (eventType == 'intervention_shown' ||
           eventType == 'intervention_action') {
-        unawaited(_handleNativeInterventionEvent(eventType, map));
+        await _handleNativeInterventionEvent(eventType, map);
+        await _ackNativeEvent(deliveryId);
         return;
       }
 
@@ -259,13 +271,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       // otherwise swallow repeated synthetic broadcasts (same package, no real
       // foreground change between them).
       if (map['source'] == 'adb_fixture' && packageName != null) {
-        unawaited(
-          onDistractionDetected(
-            packageName,
-            appLabel,
-            escalationLevel: escalationLevel,
-          ),
+        await onDistractionDetected(
+          packageName,
+          appLabel,
+          escalationLevel: escalationLevel,
         );
+        await _ackNativeEvent(deliveryId);
         return;
       }
 
@@ -296,9 +307,24 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
 
       final actions = _engine.handleSignal(signal);
       for (final action in actions) {
-        _handleEngineAction(action);
+        await _handleEngineAction(action);
       }
-    });
+      await _ackNativeEvent(deliveryId);
+    } catch (error) {
+      FELog.e('FocusSession',
+          'Native event processing failed; retained for retry: ${error.runtimeType}');
+    }
+  }
+
+  Future<void> _ackNativeEvent(String? deliveryId) async {
+    if (deliveryId == null || kIsWeb) return;
+    try {
+      await _sessionChannel.invokeMethod<bool>(
+          'ackDistractionEvent', deliveryId);
+    } catch (error) {
+      FELog.w('FocusSession',
+          'Native event acknowledgement failed: ${error.runtimeType}');
+    }
   }
 
   Future<void> startSession(String productiveApp, {String intent = ''}) async {
@@ -307,6 +333,14 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
     if (trimmedIntent.isEmpty) {
       FELog.w('FocusSession', 'startSession rejected: intent is empty');
       return;
+    }
+
+    // Request browser notification permission as part of the start-button
+    // gesture. Browsers may reject prompts initiated after unrelated awaits.
+    if (kIsWeb) {
+      unawaited(
+        WebNotificationService.instance.requestPermissionFromUserGesture(),
+      );
     }
 
     final userId = _prefs.getString(AppKeys.userId) ?? 'local-user';
@@ -600,6 +634,12 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       lastEventId: event.id,
       escalationLevel: level,
     );
+    if (kIsWeb) {
+      unawaited(WebNotificationService.instance.showDistractionAlert(
+        event.appLabel,
+        level,
+      ));
+    }
     await _logIntervention(level, 'shown');
     unawaited(_broadcastDistraction(event, level));
   }
@@ -615,6 +655,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
 
   Future<void> onRecovery(String eventId,
       {bool returnedToOrigin = false, int? timeAwaySeconds}) async {
+    if (kIsWeb) WebNotificationService.instance.clear();
     try {
       final events =
           await _eventDao.getEventsForSession(state.session?.id ?? '');
@@ -654,6 +695,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   }
 
   Future<void> stopSession() async {
+    if (kIsWeb) WebNotificationService.instance.clear();
     final session = state.session;
     if (session == null) return;
     _timer?.cancel();
@@ -984,11 +1026,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       actionTaken: action,
       timestamp: DateTime.now(),
     );
-    try {
-      await _interventionDao.insertEvent(event);
-    } catch (e) {
-      debugPrint('Failed to log native intervention: $e');
-    }
+    // Do not acknowledge the native delivery until this local SQLite insert
+    // succeeds; the native staging row is retained for retry on failure.
+    await _interventionDao.insertEvent(event);
     if (eventType == 'intervention_action') {
       if (action == 'pause_session') {
         await stopSession();
@@ -1006,6 +1046,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   /// 'active') so a future resume feature can continue the same session.
   Future<void> _pauseSessionForBreak() async {
     if (!state.isActive) return;
+    if (kIsWeb) WebNotificationService.instance.clear();
     _timer?.cancel();
     state = state.copyWith(showAlert: false, isActive: false);
     if (!kIsWeb) {
@@ -1218,6 +1259,11 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       userId,
       (surface, label, level) {
         if (!state.isActive || !mounted) return;
+        if (kIsWeb) {
+          unawaited(
+            WebNotificationService.instance.showDistractionAlert(label, level),
+          );
+        }
         state = state.copyWith(
           crossSurfaceNudge:
               'You opened $label on your $surface — session still active.',

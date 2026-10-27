@@ -35,7 +35,6 @@ logger = logging.getLogger("echocoach")
 
 # Rate limit configuration
 DAILY_RATE_LIMIT_PER_USER = 30
-_user_daily_usage: Dict[str, Dict[str, Any]] = {}
 
 @dataclass
 class _LLMResult:
@@ -153,19 +152,31 @@ def _get_supabase_client() -> Client:
     return create_client(url, key)
 
 
-def _check_and_increment_rate_limit(user_id: str) -> bool:
-    """Enforce per-user daily rate limit. Returns True if allowed, False if exceeded."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    record = _user_daily_usage.get(user_id)
-    if not record or record.get("date") != today:
-        _user_daily_usage[user_id] = {"date": today, "count": 1}
-        return True
-
-    if record["count"] >= DAILY_RATE_LIMIT_PER_USER:
+def _check_and_increment_rate_limit(user_id: str, db: Optional[Client] = None) -> bool:
+    """Consume one durable, atomic per-user daily allowance through Postgres RPC."""
+    if db is None:
+        logger.warning(
+            "coach_rate_limit allowed=false reason=database_unavailable exception_type=none status_code=none"
+        )
         return False
-
-    record["count"] += 1
-    return True
+    try:
+        result = db.rpc(
+            "focusecho_consume_coach_daily_limit",
+            {"p_user_id": user_id, "p_limit": DAILY_RATE_LIMIT_PER_USER},
+        ).execute()
+        data = getattr(result, "data", None)
+        if isinstance(data, list):
+            data = data[0] if data else False
+        if isinstance(data, dict):
+            data = data.get("focusecho_consume_coach_daily_limit", False)
+        return data is True
+    except Exception as exc:
+        logger.warning(
+            "coach_rate_limit allowed=false reason=rpc_failed exception_type=%s status_code=%s",
+            type(exc).__name__,
+            getattr(exc, "status_code", "none"),
+        )
+        return False
 
 
 def _sanitize_untrusted_text(text: str, max_chars: int = 120) -> str:
@@ -256,7 +267,7 @@ class AiCoachService:
                 is_fallback=True,
             )
 
-        if not _check_and_increment_rate_limit(user_id):
+        if not _check_and_increment_rate_limit(user_id, self.db):
             return self._fallback_refine_intention(sanitized)
 
         if not self._server_opted_in(user_id):
@@ -469,7 +480,7 @@ class AiCoachService:
 
         # Check consent and rate limit before calling LLM.
         opted_in = self._server_opted_in(authed_user_id)
-        rate_ok = _check_and_increment_rate_limit(authed_user_id) if opted_in else True
+        rate_ok = _check_and_increment_rate_limit(authed_user_id, self.db) if opted_in else True
         use_llm = opted_in and rate_ok and bool(self.api_key) and bool(self.model) and self._timeout_for_operation("debrief") is not None
 
         response: SessionDebriefResponse

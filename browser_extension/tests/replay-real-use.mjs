@@ -42,6 +42,10 @@ globalThis.self = globalThis;
 self.addEventListener = () => {}; self.skipWaiting = () => {}; self.clients = { claim: async () => {} };
 globalThis.chrome = {
   storage: { session: mkStore(), local: mkStore() },
+  notifications: {
+    create: async () => {}, clear: async () => true,
+    onClicked: ev('notification-click'),
+  },
   alarms: { get: async () => undefined, create: async () => {}, clear: async () => {}, onAlarm: ev('alarm') },
   idle: { setDetectionInterval(){}, onStateChanged: ev('idle') },
   windows: { WINDOW_ID_NONE: -1, onFocusChanged: ev('winfocus') },

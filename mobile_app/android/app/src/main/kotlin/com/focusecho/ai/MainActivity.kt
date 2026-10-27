@@ -18,15 +18,8 @@ class MainActivity : FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
                     distractionEventSink = events
-                    // Flush any events buffered while the Flutter UI was away
-                    if (events != null) {
-                        synchronized(FocusDetectionService.pendingEvents) {
-                            for (payload in FocusDetectionService.pendingEvents) {
-                                events.success(payload)
-                            }
-                            FocusDetectionService.pendingEvents.clear()
-                        }
-                    }
+                    // Stage records remain durable until Dart acknowledges SQLite insertion.
+                    if (events != null) FocusDetectionService.flushBufferedEvents(this@MainActivity)
                 }
 
                 override fun onCancel(arguments: Any?) {
@@ -38,6 +31,13 @@ class MainActivity : FlutterActivity() {
             .setMethodCallHandler { call, result ->
                 val prefs = getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 when (call.method) {
+                    "ackDistractionEvent" -> {
+                        val deliveryId = call.arguments as? String
+                        result.success(
+                            deliveryId != null && FocusDetectionService
+                                .acknowledgeBufferedEvent(this, deliveryId),
+                        )
+                    }
                     "startSession" -> {
                         val intent = Intent(this, FocusDetectionService::class.java).apply {
                             action = FocusDetectionService.START_ACTION

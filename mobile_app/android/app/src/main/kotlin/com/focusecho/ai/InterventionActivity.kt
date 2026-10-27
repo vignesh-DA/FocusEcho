@@ -103,7 +103,7 @@ class InterventionActivity : Activity() {
     }
 
     private fun reportShown(level: Int) {
-        DistractionEventQueue.add(
+        FocusDetectionService.stageEvent(this,
             org.json.JSONObject()
                 .put("eventType", "intervention_shown")
                 .put("level", level)
@@ -113,7 +113,7 @@ class InterventionActivity : Activity() {
     }
 
     private fun reportAction(level: Int, action: String) {
-        DistractionEventQueue.add(
+        FocusDetectionService.stageEvent(this,
             org.json.JSONObject()
                 .put("eventType", "intervention_action")
                 .put("level", level)

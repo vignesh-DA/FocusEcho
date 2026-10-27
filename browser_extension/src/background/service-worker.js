@@ -26,6 +26,12 @@ import { mkDistractionEvent, mkRecoveryEvent, mkEmergencyExitEvent, mkAllowedSit
 import { defaultConfig } from '../shared/storage-schema.js';
 import { syncEventQueue, saveSyncCredentials } from './database-sync.js';
 import { Logger } from '../shared/logger.js';
+import {
+  showDistractionNotification,
+  clearDistractionNotification,
+  repeatDistractionNotification,
+  focusDashboardFromNotification,
+} from './desktop-notifications.js';
 
 // ---------------------------------------------------------------------------
 // Logging — structured, Python-style tracing with levels & timestamps
@@ -175,18 +181,6 @@ async function clearDistraction() {
 async function loadConfig() {
   const r = await chrome.storage.local.get(SK.CONFIG);
   return r[SK.CONFIG] ?? defaultConfig();
-}
-
-async function saveSessionSites(hosts) {
-  const config = await loadConfig();
-  const existing = new Map((config.distraction_list || []).map(site => [
-    normalizeHost(site.hostname), site,
-  ]));
-  config.distraction_list = hosts.map(host => {
-    const hostname = normalizeHost(host);
-    return existing.get(hostname) || { hostname, category: 'unknown', limit_minutes: 0 };
-  }).filter(site => site.hostname);
-  await chrome.storage.local.set({ [SK.CONFIG]: config });
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +436,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
       // Update distraction level
       distraction.level = level;
       await saveDistraction(distraction);
+      await showDistractionNotification(session, distraction, level);
       LOG.act(`distraction event | host: ${distraction.host} | level: ${level} | count: ${session.distraction_count}`);
 
       // Sync directly to Supabase cloud database & FastAPI backend (fire-and-forget)
@@ -478,6 +473,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
         from_level:             distraction.level || 0,
       });
       await enqueueEvent(ev);
+      await clearDistractionNotification();
       LOG.act(`recovery event: ${classification} | time_on_site: ${timeOnSiteMs} ms`);
 
       // Sync recovery event to Supabase cloud database & FastAPI backend
@@ -501,6 +497,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
 
     case 'CLEAR_DISTRACTION':
       clearGraceTimer();
+      await clearDistractionNotification();
       await clearDistraction();
       if (session) {
         session.resume_to_state = null;
@@ -696,6 +693,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
 
     case 'CLEAR_SESSION': {
       clearGraceTimer();
+      await clearDistractionNotification();
       if (session) {
         session.active = false;
         session.ended_at = now;
@@ -934,6 +932,10 @@ chrome.idle.onStateChanged.addListener(async (idleState) => {
 // Alarms
 // ---------------------------------------------------------------------------
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === ALARM.DISTRACTION_NUDGE) {
+    await repeatDistractionNotification(loadSession, loadDistraction);
+    return;
+  }
   if (alarm.name === ALARM.HEARTBEAT) {
     LOG.sw('heartbeat ♥');
     const session = await loadSession();
@@ -941,6 +943,10 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     syncEventQueue(session).catch(() => {});
     await dispatch({ type: EV.HEARTBEAT });
   }
+});
+
+chrome.notifications.onClicked.addListener(async (notificationId) => {
+  await focusDashboardFromNotification(notificationId);
 });
 
 // ---------------------------------------------------------------------------
@@ -970,7 +976,6 @@ async function _handleMessage(message, sender) {
     const currentSession = await loadSession();
     const wasActive = currentSession?.active;
     const sites = (distraction_list || []).map(h => normalizeHost(h)).filter(Boolean);
-    await saveSessionSites(sites);
     await dispatch({
       type: EV.SESSION_STARTED,
       payload: {
@@ -1054,7 +1059,6 @@ async function _handleMessage(message, sender) {
     const currentSession = await loadSession();
     const wasActive = currentSession?.active;
     const sites = (distraction_list || []).map(h => normalizeHost(h)).filter(Boolean);
-    await saveSessionSites(sites);
     await dispatch({
       type: EV.SESSION_STARTED,
       payload: {
