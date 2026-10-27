@@ -153,6 +153,18 @@ Executed via Puppeteer against real Chrome (Manifest V3, Service Worker, DNS map
 
 ---
 
+## Batch 1 — Reflection, Parking Lot, Allow-Site, Coach Inputs
+
+### Step 1 — Database migration
+
+- **Status:** Migration authored; pending Supabase execution.
+- **Migration:** `backend/supabase_migrations/migrations/20261027_session_reflection_parking_lot.sql`
+- **Adds:** nullable `focus_rating`, `drift_reason`, and `parked_items` fields on `focus_sessions`.
+- **Constraints:** rating 1–5, approved drift reasons, maximum 20 parked strings, maximum 120 characters per item.
+- **Tests:** Baseline backend **18/18 passed**; extension unit **149/149 passed**; manifest **21/21 passed**; database sync **21/21 passed**; replay **9/9 passed**; Dart analysis completed with existing informational lints. Flutter tests hung in the local environment and were stopped; mobile runtime remains unverified.
+
+---
+
 ## 📈 Test Coverage Summary (2026-10-26)
 
 | Suite | Count | Status |
