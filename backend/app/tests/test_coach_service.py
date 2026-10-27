@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 from datetime import datetime, timezone
 import unittest
 from unittest.mock import MagicMock, patch
@@ -446,6 +447,11 @@ class EchoCoachTests(unittest.TestCase):
         self.assertIn('"drift_reason": "stuck"', user_message)
         self.assertIn('"parked_item_count": 2', user_message)
         self.assertNotIn(parked_secret, user_message)
+
+    def test_env_example_uses_model_id_placeholders_not_retired_kimi(self):
+        example = (Path(__file__).resolve().parents[2] / ".env.example").read_text()
+        self.assertNotIn("moonshotai/kimi-k2-instruct-0905", example)
+        self.assertIn("COACH_LLM_MODEL=<your-groq-model-id>", example)
 
 if __name__ == "__main__":
     unittest.main()

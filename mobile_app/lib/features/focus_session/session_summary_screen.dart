@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../services/ai_coach_service.dart';
 import 'focus_session_state.dart';
 import 'widgets/coach_debrief_card.dart';
 
@@ -14,6 +15,7 @@ class SessionSummaryScreen extends StatelessWidget {
     required this.stats,
     required this.onDismiss,
     this.onSaveReflection,
+    this.coachService,
   });
 
   final SessionSummary summary;
@@ -21,6 +23,7 @@ class SessionSummaryScreen extends StatelessWidget {
   final VoidCallback onDismiss;
   final Future<void> Function(int? focusRating, String? driftReason)?
       onSaveReflection;
+  final AiCoachService? coachService;
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +151,10 @@ class SessionSummaryScreen extends StatelessWidget {
                       ],
                     ),
                   ),
-                  CoachDebriefCard(sessionId: summary.sessionId),
+                  CoachDebriefCard(
+                    sessionId: summary.sessionId,
+                    coachService: coachService,
+                  ),
                   const SizedBox(height: 12),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(

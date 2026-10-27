@@ -169,43 +169,53 @@ class FocusSessionScreen extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  if (kIsWeb || state.liveDistractionFeed.isNotEmpty) ...[
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      height: 220,
-                      child: LiveDistractionFeed(
-                        feed: state.liveDistractionFeed,
-                      ),
-                    ),
-                  ],
-                  if (kIsWeb && !state.extensionConnected) ...[
-                    const SizedBox(height: 16),
-                    Container(
-                      width: double.infinity,
-                      color: AppColors.accentYellow.withValues(alpha: 0.15),
-                      padding: const EdgeInsets.all(10),
-                      child: const Row(
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(
                         children: [
-                          Icon(Icons.extension_off,
-                              color: AppColors.accentYellow, size: 16),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Install the FocusEcho Chrome extension for real-time monitoring.',
-                              style: TextStyle(
-                                  color: AppColors.accentYellow, fontSize: 12),
+                          if (kIsWeb ||
+                              state.liveDistractionFeed.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              height: 220,
+                              child: LiveDistractionFeed(
+                                feed: state.liveDistractionFeed,
+                              ),
                             ),
+                          ],
+                          if (kIsWeb && !state.extensionConnected) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              width: double.infinity,
+                              color: AppColors.accentYellow
+                                  .withValues(alpha: 0.15),
+                              padding: const EdgeInsets.all(10),
+                              child: const Row(
+                                children: [
+                                  Icon(Icons.extension_off,
+                                      color: AppColors.accentYellow, size: 16),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Install the FocusEcho Chrome extension for real-time monitoring.',
+                                      style: TextStyle(
+                                          color: AppColors.accentYellow,
+                                          fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          ParkingLotComposer(
+                            items: state.parkedItems,
+                            onAdd: vm.addParkedItem,
+                            onRemove: vm.removeParkedItem,
                           ),
                         ],
                       ),
                     ),
-                  ],
-                  ParkingLotComposer(
-                    items: state.parkedItems,
-                    onAdd: vm.addParkedItem,
-                    onRemove: vm.removeParkedItem,
                   ),
-                  const Spacer(),
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
                         side: const BorderSide(color: AppColors.accentRed)),
@@ -261,7 +271,8 @@ class _ParkingLotComposerState extends State<ParkingLotComposer> {
 
   Future<void> _add() async {
     final value = _controller.text.trim();
-    if (value.isEmpty || value.length > 120 || widget.items.length >= 20) return;
+    if (value.isEmpty || value.length > 120 || widget.items.length >= 20)
+      return;
     await widget.onAdd(value);
     _controller.clear();
   }

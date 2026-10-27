@@ -204,13 +204,19 @@ class DatabaseHelper {
       );
     }
     if (oldVersion < 5) {
-      await db.execute(
-          'ALTER TABLE focus_sessions ADD COLUMN focus_rating INTEGER');
-      await db
-          .execute('ALTER TABLE focus_sessions ADD COLUMN drift_reason TEXT');
-      await db
-          .execute('ALTER TABLE focus_sessions ADD COLUMN parked_items TEXT');
+      await upgradeFocusSessionsBatchOne(db);
     }
+  }
+
+  @visibleForTesting
+  static Future<void> upgradeFocusSessionsBatchOne(
+      DatabaseExecutor executor) async {
+    await executor
+        .execute('ALTER TABLE focus_sessions ADD COLUMN focus_rating INTEGER');
+    await executor
+        .execute('ALTER TABLE focus_sessions ADD COLUMN drift_reason TEXT');
+    await executor
+        .execute('ALTER TABLE focus_sessions ADD COLUMN parked_items TEXT');
   }
 
   Future<void> close() async {

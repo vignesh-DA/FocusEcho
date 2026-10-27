@@ -27,6 +27,9 @@
 //   These ViewModel tests are the primary escalation coverage.
 // ---------------------------------------------------------------------------
 
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:gotrue/gotrue.dart' show User;
@@ -44,6 +47,9 @@ import 'package:focus_echo_ai/local_db/intervention_event_dao.dart';
 import 'package:focus_echo_ai/services/supabase_service.dart';
 import 'package:focus_echo_ai/services/sync_service.dart';
 import 'package:focus_echo_ai/features/focus_session/focus_session_viewmodel.dart';
+import 'package:focus_echo_ai/features/focus_session/focus_session_state.dart';
+import 'package:focus_echo_ai/features/focus_session/session_summary_screen.dart';
+import 'package:focus_echo_ai/services/ai_coach_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fake DAO & service stubs
@@ -54,29 +60,85 @@ class _FakeDistractionEventDao extends DistractionEventDao {
   final List<DistractionEvent> _events = [];
   List<DistractionEvent> get all => List.unmodifiable(_events);
 
-  @override Future<void> insertEvent(DistractionEvent event) async => _events.add(event);
-  @override Future<void> updateRecovery(String eventId, DateTime recoveredAt, int recoverySeconds, {bool returnedToOrigin = false}) async {
+  @override
+  Future<void> insertEvent(DistractionEvent event) async => _events.add(event);
+  @override
+  Future<void> updateRecovery(
+      String eventId, DateTime recoveredAt, int recoverySeconds,
+      {bool returnedToOrigin = false}) async {
     final idx = _events.indexWhere((e) => e.id == eventId);
-    if (idx != -1) _events[idx] = _events[idx].copyWith(recoveredAt: recoveredAt, recoveryTimeSeconds: recoverySeconds, isRecovered: true, returnedToOrigin: returnedToOrigin);
+    if (idx != -1)
+      _events[idx] = _events[idx].copyWith(
+          recoveredAt: recoveredAt,
+          recoveryTimeSeconds: recoverySeconds,
+          isRecovered: true,
+          returnedToOrigin: returnedToOrigin);
   }
-  @override Future<List<DistractionEvent>> getEventsForSession(String sessionId) async => _events.where((e) => e.sessionId == sessionId).toList();
-  @override Future<List<DistractionEvent>> getRecentEvents(int minutes, {String? eventType}) async {
+
+  @override
+  Future<List<DistractionEvent>> getEventsForSession(String sessionId) async =>
+      _events.where((e) => e.sessionId == sessionId).toList();
+  @override
+  Future<List<DistractionEvent>> getRecentEvents(int minutes,
+      {String? eventType}) async {
     final cutoff = DateTime.now().subtract(Duration(minutes: minutes));
-    return _events.where((e) { if (e.triggeredAt.isBefore(cutoff)) return false; if (eventType != null && e.eventType != eventType) return false; return true; }).toList();
+    return _events.where((e) {
+      if (e.triggeredAt.isBefore(cutoff)) return false;
+      if (eventType != null && e.eventType != eventType) return false;
+      return true;
+    }).toList();
   }
-  @override Future<List<DistractionEvent>> getUnsyncedEvents() async => _events.where((e) => !e.isSynced).toList();
-  @override Future<void> markAsSynced(String eventId) async { final idx = _events.indexWhere((e) => e.id == eventId); if (idx != -1) _events[idx] = _events[idx].copyWith(isSynced: true); }
-  @override Future<void> markAsUnsynced(String eventId) async { final idx = _events.indexWhere((e) => e.id == eventId); if (idx != -1) _events[idx] = _events[idx].copyWith(isSynced: false); }
-  @override Future<void> clearAllEvents() async => _events.clear();
-  @override Future<void> markEventsUnsyncedForSessions(List<String> sessionIds) async { for (var i = 0; i < _events.length; i++) { if (sessionIds.contains(_events[i].sessionId)) _events[i] = _events[i].copyWith(isSynced: false); } }
+
+  @override
+  Future<List<DistractionEvent>> getUnsyncedEvents() async =>
+      _events.where((e) => !e.isSynced).toList();
+  @override
+  Future<void> markAsSynced(String eventId) async {
+    final idx = _events.indexWhere((e) => e.id == eventId);
+    if (idx != -1) _events[idx] = _events[idx].copyWith(isSynced: true);
+  }
+
+  @override
+  Future<void> markAsUnsynced(String eventId) async {
+    final idx = _events.indexWhere((e) => e.id == eventId);
+    if (idx != -1) _events[idx] = _events[idx].copyWith(isSynced: false);
+  }
+
+  @override
+  Future<void> clearAllEvents() async => _events.clear();
+  @override
+  Future<void> markEventsUnsyncedForSessions(List<String> sessionIds) async {
+    for (var i = 0; i < _events.length; i++) {
+      if (sessionIds.contains(_events[i].sessionId))
+        _events[i] = _events[i].copyWith(isSynced: false);
+    }
+  }
 }
 
 class _FakeFocusSessionDao extends FocusSessionDao {
   _FakeFocusSessionDao() : super(DatabaseHelper.instance);
   final List<Map<String, dynamic>> _sessions = [];
 
-  @override Future<void> insertSession(FocusSession session) async => _sessions.add(Map<String, dynamic>.from(session.toSqliteMap()));
-  @override Future<void> updateSessionEnd(String sessionId, DateTime endTime, int totalDistractions, int totalXp, double focusScore, String status) async {
+  @override
+  Future<void> insertSession(FocusSession session) async =>
+      _sessions.add(Map<String, dynamic>.from(session.toSqliteMap()));
+  @override
+  Future<void> updateParkedItems(String sessionId, List<String> items) async {
+    final index = _sessions.indexWhere((s) => s['id'] == sessionId);
+    if (index != -1) {
+      _sessions[index]['parked_items'] = jsonEncode(items);
+      _sessions[index]['is_synced'] = 0;
+    }
+  }
+
+  @override
+  Future<void> updateSessionEnd(
+      String sessionId,
+      DateTime endTime,
+      int totalDistractions,
+      int totalXp,
+      double focusScore,
+      String status) async {
     final idx = _sessions.indexWhere((s) => s['id'] == sessionId);
     if (idx == -1) return;
     _sessions[idx]['end_time'] = endTime.toIso8601String();
@@ -85,12 +147,24 @@ class _FakeFocusSessionDao extends FocusSessionDao {
     _sessions[idx]['focus_score'] = focusScore;
     _sessions[idx]['status'] = status;
   }
-  @override Future<FocusSession?> getActiveSession() async { final active = _sessions.where((s) => s['status'] == 'active'); return active.isEmpty ? null : FocusSession.fromSqliteMap(active.first); }
-  @override Future<List<FocusSession>> getSessionHistory(int limit) async => _sessions.take(limit).map(FocusSession.fromSqliteMap).toList();
-  @override Future<List<FocusSession>> getUnsyncedSessions() async => [];
-  @override Future<void> markAsSynced(String sessionId) async {}
-  @override Future<void> clearAllSessions() async => _sessions.clear();
-  @override Future<int> reassignUserId(String fromUserId, String toUserId) async => 0;
+
+  @override
+  Future<FocusSession?> getActiveSession() async {
+    final active = _sessions.where((s) => s['status'] == 'active');
+    return active.isEmpty ? null : FocusSession.fromSqliteMap(active.first);
+  }
+
+  @override
+  Future<List<FocusSession>> getSessionHistory(int limit) async =>
+      _sessions.take(limit).map(FocusSession.fromSqliteMap).toList();
+  @override
+  Future<List<FocusSession>> getUnsyncedSessions() async => [];
+  @override
+  Future<void> markAsSynced(String sessionId) async {}
+  @override
+  Future<void> clearAllSessions() async => _sessions.clear();
+  @override
+  Future<int> reassignUserId(String fromUserId, String toUserId) async => 0;
 }
 
 class _FakeInterventionEventDao extends InterventionEventDao {
@@ -98,11 +172,17 @@ class _FakeInterventionEventDao extends InterventionEventDao {
   final List<InterventionEvent> _events = [];
   List<InterventionEvent> get all => List.unmodifiable(_events);
 
-  @override Future<void> insertEvent(InterventionEvent event) async => _events.add(event);
-  @override Future<List<InterventionEvent>> getUnsyncedInterventions() async => [];
-  @override Future<void> markAsSynced(String eventId) async {}
-  @override Future<List<InterventionEvent>> getEventsForSession(String sessionId) async => _events.where((e) => e.sessionId == sessionId).toList();
-  @override Future<void> clearAll() async => _events.clear();
+  @override
+  Future<void> insertEvent(InterventionEvent event) async => _events.add(event);
+  @override
+  Future<List<InterventionEvent>> getUnsyncedInterventions() async => [];
+  @override
+  Future<void> markAsSynced(String eventId) async {}
+  @override
+  Future<List<InterventionEvent>> getEventsForSession(String sessionId) async =>
+      _events.where((e) => e.sessionId == sessionId).toList();
+  @override
+  Future<void> clearAll() async => _events.clear();
 }
 
 /// Stub SyncService via Fake — prevents any network/Supabase call.
@@ -119,6 +199,12 @@ class _FakeSupabaseService extends Fake implements SupabaseService {
   User? get currentUser => null;
   @override
   void unsubscribeFromInterventions() {}
+}
+
+class _NoopCoachService extends Fake implements AiCoachService {
+  @override
+  Future<SessionDebriefResult?> fetchSessionDebrief(String sessionId) async =>
+      null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -177,7 +263,11 @@ Future<_VmBundle> _makeVm({
   final syncService = _FakeSyncService();
 
   final vm = FocusSessionViewModel(
-    prefs, sessionDao, eventDao, interventionDao, syncService,
+    prefs,
+    sessionDao,
+    eventDao,
+    interventionDao,
+    syncService,
   );
 
   return (
@@ -205,6 +295,73 @@ Future<void> _startSession(
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
+  group('Parking lot', () {
+    test('adds, removes, bounds, and persists parked items', () async {
+      final bundle = await _makeVm();
+      final vm = bundle.vm;
+      final sessionDao = bundle.sessionDao;
+      addTearDown(vm.dispose);
+      await _startSession(vm);
+
+      await vm.addParkedItem('  check the API error  ');
+      expect(vm.state.parkedItems, ['check the API error']);
+      expect(jsonDecode(sessionDao._sessions.single['parked_items'] as String),
+          ['check the API error']);
+
+      await vm.removeParkedItem('check the API error');
+      expect(vm.state.parkedItems, isEmpty);
+      expect(jsonDecode(sessionDao._sessions.single['parked_items'] as String),
+          isEmpty);
+    });
+
+    test('enforces the 120 character and 20 item limits', () async {
+      final bundle = await _makeVm();
+      final vm = bundle.vm;
+      addTearDown(vm.dispose);
+      await _startSession(vm);
+
+      await vm.addParkedItem('x' * 120);
+      await vm.addParkedItem('y' * 121);
+      expect(vm.state.parkedItems, ['x' * 120]);
+
+      await vm.removeParkedItem('x' * 120);
+      for (var index = 0; index < 20; index++) {
+        await vm.addParkedItem('item-$index');
+      }
+      await vm.addParkedItem('item-over-limit');
+      expect(vm.state.parkedItems, hasLength(20));
+      expect(vm.state.parkedItems, isNot(contains('item-over-limit')));
+    });
+
+    testWidgets('summary renders parked items under the later list heading',
+        (tester) async {
+      final summary = SessionSummary(
+        sessionId: 'session-parking-summary',
+        intent: 'Write the report',
+        productiveApp: 'Notes',
+        actualSeconds: 300,
+        totalDistractions: 1,
+        sessionXp: 50,
+        focusScore: 90,
+        focusRating: 4,
+        parkedItems: const ['Check the citation', 'Reply to Maya'],
+      );
+      await tester.pumpWidget(MaterialApp(
+        home: SessionSummaryScreen(
+          summary: summary,
+          stats: const {},
+          onDismiss: () {},
+          coachService: _NoopCoachService(),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Things to check later'), findsOneWidget);
+      expect(find.text('• Check the citation'), findsOneWidget);
+      expect(find.text('• Reply to Maya'), findsOneWidget);
+    });
+  });
+
   // ── TC_SESSION — Timer ──────────────────────────────────────────────────────
   group('TC_SESSION — Timer', () {
     test('TC_SESSION_001: elapsedSeconds is 0 immediately after startSession',
@@ -215,11 +372,13 @@ void main() {
       await _startSession(vm);
 
       expect(vm.state.elapsedSeconds, equals(0),
-          reason: 'Timer must display 00:00:00 at session start (TC_SESSION_001)');
+          reason:
+              'Timer must display 00:00:00 at session start (TC_SESSION_001)');
       expect(vm.state.isActive, isTrue);
     });
 
-    test('TC_SESSION_002: elapsedSeconds increments accurately (±1 s tolerance)',
+    test(
+        'TC_SESSION_002: elapsedSeconds increments accurately (±1 s tolerance)',
         () async {
       final (:vm, :eventDao, :sessionDao, :interventionDao) = await _makeVm();
       addTearDown(vm.dispose);
@@ -249,7 +408,8 @@ void main() {
       await Future<void>.delayed(const Duration(seconds: 2));
 
       expect(vm.state.elapsedSeconds, equals(frozenValue),
-          reason: 'elapsedSeconds must freeze after stopSession (TC_SESSION_004)');
+          reason:
+              'elapsedSeconds must freeze after stopSession (TC_SESSION_004)');
       expect(vm.state.isActive, isFalse);
     });
 
@@ -266,7 +426,8 @@ void main() {
       expect(vm.state.sessionSummary, isNotNull);
       expect(vm.state.sessionSummary!.actualSeconds,
           greaterThanOrEqualTo(elapsedAtStop),
-          reason: 'SessionSummary.actualSeconds must reflect duration (TC_SESSION_004)');
+          reason:
+              'SessionSummary.actualSeconds must reflect duration (TC_SESSION_004)');
     });
   });
 
@@ -281,7 +442,8 @@ void main() {
       await _startSession(vm, intent: intentText);
 
       expect(vm.state.session?.intent, equals(intentText),
-          reason: 'Session intent must exactly match user entry (TC_INTENT_001)');
+          reason:
+              'Session intent must exactly match user entry (TC_INTENT_001)');
       expect(vm.state.intent, equals(intentText));
     });
 
@@ -336,7 +498,8 @@ void main() {
       await vm.simulateWebDistraction('com.instagram.android', 'Instagram');
 
       expect(vm.state.lastDistractionPackage, equals('com.instagram.android'),
-          reason: 'lastDistractionPackage must reflect simulated event (TC_DISTRACT_001)');
+          reason:
+              'lastDistractionPackage must reflect simulated event (TC_DISTRACT_001)');
       expect(vm.state.lastDistractionLabel, equals('Instagram'));
       expect(vm.state.lastEventId, isNotNull);
     });
@@ -387,10 +550,12 @@ void main() {
       await _startSession(vm, intent: 'second session');
 
       expect(vm.state.distractionCount, equals(0),
-          reason: 'New session must start with distractionCount=0 (TC_DISTRACT_004)');
+          reason:
+              'New session must start with distractionCount=0 (TC_DISTRACT_004)');
     });
 
-    test('TC_DISTRACT_005: simulated events NOT inserted into DistractionEventDao',
+    test(
+        'TC_DISTRACT_005: simulated events NOT inserted into DistractionEventDao',
         () async {
       // Web-demo events excluded from real analytics storage.
       final (:vm, :eventDao, :sessionDao, :interventionDao) = await _makeVm();
@@ -400,7 +565,8 @@ void main() {
       await vm.simulateWebDistraction('com.instagram.android', 'Instagram');
 
       expect(eventDao.all.isEmpty, isTrue,
-          reason: 'Simulated events must NOT be inserted into DAO (TC_DISTRACT_005)');
+          reason:
+              'Simulated events must NOT be inserted into DAO (TC_DISTRACT_005)');
     });
 
     test(
@@ -456,7 +622,8 @@ void main() {
 
       await vm.simulateWebDistraction('com.instagram.android', 'Instagram');
       expect(vm.state.escalationLevel, equals(2),
-          reason: 'Second relapse → Level 2 full-screen overlay (TC_ESCALATE_002)');
+          reason:
+              'Second relapse → Level 2 full-screen overlay (TC_ESCALATE_002)');
 
       vm.returnToFocusFromIntervention();
       await vm.simulateWebDistraction('com.instagram.android', 'Instagram');
@@ -477,14 +644,16 @@ void main() {
       await vm.simulateWebDistraction('com.instagram.android', 'Instagram');
 
       expect(vm.state.escalationLevel, equals(3),
-          reason: '4th+ relapse → Level 3 forced-choice overlay (TC_ESCALATE_003)');
+          reason:
+              '4th+ relapse → Level 3 forced-choice overlay (TC_ESCALATE_003)');
       expect(vm.state.showAlert, isTrue);
     });
   });
 
   // ── TC_STOP — Stop Session ───────────────────────────────────────────────────
   group('TC_STOP — Stop Session', () {
-    test('TC_STOP_001: stopSession records correct intent, duration, distraction count',
+    test(
+        'TC_STOP_001: stopSession records correct intent, duration, distraction count',
         () async {
       final (:vm, :eventDao, :sessionDao, :interventionDao) = await _makeVm();
       addTearDown(vm.dispose);
@@ -508,7 +677,8 @@ void main() {
       expect(vm.state.isActive, isFalse);
     });
 
-    test('TC_STOP_002: stopSession mid-distraction completes cleanly', () async {
+    test('TC_STOP_002: stopSession mid-distraction completes cleanly',
+        () async {
       final (:vm, :eventDao, :sessionDao, :interventionDao) = await _makeVm();
       addTearDown(vm.dispose);
 

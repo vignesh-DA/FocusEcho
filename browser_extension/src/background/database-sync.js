@@ -124,6 +124,31 @@ export async function refreshAuthSession(creds) {
   }
 }
 
+/** Makes one authenticated request and, after one 401, refreshes and retries once. */
+async function fetchWithAuthRefresh(url, options, creds) {
+  if (!creds?.authToken || !creds?.userId) {
+    return { response: null, credentials: creds };
+  }
+  const send = (token) => fetch(url, {
+    ...options,
+    headers: {
+      ...(options?.headers || {}),
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  let credentials = creds;
+  let response = await send(credentials.authToken);
+  if (response.status === 401 && credentials.refreshToken) {
+    const refreshed = await refreshAuthSession(credentials);
+    if (refreshed && refreshed.authToken !== credentials.authToken) {
+      credentials = refreshed;
+      response = await send(credentials.authToken);
+    }
+  }
+  return { response, credentials };
+}
+
 /**
  * Transforms an extension queued event into the Supabase distraction_events row schema.
  * @param {object} queuedEvent
@@ -213,21 +238,18 @@ async function ensureFocusSessionInCloud(session, creds) {
   };
 
   try {
-    const request = (token) => fetch(`${supabaseUrl}/rest/v1/focus_sessions`, {
+    const result = await fetchWithAuthRefresh(`${supabaseUrl}/rest/v1/focus_sessions`, {
       method: 'POST',
       headers: {
         'apikey':        supabaseAnonKey,
-        'Authorization': `Bearer ${token}`,
         'Content-Type':  'application/json',
         'Prefer':        'resolution=merge-duplicates',
       },
       body: JSON.stringify(sessionRow),
-    });
-    let resp = await request(activeCreds.authToken);
-    if (resp.status === 401 && activeCreds.refreshToken) {
-      activeCreds = await refreshAuthSession(activeCreds) || activeCreds;
-      if (activeCreds.authToken !== creds.authToken) resp = await request(activeCreds.authToken);
-    }
+    }, activeCreds);
+    activeCreds = result.credentials || activeCreds;
+    const resp = result.response;
+    if (!resp) return activeCreds;
     if (!resp.ok) {
       log.w(`focus_session parent upsert warning (${resp.status})`);
     }
@@ -244,7 +266,7 @@ async function ensureFocusSessionInCloud(session, creds) {
  */
 async function broadcastCrossSurfaceIntervention(row, creds) {
   const { supabaseUrl, supabaseAnonKey, authToken, userId } = creds;
-  if (!userId) return;
+  if (!userId || !authToken) return;
 
 
   const channel = `focusecho-interventions:${userId}`;
@@ -257,15 +279,15 @@ async function broadcastCrossSurfaceIntervention(row, creds) {
 
   try {
     // Post to Supabase Realtime REST broadcast endpoint
-    await fetch(`${supabaseUrl}/rest/v1/rpc/broadcast_intervention`, {
+    const result = await fetchWithAuthRefresh(`${supabaseUrl}/rest/v1/rpc/broadcast_intervention`, {
       method: 'POST',
       headers: {
         'apikey':        supabaseAnonKey,
-        'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
         'Content-Type':  'application/json',
       },
       body: JSON.stringify({ p_channel: channel, p_payload: payload }),
-    }).catch(() => {});
+    }, creds);
+    return result.credentials;
   } catch (_) {}
 }
 
@@ -288,11 +310,11 @@ export async function syncEventQueue(activeSession = null) {
   if (!activeCreds.authToken && activeCreds.refreshToken) {
     activeCreds = await refreshAuthSession(activeCreds) || activeCreds;
   }
-  const { supabaseUrl, supabaseAnonKey, authToken, backendUrl, userId } = activeCreds;
+  const { supabaseUrl, supabaseAnonKey, backendUrl, userId } = activeCreds;
 
   // Never attempt an authenticated write with the public anon key as the
   // bearer token. Keep the queue local until a real user session is present.
-  if (!userId || !authToken) {
+  if (!userId || !activeCreds.authToken) {
     return { synced: 0, remaining: queue.length, error: 'Authentication required — queued for retry' };
   }
 
@@ -320,39 +342,23 @@ export async function syncEventQueue(activeSession = null) {
 
   // Try direct Supabase PostgREST insert/upsert
   try {
-    const res = await fetch(`${supabaseUrl}/rest/v1/distraction_events`, {
+    const result = await fetchWithAuthRefresh(`${supabaseUrl}/rest/v1/distraction_events`, {
       method: 'POST',
       headers: {
         'apikey':        supabaseAnonKey,
-        'Authorization': `Bearer ${authToken || supabaseAnonKey}`,
         'Content-Type':  'application/json',
         'Prefer':        'resolution=merge-duplicates',
       },
       body: JSON.stringify(rows),
-    });
-
-    if (res.status === 401 && activeCreds.refreshToken) {
-      const refreshed = await refreshAuthSession(activeCreds);
-      if (refreshed) {
-        const retry = await fetch(`${supabaseUrl}/rest/v1/distraction_events`, {
-          method: 'POST',
-          headers: {
-            apikey: supabaseAnonKey,
-            Authorization: `Bearer ${refreshed.authToken}`,
-            'Content-Type': 'application/json',
-            Prefer: 'resolution=merge-duplicates',
-          },
-          body: JSON.stringify(rows),
-        });
-        if (retry.ok) writeSuccess = true;
-      }
-    }
-    if (res.ok || writeSuccess) {
+    }, activeCreds);
+    activeCreds = result.credentials || activeCreds;
+    const res = result.response;
+    if (res?.ok) writeSuccess = true;
+    if (res?.ok || writeSuccess) {
       writeSuccess = true;
       log.i(`Successfully wrote ${rows.length} events to Supabase distraction_events!`);
-    } else {
-      const errText = await res.text();
-      log.w(`Supabase write failed (${res.status}): ${errText}`);
+    } else if (res) {
+      log.w(`Supabase write failed (${res.status})`);
     }
   } catch (netErr) {
     log.w(`Network offline or Supabase unreachable: ${netErr.message}`);
@@ -365,7 +371,7 @@ export async function syncEventQueue(activeSession = null) {
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
-          ...(authToken ? { 'Authorization': `Bearer ${authToken}` } : {}),
+          ...(activeCreds.authToken ? { 'Authorization': `Bearer ${activeCreds.authToken}` } : {}),
         },
         body: JSON.stringify({
           events: rows,
