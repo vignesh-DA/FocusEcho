@@ -27,14 +27,14 @@ def create_session(
     if authed_user != payload.user_id:
         raise HTTPException(status_code=403, detail="Access denied: user_id mismatch.")
     client = _client()
-    existing = (
+    existing_res = (
         client.table("focus_sessions")
         .select("id,user_id")
         .eq("id", payload.id)
         .maybe_single()
         .execute()
-        .data
     )
+    existing = existing_res.data if existing_res and hasattr(existing_res, "data") else None
     if existing:
         if str(existing.get("user_id")) != authed_user:
             raise HTTPException(status_code=403, detail="Session ID is already owned by another user.")
@@ -61,14 +61,14 @@ def update_session(
 ) -> dict[str, Any]:
     client = _client()
     # Verify ownership before updating.
-    session = (
+    session_res = (
         client.table("focus_sessions")
         .select("user_id")
         .eq("id", session_id)
         .maybe_single()
         .execute()
-        .data
     )
+    session = session_res.data if session_res and hasattr(session_res, "data") else None
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
     if session["user_id"] != authed_user:

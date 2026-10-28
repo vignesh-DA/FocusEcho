@@ -31,6 +31,11 @@ def upsert_batch(
 
     client = _client()
     rows = [event.model_dump(mode="json") for event in payload.events]
+    for row in rows:
+        if row.get("was_notification_triggered") is None:
+            row["was_notification_triggered"] = False
+        if row.get("returned_to_origin") is None:
+            row["returned_to_origin"] = False
 
     session_ids = list({row["session_id"] for row in rows})
     owned_session_rows = (
@@ -80,14 +85,14 @@ def get_session_events(
 ) -> list[dict[str, Any]]:
     client = _client()
     # Verify this session belongs to the authenticated user.
-    session = (
+    session_res = (
         client.table("focus_sessions")
         .select("user_id")
         .eq("id", session_id)
         .maybe_single()
         .execute()
-        .data
     )
+    session = session_res.data if session_res and hasattr(session_res, "data") else None
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
     if session["user_id"] != authed_user:
@@ -108,26 +113,26 @@ def recover_event(
     authed_user: Annotated[str, Depends(require_auth)],
 ) -> dict[str, Any]:
     client = _client()
-    row = (
+    row_res = (
         client.table("distraction_events")
         .select("*")
         .eq("id", event_id)
         .maybe_single()
         .execute()
-        .data
     )
+    row = row_res.data if row_res and hasattr(row_res, "data") else None
     if not row:
         raise HTTPException(status_code=404, detail="Event not found")
 
     # Verify ownership via the parent session.
-    session = (
+    session_res = (
         client.table("focus_sessions")
         .select("user_id")
         .eq("id", row["session_id"])
         .maybe_single()
         .execute()
-        .data
     )
+    session = session_res.data if session_res and hasattr(session_res, "data") else None
     if not session or session["user_id"] != authed_user:
         raise HTTPException(status_code=403, detail="Access denied.")
 
