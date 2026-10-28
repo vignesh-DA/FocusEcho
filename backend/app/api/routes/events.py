@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from postgrest.exceptions import APIError as PostgrestAPIError
 from supabase import Client, create_client
 
 from ..auth import require_auth
@@ -74,7 +75,26 @@ def upsert_batch(
         if {str(row["id"]) for row in existing_owned_sessions} != set(existing_session_ids):
             raise HTTPException(status_code=403, detail="One or more events are not owned by this user.")
 
-    client.table("distraction_events").upsert(rows).execute()
+    try:
+        client.table("distraction_events").upsert(rows).execute()
+    except PostgrestAPIError as error:
+        # PostgREST constraint errors should be a client response, not an
+        # unhandled 500. Do not leak SQL, table details, or raw server text.
+        code = str(getattr(error, "code", "") or "")
+        if code == "23503":  # foreign-key violation
+            raise HTTPException(
+                status_code=400,
+                detail="Event references a session that does not exist.",
+            ) from None
+        if code == "23505":  # duplicate event key
+            raise HTTPException(
+                status_code=409,
+                detail="An event with this id already exists.",
+            ) from None
+        raise HTTPException(
+            status_code=400,
+            detail="Event batch violates the database schema.",
+        ) from None
     return {"inserted": len(rows)}
 
 

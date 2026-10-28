@@ -3,6 +3,7 @@ package com.focusecho.ai
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.AppOpsManager
 import android.app.PendingIntent
 import android.app.Service
 import android.app.usage.UsageStatsManager
@@ -30,6 +31,7 @@ class FocusDetectionService : Service() {
     private var continuousDistractionStartMs: Long = 0L
     private var lastNudgeSentMs: Long = 0L
     private var currentDistractionLevel: Int = 1
+    private var usageAccessWarningPosted = false
     private var screenReceiver: BroadcastReceiver? = null
     private var simulationReceiver: BroadcastReceiver? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -107,7 +109,25 @@ class FocusDetectionService : Service() {
     private fun detectForegroundApp() {
         if (!cachedSessionActive) return
 
-        val packageName = getForegroundPackageName() ?: return
+        val packageName = getForegroundPackageName()
+        if (packageName == null) {
+            if (!hasUsageAccess()) {
+                if (!usageAccessWarningPosted) {
+                    usageAccessWarningPosted = true
+                    postUsageAccessRevokedWarning()
+                    sendOrBuffer(
+                        JSONObject()
+                            .put("eventType", "usage_access_revoked")
+                            .put("timestamp", Instant.now().toString())
+                            .toString()
+                    )
+                }
+            } else {
+                usageAccessWarningPosted = false
+            }
+            return
+        }
+        usageAccessWarningPosted = false
         val now = System.currentTimeMillis()
         val label = getAppLabel(packageName)
 
@@ -216,6 +236,7 @@ class FocusDetectionService : Service() {
             this,
             3000 + relapse,
             Intent(this, InterventionActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra(InterventionActivity.EXTRA_LEVEL, level)
                 putExtra(InterventionActivity.EXTRA_COUNT, relapse)
                 putExtra(InterventionActivity.EXTRA_APP_LABEL, appLabel)
@@ -238,9 +259,14 @@ class FocusDetectionService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val elapsedNudges = (elapsedMs / NUDGE_REPEAT_INTERVAL_MS).coerceAtLeast(1L)
+        val elapsedSeconds = (elapsedMs / 1_000L).coerceAtLeast(0L)
+        val driftLabel = if (elapsedSeconds >= 60L) {
+            "${elapsedSeconds / 60L}m drift"
+        } else {
+            "${elapsedSeconds}s drift"
+        }
         val title = if (isRepeat) {
-            "⚠️ Still on $appLabel? (${elapsedNudges}m drift)"
+            "⚠️ Still on $appLabel? ($driftLabel)"
         } else {
             "⚠️ Focus check — $appLabel detected (L$level)"
         }
@@ -330,6 +356,39 @@ class FocusDetectionService : Service() {
         return latestPackage
     }
 
+    private fun hasUsageAccess(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        return appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            android.os.Process.myUid(),
+            packageName,
+        ) == AppOpsManager.MODE_ALLOWED
+    }
+
+    private fun postUsageAccessRevokedWarning() {
+        val openApp = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pending = openApp?.let {
+            PendingIntent.getActivity(
+                this, 6201, it,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        }
+        getSystemService(NotificationManager::class.java).notify(
+            USAGE_ACCESS_WARNING_ID,
+            NotificationCompat.Builder(this, DISTRACTION_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Usage Access Revoked")
+                .setContentText("Focus detection paused. Re-enable Usage Access to continue.")
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ERROR)
+                .setAutoCancel(true)
+                .setContentIntent(pending)
+                .build(),
+        )
+    }
+
     private fun getAppLabel(packageName: String): String {
         return try {
             val info = packageManager.getApplicationInfo(packageName, 0)
@@ -406,6 +465,7 @@ class FocusDetectionService : Service() {
         private const val DISTRACTION_CHANNEL_ID = "distraction_alert_channel_v2"
         private const val LEGACY_DISTRACTION_CHANNEL_ID = "distraction_alert_channel"
         private const val ACTIVE_DISTRACTION_NOTIF_ID = 2001
+        private const val USAGE_ACCESS_WARNING_ID = 2003
         private const val LEGACY_REPEAT_NUDGE_NOTIF_ID = 2002
         private val VIBRATION_PATTERN = longArrayOf(0L, 350L, 200L, 350L)
         private const val WAKE_LOCK_TIMEOUT_MS = 10 * 60 * 1000L

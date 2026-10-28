@@ -262,6 +262,15 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       // Feature 2 — escalation level computed by the native relapse ladder.
       final escalationLevel = (map['escalation_level'] as num?)?.toInt() ?? 1;
 
+      if (eventType == 'usage_access_revoked') {
+        state = state.copyWith(
+          crossSurfaceNudge:
+              'Usage Access was revoked. Focus detection is paused; re-enable it in Android Settings.',
+        );
+        await _ackNativeEvent(deliveryId);
+        return;
+      }
+
       // Feature 2 — intervention lifecycle events emitted by the native layer.
       if (eventType == 'intervention_shown' ||
           eventType == 'intervention_action') {
@@ -539,6 +548,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       return false;
     }
 
+    final events = await _eventDao.getEventsForSession(session.id);
+    final distractionCount =
+        events.where((event) => event.eventType == 'distraction').length;
+
     // Compute how many seconds have elapsed since the session started,
     // accounting for the time the process was dead.
     final alreadyElapsed =
@@ -556,10 +569,10 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       isActive: true,
       session: session,
       elapsedSeconds: alreadyElapsed,
-      distractionCount: 0,
+      distractionCount: distractionCount,
       sessionXp: 0,
       intent: session.intent,
-      escalationLevel: 1,
+      escalationLevel: _levelForRelapse(distractionCount),
       sessionSummary: null,
       liveDistractionFeed: const [],
       sessionSummaryStats: null,
@@ -725,7 +738,7 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       // returned_at (recovered_at) backfill even if the original event was
       // already synced before the user returned.
       await _eventDao.markAsUnsynced(eventId);
-      final gained = seconds < AppRiskThresholds.mediumRecoverySeconds
+      final gained = seconds <= AppRiskThresholds.slowRecoverySeconds
           ? AppXP.recoveryXp
           : AppXP.slowRecoveryXp;
       FELog.i(
@@ -1036,9 +1049,9 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
   }
 
   /// Feature 2 — user chose "Take a Break" (level 2-3 full-screen alert).
-  void takeBreakFromIntervention() {
-    state = state.copyWith(showAlert: false);
+  Future<void> takeBreakFromIntervention() async {
     unawaited(_logIntervention(state.escalationLevel, 'take_break'));
+    await _pauseSessionForBreak();
   }
 
   /// Feature 2 — user chose "Pause Session" (level 3+ forced choice).
@@ -1114,6 +1127,39 @@ class FocusSessionViewModel extends StateNotifier<FocusSessionState> {
       }
     }
     await _prefs.setBool(AppKeys.sessionActive, false);
+  }
+
+  /// Resume a break-paused session without creating a new session row.
+  Future<bool> resumePausedSession() async {
+    if (state.isActive || state.session == null) return false;
+    final session = state.session!;
+    final events = await _eventDao.getEventsForSession(session.id);
+    final distractionCount =
+        events.where((event) => event.eventType == 'distraction').length;
+    _engine.reset();
+    _engine.configure(_buildConfig(session.productiveApp));
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      state = state.copyWith(elapsedSeconds: state.elapsedSeconds + 1);
+    });
+    state = state.copyWith(
+      isActive: true,
+      distractionCount: distractionCount,
+      escalationLevel: _levelForRelapse(distractionCount),
+      showAlert: false,
+    );
+    await _prefs.setBool(AppKeys.sessionActive, true);
+    if (!kIsWeb) {
+      try {
+        await _sessionChannel.invokeMethod<void>('startSession');
+      } catch (error) {
+        _timer?.cancel();
+        state = state.copyWith(isActive: false);
+        await _prefs.setBool(AppKeys.sessionActive, false);
+        rethrow;
+      }
+    }
+    return true;
   }
 
   FocusDetectionConfig _buildConfig(String focusApp) {

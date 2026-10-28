@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -235,7 +237,7 @@ class FocusSessionScreen extends ConsumerWidget {
                   'Unknown app',
               sessionIntent: state.session?.intent ?? state.intent,
               onReturnToFocus: vm.returnToFocusFromIntervention,
-              onTakeBreak: vm.takeBreakFromIntervention,
+              onTakeBreak: () => unawaited(vm.takeBreakFromIntervention()),
               onPauseSession: vm.pauseSessionFromIntervention,
             ),
         ],
@@ -927,6 +929,19 @@ class _SessionSetupViewState extends State<_SessionSetupView> {
                     }).toList(),
                   ),
                   const SizedBox(height: 28),
+
+                  if (state.session != null) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        key: const ValueKey('resume-focus-session'),
+                        onPressed: vm.resumePausedSession,
+                        icon: const Icon(Icons.play_arrow_rounded),
+                        label: const Text('Resume Focus Session'),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
 
                   // ── Section 4: Start Action Button ─────────────────────────
                   InkWell(

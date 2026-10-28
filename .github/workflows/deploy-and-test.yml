@@ -1,0 +1,173 @@
+name: FocusEcho Live CI/CD Deployment & E2E Testing
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      base_url_override:
+        description: 'Optional custom BASE_URL override (MANDATORY: Must be live URL, never localhost)'
+        required: false
+        default: ''
+
+# Concurrent deployment management
+concurrency:
+  group: 'pages'
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+env:
+  PYTHON_VERSION: '3.12'
+  DEFAULT_BASE_URL: 'https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/'
+
+jobs:
+  # ====================================================================
+  # BUILD & DEPLOYMENT JOB
+  # ====================================================================
+  deploy:
+    name: Build & Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 'Stage 1: Repository Checkout'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: 'Stage 2: Dependency Installation (Build)'
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests beautifulsoup4
+
+      - name: 'Stage 3: Build Application'
+        run: |
+          python scripts/build_web.py
+
+      - name: 'Stage 4: Static Analysis'
+        run: |
+          echo "Verifying build artifact integrity..."
+          test -f dist/index.html || { echo "dist/index.html is missing!"; exit 1; }
+          test -d dist/css || { echo "dist/css/ is missing!"; exit 1; }
+          test -d dist/js || { echo "dist/js/ is missing!"; exit 1; }
+          echo "Static analysis passed: All web assets bundled cleanly."
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'dist'
+
+      - name: 'Stage 5: Deploy to GitHub Pages'
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ====================================================================
+  # LIVE E2E TESTING & REPORTING JOB
+  # ====================================================================
+  e2e-testing:
+    name: Live E2E Testing against GitHub Pages
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Stage 1: Repository Checkout'
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 'Stage 2: Dependency Installation (Selenium & Reporting)'
+        run: |
+          python -m pip install --upgrade pip
+          pip install selenium==4.48.0 openpyxl==3.1.5 requests beautifulsoup4 pytest==8.3.5
+
+      - name: Set up Headless Chrome Browser
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+
+      - name: Configure Live Deployment Base URL
+        id: config_url
+        run: |
+          # Priority: Manual input -> Environment secret/var -> Deployed Pages URL -> Default repo Pages URL
+          RESOLVED_URL="${{ inputs.base_url_override || vars.BASE_URL || needs.deploy.outputs.page_url || env.DEFAULT_BASE_URL }}"
+          # Ensure trailing slash
+          [[ "${RESOLVED_URL}" != */ ]] && RESOLVED_URL="${RESOLVED_URL}/"
+          echo "BASE_URL=${RESOLVED_URL}" >> $GITHUB_ENV
+          echo "Target BASE_URL is set to: ${RESOLVED_URL}"
+
+      - name: 'Stage 6: Wait for Deployment Availability'
+        run: |
+          echo "Waiting 15 seconds for DNS & CDN cache propagation on GitHub Pages..."
+          sleep 15
+
+      - name: 'Stage 7: Deployment Verification'
+        run: |
+          echo "Validating LIVE deployment availability on: $BASE_URL"
+          python -m automation.utils.deployment_verifier
+
+      - name: 'Stage 8: Run Selenium E2E Tests'
+        id: run_e2e
+        run: |
+          echo "Executing 400+ E2E Test Cases against LIVE deployment..."
+          python -m automation.runner
+
+      - name: 'Stage 9 & 10: Verify Report Generation'
+        if: always()
+        run: |
+          echo "Verifying generated report artifacts..."
+          ls -la "Test Results/Excel" || true
+          ls -la "Test Results/HTML" || true
+          ls -la "Test Results/JSON" || true
+          ls -la "Test Results/Summary" || true
+
+      - name: 'Stage 11: Upload Artifacts'
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FocusEcho-E2E-Automation-Reports
+          path: |
+            Test Results/Excel/*.xlsx
+            Test Results/HTML/*.html
+            Test Results/Screenshots/*
+            Test Results/Logs/*.log
+            Test Results/JSON/*.json
+            Test Results/Summary/*.md
+          retention-days: 30
+
+      - name: 'Stage 12: Publish Summary'
+        if: always()
+        run: |
+          if [ -f "Test Results/Summary/summary.md" ]; then
+            cat "Test Results/Summary/summary.md" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Live GitHub Pages E2E Execution Summary" >> $GITHUB_STEP_SUMMARY
+            echo "Execution completed. Check uploaded artifacts for details." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: 'Stage 13: Store Historical Results'
+        if: always()
+        run: |
+          mkdir -p .historical_results
+          TIMESTAMP=$(date -u +"%Y%m%d_%H%M%S")
+          if [ -f "Test Results/JSON/execution-results.json" ]; then
+            cp "Test Results/JSON/execution-results.json" ".historical_results/results_${TIMESTAMP}.json"
+            echo "Stored historical run record for ${TIMESTAMP}"
+          fi

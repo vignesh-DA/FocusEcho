@@ -122,6 +122,7 @@ class AppXP {
 class AppRiskThresholds {
   static const highRiskEventsIn30Min = 3;
   static const criticalRepeatSameApp = 2;
-  static const mediumRecoverySeconds = 10;
+  static const mediumRecoverySeconds = 20;
+  static const slowRecoverySeconds = 30;
   static const recentWindowMinutes = 30;
 }

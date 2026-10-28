@@ -62,3 +62,6 @@ browser_extension/test-results/
 *.log
 !browser_extension/test-results/console.log
 _pptx_extracted/
+dist/
+Test Results/
+.historical_results/
