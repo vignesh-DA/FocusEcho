@@ -30,8 +30,10 @@ class ResponsivePage(BasePage):
     """Verifies layout adjustments across responsive viewport breakpoints."""
 
     def set_viewport(self, width: int, height: int) -> None:
-        """Resize browser window to target dimensions."""
+        """Resize browser window to target dimensions and wait for viewport reflow."""
         self.driver.set_window_size(width, height)
+        import time
+        time.sleep(0.35)
 
     def is_mobile_toggle_visible(self) -> bool:
         """Check if mobile hamburger button is visible at current breakpoint."""

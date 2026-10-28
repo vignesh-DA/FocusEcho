@@ -38,6 +38,14 @@ def run_all_e2e_tests() -> int:
         logger.error(str(val_err))
         return 1
 
+    # Clean previous screenshots from older runs
+    from automation.config.config import SCREENSHOT_DIR
+    for old_img in SCREENSHOT_DIR.glob("*.png"):
+        try:
+            old_img.unlink()
+        except Exception:
+            pass
+
     driver = None
     all_results = []
     start_time = time.time()
