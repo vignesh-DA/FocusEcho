@@ -48,7 +48,8 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     final hasSkippedLogin = prefs.getBool(AppKeys.hasSkippedLogin) ?? false;
     var isLoggedIn = false;
     try {
-      isLoggedIn = Supabase.instance.client.auth.currentUser != null;
+      final user = Supabase.instance.client.auth.currentUser;
+      isLoggedIn = user != null && (!kIsWeb || !user.isAnonymous);
     } catch (_) {
       // Local sessions remain available if Supabase is not configured.
     }

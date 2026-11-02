@@ -38,8 +38,11 @@ class AppRouter {
         final hasSkipped = prefs.getBool(AppKeys.hasSkippedLogin) ?? false;
         var isLoggedIn = false;
         try {
-          isLoggedIn =
-              Supabase.instance.client.auth.currentUser != null;
+          final user = Supabase.instance.client.auth.currentUser;
+          // Web sign-in must be explicit. The anonymous bootstrap identity is
+          // retained so OTP can upgrade it without losing locally owned data,
+          // but it must not skip the login step in the product journey.
+          isLoggedIn = user != null && (!kIsWeb || !user.isAnonymous);
         } catch (_) {
           // Supabase is unavailable; the offline app can still render.
         }
