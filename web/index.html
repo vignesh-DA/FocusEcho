@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusEcho AI — Live Productivity Platform</title>
+  <meta name="description" content="FocusEcho AI - Real-time focus recovery, digital productivity, and behavioral coaching platform.">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+</head>
+<body class="theme-dark">
+  <!-- Skip link for accessibility -->
+  <a href="#main-content" class="skip-to-content" id="skip-link">Skip to main content</a>
+
+  <!-- Global Alert / Network Banner -->
+  <div id="global-alert" class="global-alert hidden" role="alert" aria-live="assertive">
+    <span id="alert-message">System notification</span>
+    <button id="alert-close-btn" class="icon-btn" aria-label="Close notification">&times;</button>
+  </div>
+
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside id="app-sidebar" class="sidebar" role="navigation" aria-label="Main Navigation">
+      <div class="sidebar-brand">
+        <div class="brand-logo" id="brand-logo">⚡</div>
+        <div class="brand-info">
+          <h1 class="brand-title" id="app-title">FocusEcho AI</h1>
+          <span class="brand-badge" id="app-version-badge">v2.4 Pro</span>
+        </div>
+        <button id="sidebar-toggle-btn" class="mobile-toggle-btn" aria-label="Toggle navigation drawer">☰</button>
+      </div>
+
+      <nav class="nav-menu" id="main-nav-menu">
+        <a href="#dashboard" class="nav-item active" id="nav-dashboard" data-section="dashboard" role="button">
+          <span class="nav-icon">📊</span>
+          <span class="nav-label">Dashboard</span>
+        </a>
+        <a href="#timer" class="nav-item" id="nav-timer" data-section="timer" role="button">
+          <span class="nav-icon">⏱️</span>
+          <span class="nav-label">Focus Timer</span>
+        </a>
+        <a href="#parking-lot" class="nav-item" id="nav-parking-lot" data-section="parking-lot" role="button">
+          <span class="nav-icon">🧠</span>
+          <span class="nav-label">Parking Lot</span>
+          <span class="badge" id="parking-count-badge">0</span>
+        </a>
+        <a href="#analytics" class="nav-item" id="nav-analytics" data-section="analytics" role="button">
+          <span class="nav-icon">📈</span>
+          <span class="nav-label">Analytics</span>
+        </a>
+        <a href="#coach" class="nav-item" id="nav-coach" data-section="coach" role="button">
+          <span class="nav-icon">🤖</span>
+          <span class="nav-label">EchoCoach AI</span>
+        </a>
+        <a href="#reflection" class="nav-item" id="nav-reflection" data-section="reflection" role="button">
+          <span class="nav-icon">⭐</span>
+          <span class="nav-label">Reflection</span>
+        </a>
+        <a href="#settings" class="nav-item" id="nav-settings" data-section="settings" role="button">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Settings</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-user" id="sidebar-user-card">
+        <div class="user-avatar" id="nav-user-avatar">FE</div>
+        <div class="user-meta">
+          <div class="user-name" id="nav-user-name">Guest User</div>
+          <div class="user-role" id="nav-user-role">Free Tier</div>
+        </div>
+        <button id="auth-modal-open-btn" class="btn btn-secondary btn-sm" aria-label="Login or sign up">Sign In</button>
+        <button id="auth-logout-btn" class="btn btn-danger btn-sm hidden" aria-label="Log out">Sign Out</button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main id="main-content" class="main-content" role="main">
+      <!-- Top Bar -->
+      <header class="topbar" id="app-topbar">
+        <div class="topbar-left">
+          <h2 class="page-heading" id="page-heading">Dashboard Overview</h2>
+          <div class="breadcrumb" id="breadcrumbs" aria-label="Breadcrumb navigation">Home &gt; Dashboard</div>
+        </div>
+
+        <div class="topbar-right">
+          <!-- Live Status Indicator -->
+          <div class="status-indicator online" id="sync-status" title="Cloud Sync Active">
+            <span class="status-dot"></span>
+            <span class="status-text" id="sync-status-text">Cloud Sync: Active</span>
+          </div>
+
+          <!-- Theme Toggle -->
+          <button id="theme-toggle-btn" class="btn btn-icon" aria-label="Toggle visual theme">🌓</button>
+
+          <!-- Quick Action: New Session -->
+          <button id="quick-start-session-btn" class="btn btn-primary" aria-label="Start Quick Focus Session">
+            <span>⚡ Start Session</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- SECTION: Dashboard -->
+      <section id="section-dashboard" class="content-section active">
+        <!-- Metric Cards -->
+        <div class="metrics-grid">
+          <div class="metric-card glass" id="metric-focus-time">
+            <div class="metric-icon">⏳</div>
+            <div class="metric-body">
+              <span class="metric-label">Today Focus Time</span>
+              <h3 class="metric-value" id="val-today-focus">3h 45m</h3>
+              <span class="metric-trend positive" id="trend-focus">+14% vs yesterday</span>
+            </div>
+          </div>
+
+          <div class="metric-card glass" id="metric-streak">
+            <div class="metric-icon">🔥</div>
+            <div class="metric-body">
+              <span class="metric-label">Current Streak</span>
+              <h3 class="metric-value" id="val-streak">7 Days</h3>
+              <span class="metric-trend neutral" id="trend-streak">Rank: Zen Monk</span>
+            </div>
+          </div>
+
+          <div class="metric-card glass" id="metric-distractions">
+            <div class="metric-icon">🛡️</div>
+            <div class="metric-body">
+              <span class="metric-label">Distractions Blocked</span>
+              <h3 class="metric-value" id="val-distractions">28</h3>
+              <span class="metric-trend positive" id="trend-distractions">-32% drift reduction</span>
+            </div>
+          </div>
+
+          <div class="metric-card glass" id="metric-recovery">
+            <div class="metric-icon">⚡</div>
+            <div class="metric-body">
+              <span class="metric-label">Avg Recovery Speed</span>
+              <h3 class="metric-value" id="val-recovery">4.2s</h3>
+              <span class="metric-trend positive" id="trend-recovery">Top 5% speed</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Dashboard Charts & Activities -->
+        <div class="dashboard-layout-grid">
+          <div class="dashboard-card glass" id="card-weekly-activity">
+            <div class="card-header">
+              <h4 class="card-title">Weekly Focus Hours</h4>
+              <span class="badge badge-accent">Live Telemetry</span>
+            </div>
+            <div class="card-body">
+              <div class="bar-chart" id="chart-weekly-focus">
+                <div class="chart-col" data-day="Mon"><div class="bar" style="height: 60%;" title="Mon: 3.5h"></div><span>Mon</span></div>
+                <div class="chart-col" data-day="Tue"><div class="bar" style="height: 80%;" title="Tue: 5.0h"></div><span>Tue</span></div>
+                <div class="chart-col" data-day="Wed"><div class="bar" style="height: 45%;" title="Wed: 2.8h"></div><span>Wed</span></div>
+                <div class="chart-col" data-day="Thu"><div class="bar" style="height: 90%;" title="Thu: 5.8h"></div><span>Thu</span></div>
+                <div class="chart-col" data-day="Fri"><div class="bar" style="height: 75%;" title="Fri: 4.6h"></div><span>Fri</span></div>
+                <div class="chart-col" data-day="Sat"><div class="bar" style="height: 30%;" title="Sat: 2.0h"></div><span>Sat</span></div>
+                <div class="chart-col" data-day="Sun"><div class="bar" style="height: 50%;" title="Sun: 3.2h"></div><span>Sun</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="dashboard-card glass" id="card-recent-sessions">
+            <div class="card-header">
+              <h4 class="card-title">Recent Focus Sessions</h4>
+              <button id="view-all-sessions-btn" class="btn btn-secondary btn-sm">View All</button>
+            </div>
+            <div class="card-body">
+              <div class="table-container">
+                <table class="data-table" id="table-recent-sessions">
+                  <thead>
+                    <tr>
+                      <th>Title</th>
+                      <th>Tag</th>
+                      <th>Duration</th>
+                      <th>Score</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tbody-recent-sessions">
+                    <tr data-session-id="sess-101">
+                      <td>System Architecture Draft</td>
+                      <td><span class="tag tag-work">Work</span></td>
+                      <td>50 min</td>
+                      <td>⭐ 4.8</td>
+                      <td><button class="btn btn-icon btn-sm delete-session-btn" data-id="sess-101" aria-label="Delete Session">🗑️</button></td>
+                    </tr>
+                    <tr data-session-id="sess-102">
+                      <td>Algorithm Optimization</td>
+                      <td><span class="tag tag-code">Code</span></td>
+                      <td>25 min</td>
+                      <td>⭐ 5.0</td>
+                      <td><button class="btn btn-icon btn-sm delete-session-btn" data-id="sess-102" aria-label="Delete Session">🗑️</button></td>
+                    </tr>
+                    <tr data-session-id="sess-103">
+                      <td>Research & Paper Reading</td>
+                      <td><span class="tag tag-study">Study</span></td>
+                      <td>40 min</td>
+                      <td>⭐ 4.2</td>
+                      <td><button class="btn btn-icon btn-sm delete-session-btn" data-id="sess-103" aria-label="Delete Session">🗑️</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: Focus Timer -->
+      <section id="section-timer" class="content-section">
+        <div class="timer-container glass">
+          <div class="timer-header">
+            <h3 class="timer-mode-title" id="timer-mode-label">Deep Work Focus Block</h3>
+            <span class="session-state-pill pill-idle" id="timer-state-pill">IDLE</span>
+          </div>
+
+          <!-- Circle Timer Display -->
+          <div class="timer-display-wrap">
+            <div class="timer-circle" id="timer-circle-widget">
+              <div class="timer-time" id="timer-clock">25:00</div>
+              <div class="timer-subtext" id="timer-subtext">Ready to flow</div>
+            </div>
+          </div>
+
+          <!-- Timer Controls -->
+          <div class="timer-controls">
+            <button id="timer-start-btn" class="btn btn-primary btn-lg" aria-label="Start Focus Session">▶ Start Focus</button>
+            <button id="timer-pause-btn" class="btn btn-warning btn-lg hidden" aria-label="Pause Focus Session">⏸ Pause</button>
+            <button id="timer-resume-btn" class="btn btn-success btn-lg hidden" aria-label="Resume Focus Session">▶ Resume</button>
+            <button id="timer-stop-btn" class="btn btn-danger btn-lg hidden" aria-label="Stop Focus Session">⏹ Stop</button>
+            <button id="timer-reset-btn" class="btn btn-secondary btn-lg" aria-label="Reset Timer">🔄 Reset</button>
+          </div>
+
+          <!-- Quick Duration Presets -->
+          <div class="timer-presets" role="radiogroup" aria-label="Select Focus Duration">
+            <button class="preset-btn active" data-minutes="25" id="preset-25m">25 min (Pomodoro)</button>
+            <button class="preset-btn" data-minutes="15" id="preset-15m">15 min (Sprint)</button>
+            <button class="preset-btn" data-minutes="50" id="preset-50m">50 min (Deep Flow)</button>
+            <button class="preset-btn" data-minutes="90" id="preset-90m">90 min (Ultra)</button>
+          </div>
+
+          <!-- Session Setup Form -->
+          <form id="form-session-setup" class="session-form">
+            <div class="form-row">
+              <div class="form-group flex-2">
+                <label for="session-goal-input">Focus Intention / Goal *</label>
+                <input type="text" id="session-goal-input" name="goal" placeholder="What specific outcome will you complete?" required maxlength="120">
+                <span class="form-error" id="session-goal-error"></span>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="session-category-select">Category</label>
+                <select id="session-category-select" name="category">
+                  <option value="Deep Work">Deep Work</option>
+                  <option value="Coding">Coding</option>
+                  <option value="Writing">Writing</option>
+                  <option value="Learning">Learning</option>
+                  <option value="Creative">Creative</option>
+                </select>
+              </div>
+
+              <div class="form-group flex-1">
+                <label for="session-escalation-select">Escalation Ladder</label>
+                <select id="session-escalation-select" name="escalation">
+                  <option value="Level 1">Level 1: Gentle Nudge</option>
+                  <option value="Level 2">Level 2: Warning Banner</option>
+                  <option value="Level 3" selected>Level 3: Full Intervention</option>
+                </select>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <!-- SECTION: Parking Lot (CRUD Module) -->
+      <section id="section-parking-lot" class="content-section">
+        <div class="crud-container glass">
+          <div class="crud-header">
+            <div>
+              <h3 class="section-title">🧠 Mind Parking Lot</h3>
+              <p class="section-desc">Offload stray thoughts, urgent impulses, and random tasks without breaking deep flow.</p>
+            </div>
+            <div class="crud-stats">
+              <span id="parking-active-count" class="badge badge-accent">3 active thoughts</span>
+              <button id="clear-completed-parking-btn" class="btn btn-secondary btn-sm">Clear Completed</button>
+            </div>
+          </div>
+
+          <!-- Add Item Form -->
+          <form id="form-parking-lot" class="crud-form">
+            <div class="form-row">
+              <div class="form-group flex-3">
+                <label for="parking-item-input">Stray Thought / Task *</label>
+                <input type="text" id="parking-item-input" placeholder="e.g., Reply to client email later, buy notebook..." required maxlength="140">
+                <span class="form-error" id="parking-item-error"></span>
+              </div>
+              <div class="form-group flex-1">
+                <label for="parking-priority-select">Urgency</label>
+                <select id="parking-priority-select">
+                  <option value="Low">Low</option>
+                  <option value="Medium" selected>Medium</option>
+                  <option value="High">High</option>
+                </select>
+              </div>
+              <div class="form-group flex-1 align-end">
+                <button type="submit" id="parking-submit-btn" class="btn btn-primary full-width">+ Park Thought</button>
+              </div>
+            </div>
+          </form>
+
+          <!-- Search / Filter -->
+          <div class="filter-bar">
+            <input type="search" id="parking-search-input" placeholder="Search thoughts..." class="search-input">
+            <div class="filter-chips">
+              <button class="chip active" data-filter="all" id="filter-all">All</button>
+              <button class="chip" data-filter="active" id="filter-active">Active</button>
+              <button class="chip" data-filter="completed" id="filter-completed">Completed</button>
+            </div>
+          </div>
+
+          <!-- CRUD List Items -->
+          <div class="parking-list" id="parking-items-list" role="list">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: Analytics -->
+      <section id="section-analytics" class="content-section">
+        <div class="analytics-container">
+          <div class="metrics-grid">
+            <div class="metric-card glass">
+              <span class="metric-label">Total Sessions Completed</span>
+              <h3 class="metric-value" id="analytics-total-sessions">142</h3>
+              <span class="metric-trend positive">98.5% completion rate</span>
+            </div>
+            <div class="metric-card glass">
+              <span class="metric-label">Productive Hours Logged</span>
+              <h3 class="metric-value" id="analytics-total-hours">86.4 hrs</h3>
+              <span class="metric-trend positive">+12.4 hrs this week</span>
+            </div>
+            <div class="metric-card glass">
+              <span class="metric-label">Drift Risk Index</span>
+              <h3 class="metric-value" id="analytics-drift-risk">Low (12%)</h3>
+              <span class="metric-trend positive">Optimal flow sustained</span>
+            </div>
+            <div class="metric-card glass">
+              <span class="metric-label">Distractions Neutralized</span>
+              <h3 class="metric-value" id="analytics-distractions-neutralized">384</h3>
+              <span class="metric-trend positive">L3 Lockout: 14 saved</span>
+            </div>
+          </div>
+
+          <div class="dashboard-layout-grid">
+            <div class="dashboard-card glass">
+              <h4 class="card-title">Top Distracting Websites / Apps</h4>
+              <ul class="breakdown-list" id="list-distracting-apps">
+                <li class="breakdown-item">
+                  <span class="item-name">YouTube / Videos</span>
+                  <div class="item-bar-wrap"><div class="item-bar" style="width: 48%;"></div></div>
+                  <span class="item-pct">48%</span>
+                </li>
+                <li class="breakdown-item">
+                  <span class="item-name">Social Media (X, Reddit)</span>
+                  <div class="item-bar-wrap"><div class="item-bar" style="width: 31%;"></div></div>
+                  <span class="item-pct">31%</span>
+                </li>
+                <li class="breakdown-item">
+                  <span class="item-name">News Portals</span>
+                  <div class="item-bar-wrap"><div class="item-bar" style="width: 14%;"></div></div>
+                  <span class="item-pct">14%</span>
+                </li>
+                <li class="breakdown-item">
+                  <span class="item-name">Shopping Sites</span>
+                  <div class="item-bar-wrap"><div class="item-bar" style="width: 7%;"></div></div>
+                  <span class="item-pct">7%</span>
+                </li>
+              </ul>
+            </div>
+
+            <div class="dashboard-card glass">
+              <h4 class="card-title">Peak Focus Windows</h4>
+              <p class="card-desc">Your highest concentration spans occur between 09:00 - 11:30 AM.</p>
+              <div class="heatmap-strip" id="analytics-heatmap">
+                <div class="heat-slot heat-low" title="06:00">06h</div>
+                <div class="heat-slot heat-med" title="08:00">08h</div>
+                <div class="heat-slot heat-high" title="10:00">10h</div>
+                <div class="heat-slot heat-high" title="12:00">12h</div>
+                <div class="heat-slot heat-med" title="14:00">14h</div>
+                <div class="heat-slot heat-med" title="16:00">16h</div>
+                <div class="heat-slot heat-high" title="18:00">18h</div>
+                <div class="heat-slot heat-low" title="20:00">20h</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SECTION: EchoCoach AI -->
+      <section id="section-coach" class="content-section">
+        <div class="coach-container glass">
+          <div class="coach-header">
+            <div class="coach-avatar">🤖</div>
+            <div>
+              <h3 class="section-title">EchoCoach AI Intention & Debrief Engine</h3>
+              <p class="section-desc">AI-powered behavioral focus coaching powered by Groq & privacy-first telemetry.</p>
+            </div>
+          </div>
+
+          <div class="coach-chat-window" id="coach-messages-container">
+            <div class="coach-bubble ai">
+              <strong>EchoCoach:</strong> Welcome back! Before entering deep work, state your core objective. I will help sharpen your scope to prevent task drift.
+            </div>
+          </div>
+
+          <form id="form-coach-prompt" class="coach-input-form">
+            <input type="text" id="coach-prompt-input" placeholder="e.g. I need to write unit tests for the authentication module..." required>
+            <button type="submit" id="coach-send-btn" class="btn btn-primary">Sharpen Goal 🚀</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- SECTION: Reflection -->
+      <section id="section-reflection" class="content-section">
+        <div class="reflection-container glass">
+          <h3 class="section-title">⭐ Post-Session Reflection</h3>
+          <p class="section-desc">Close your cognitive loop. Self-evaluation trains behavioral self-regulation.</p>
+
+          <form id="form-session-reflection" class="reflection-form">
+            <div class="form-group">
+              <label>Rate Session Deep Focus Quality (1 to 5 Stars):</label>
+              <div class="star-rating" id="star-rating-group" role="radiogroup" aria-label="Focus rating">
+                <button type="button" class="star-btn" data-rating="1" aria-label="1 star">⭐</button>
+                <button type="button" class="star-btn" data-rating="2" aria-label="2 stars">⭐</button>
+                <button type="button" class="star-btn" data-rating="3" aria-label="3 stars">⭐</button>
+                <button type="button" class="star-btn active" data-rating="4" aria-label="4 stars">⭐</button>
+                <button type="button" class="star-btn" data-rating="5" aria-label="5 stars">⭐</button>
+              </div>
+              <input type="hidden" id="reflection-rating-value" value="4">
+            </div>
+
+            <div class="form-group">
+              <label>Primary Drift or Friction Encountered:</label>
+              <div class="checkbox-grid" id="drift-reasons-group">
+                <label><input type="checkbox" name="drift-reason" value="Got Stuck / Blocked" id="chk-stuck"> Got Stuck / Blocked</label>
+                <label><input type="checkbox" name="drift-reason" value="Boredom or Fatigue" id="chk-fatigue"> Boredom or Fatigue</label>
+                <label><input type="checkbox" name="drift-reason" value="Notification / Message" id="chk-notif"> Notification / Message</label>
+                <label><input type="checkbox" name="drift-reason" value="Random Impulse" id="chk-impulse"> Random Impulse</label>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="reflection-notes">Key Breakthrough or Notes:</label>
+              <textarea id="reflection-notes" rows="3" placeholder="What worked well? What to improve next session?"></textarea>
+            </div>
+
+            <button type="submit" id="reflection-submit-btn" class="btn btn-primary">Save Reflection & Log Session</button>
+            <div id="reflection-success-msg" class="success-message hidden">✅ Reflection saved successfully!</div>
+          </form>
+        </div>
+      </section>
+
+      <!-- SECTION: Settings & File Upload -->
+      <section id="section-settings" class="content-section">
+        <div class="settings-grid">
+          <!-- User Profile & Avatar Upload -->
+          <div class="settings-card glass" id="card-profile-settings">
+            <h4 class="card-title">User Profile & Avatar</h4>
+            <div class="avatar-upload-wrap">
+              <div class="avatar-preview" id="avatar-preview-box">
+                <img id="avatar-preview-img" src="" alt="User Avatar" class="hidden">
+                <span id="avatar-placeholder-text">FE</span>
+              </div>
+              <div class="avatar-actions">
+                <label for="avatar-file-input" class="btn btn-secondary btn-sm" id="avatar-upload-label">
+                  Choose New Avatar
+                </label>
+                <input type="file" id="avatar-file-input" accept="image/png,image/jpeg,image/webp" class="visually-hidden">
+                <span class="file-hint">PNG, JPG, WebP (Max 2MB)</span>
+                <span id="avatar-upload-status" class="status-msg"></span>
+              </div>
+            </div>
+
+            <form id="form-user-profile" class="mt-4">
+              <div class="form-group">
+                <label for="profile-name-input">Display Name</label>
+                <input type="text" id="profile-name-input" value="Guest User" maxlength="50" required>
+              </div>
+              <div class="form-group">
+                <label for="profile-email-input">Notification Email</label>
+                <input type="email" id="profile-email-input" placeholder="user@focusecho.ai" value="guest@focusecho.ai">
+                <span class="form-error" id="profile-email-error"></span>
+              </div>
+              <button type="submit" id="profile-save-btn" class="btn btn-primary btn-sm">Save Profile Changes</button>
+            </form>
+          </div>
+
+          <!-- Session Data Import / Export (File Upload & Download) -->
+          <div class="settings-card glass" id="card-data-management">
+            <h4 class="card-title">Session Data Import / Export</h4>
+            <p class="card-desc">Back up session history or restore from an existing JSON dataset.</p>
+
+            <div class="file-dropzone" id="sessions-dropzone">
+              <div class="dropzone-icon">📁</div>
+              <p class="dropzone-text">Drag & drop session JSON file here, or click to browse</p>
+              <input type="file" id="sessions-file-input" accept=".json,.csv" class="visually-hidden">
+              <button type="button" id="browse-sessions-file-btn" class="btn btn-secondary btn-sm">Browse File</button>
+            </div>
+            <div id="file-upload-feedback" class="file-feedback hidden"></div>
+
+            <div class="export-actions mt-4">
+              <button id="export-json-btn" class="btn btn-secondary btn-sm">📥 Export JSON Backup</button>
+              <button id="export-csv-btn" class="btn btn-secondary btn-sm">📊 Export CSV Report</button>
+            </div>
+          </div>
+
+          <!-- Cloud Sync & API Configurations -->
+          <div class="settings-card glass" id="card-cloud-settings">
+            <h4 class="card-title">Cloud Sync & Integrations</h4>
+            <div class="form-group">
+              <label for="setting-supabase-url">Supabase Sync Endpoint</label>
+              <input type="text" id="setting-supabase-url" value="https://dfqwjobcbhifvuwwroys.supabase.co" readonly>
+            </div>
+            <div class="form-group">
+              <label for="setting-backend-url">EchoCoach Backend Gateway</label>
+              <input type="text" id="setting-backend-url" value="https://focusecho.onrender.com" readonly>
+            </div>
+            <div class="toggle-group">
+              <label class="switch-label">
+                <input type="checkbox" id="setting-auto-sync" checked>
+                <span>Automatic Background Sync</span>
+              </label>
+              <label class="switch-label">
+                <input type="checkbox" id="setting-haptic-feedback" checked>
+                <span>Sound & Haptic Alerts</span>
+              </label>
+              <label class="switch-label">
+                <input type="checkbox" id="setting-error-simulation">
+                <span>Simulate Network Error (Test Mode)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- AUTHENTICATION MODAL -->
+  <div id="auth-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+    <div class="modal-dialog glass">
+      <div class="modal-header">
+        <h3 id="auth-modal-title" class="modal-title">Sign In to FocusEcho</h3>
+        <button id="auth-modal-close-btn" class="icon-btn" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="auth-tabs">
+          <button class="auth-tab active" id="tab-login" data-tab="login">Email OTP</button>
+          <button class="auth-tab" id="tab-guest" data-tab="guest">Guest Mode</button>
+        </div>
+
+        <!-- Form: Email OTP -->
+        <form id="form-auth-login" class="auth-form">
+          <div class="form-group">
+            <label for="auth-email-input">Work / Personal Email *</label>
+            <input type="email" id="auth-email-input" placeholder="developer@focusecho.ai" required>
+            <span class="form-error" id="auth-email-error"></span>
+          </div>
+
+          <div class="form-group">
+            <label for="auth-otp-input">6-Digit Security OTP (Default: 123456) *</label>
+            <input type="password" id="auth-otp-input" placeholder="••••••" maxlength="6" required>
+            <span class="form-error" id="auth-otp-error"></span>
+          </div>
+
+          <div class="form-group checkbox-row">
+            <label><input type="checkbox" id="auth-remember-me" checked> Remember this device</label>
+          </div>
+
+          <button type="submit" id="auth-submit-btn" class="btn btn-primary full-width">Verify & Authenticate</button>
+        </form>
+
+        <!-- Guest Session Explanation -->
+        <div id="auth-guest-panel" class="guest-panel hidden">
+          <p>Guest sessions store all telemetry securely inside local browser storage. You can upgrade to a cloud account anytime without data loss.</p>
+          <button id="auth-continue-guest-btn" class="btn btn-secondary full-width">Continue as Anonymous Guest</button>
+        </div>
+
+        <div id="auth-status-msg" class="status-msg mt-3"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPGRADE / ROLE PROMPT MODAL -->
+  <div id="role-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="role-modal-title">
+    <div class="modal-dialog glass">
+      <div class="modal-header">
+        <h3 id="role-modal-title" class="modal-title">Feature Gate / Pro Required</h3>
+        <button id="role-modal-close-btn" class="icon-btn" aria-label="Close modal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="role-modal-description">This advanced feature requires FocusEcho Pro tier authorization.</p>
+        <div class="modal-actions">
+          <button id="role-upgrade-btn" class="btn btn-primary">Upgrade to Pro</button>
+          <button id="role-dismiss-btn" class="btn btn-secondary">Dismiss</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/app.js"></script>
+</body>
+</html>

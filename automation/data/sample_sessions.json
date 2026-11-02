@@ -1,0 +1,24 @@
+{
+  "version": "2.4",
+  "exported_at": "2026-10-28T12:00:00Z",
+  "sessions": [
+    {
+      "id": "sess-imp-001",
+      "title": "Flutter Web Glassmorphic Shaders",
+      "category": "Coding",
+      "duration_minutes": 50,
+      "completed": true,
+      "rating": 5,
+      "drift_count": 0
+    },
+    {
+      "id": "sess-imp-002",
+      "title": "FastAPI EchoCoach Prompt Evaluation",
+      "category": "Deep Work",
+      "duration_minutes": 25,
+      "completed": true,
+      "rating": 4,
+      "drift_count": 2
+    }
+  ]
+}
