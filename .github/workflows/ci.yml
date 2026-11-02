@@ -115,35 +115,7 @@ jobs:
           FLUTTER_ANALYZE_RESULT: ${{ steps.flutter_analyze.outcome }}
           FLUTTER_TEST_RESULT: ${{ steps.flutter_test.outcome }}
           EXTENSION_RESULT: ${{ steps.extension.outcome }}
-        run: |
-          python - <<'PY'
-          import os
-          from pathlib import Path
-
-          checks = {
-              "Backend": os.environ["BACKEND_RESULT"],
-              "Flutter analyze": os.environ["FLUTTER_ANALYZE_RESULT"],
-              "Flutter tests": os.environ["FLUTTER_TEST_RESULT"],
-              "Extension": os.environ["EXTENSION_RESULT"],
-          }
-          passed = sum(result == "success" for result in checks.values())
-          total = len(checks)
-          threshold = float(os.environ["PASS_THRESHOLD_PERCENT"])
-          pass_rate = passed * 100 / total
-          gate = pass_rate >= threshold
-          lines = ["## CI check results", "", "| Check | Result |", "|---|---|"]
-          lines += [f"| {name} | {result} |" for name, result in checks.items()]
-          lines += ["", f"Pass rate: **{passed}/{total} ({pass_rate:.0f}%)** — threshold: **{threshold:g}%** — **{'PASS' if gate else 'FAIL'}**"]
-          summary = "\n".join(lines) + "\n"
-          print(summary)
-          Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(summary, encoding="utf-8")
-          Path("test-results/ci-summary.md").write_text(summary, encoding="utf-8")
-          Path("test-results/ci-gate.txt").write_text(
-              f"pass_rate={pass_rate:.0f}%\nthreshold={threshold:g}%\nresult={'PASS' if gate else 'FAIL'}\n",
-              encoding="utf-8",
-          )
-          raise SystemExit(0 if gate else 1)
-PY
+        run: python scripts/evaluate_gate.py
 
       - name: Upload test reports and raw output
         if: always()
