@@ -108,6 +108,12 @@
       color: #ffffff;
     }
     .btn-primary:hover { background: #2ea043; }
+    .btn-secondary {
+      background: #21262d;
+      color: #c9d1d9;
+      border: 1px solid #30363d;
+    }
+    .btn-secondary:hover { background: #30363d; color: #e6edf3; }
     .btn-danger {
       background: #da3633;
       color: #ffffff;
@@ -139,23 +145,126 @@
     .parking-list li span { flex: 1; word-break: break-word; }
     .parking-remove { border: 0; background: transparent; color: #8b949e; cursor: pointer; }
     .parking-note { color: #8b949e; font-size: 11px; margin-top: 6px; }
+
+    /* ---- Tab Picker ---- */
+    .step-label {
+      font-size: 11px;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: block;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      color: #8b949e;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 0;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .back-btn:hover { color: #e6edf3; }
+
+    #tab-picker-list {
+      max-height: 180px;
+      overflow-y: auto;
+      margin-bottom: 10px;
+    }
+    .tab-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1.5px solid #30363d;
+      margin-bottom: 6px;
+      cursor: pointer;
+      background: #0d1117;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .tab-card:hover { border-color: #58a6ff; background: #161b22; }
+    .tab-card.selected { border-color: #58a6ff; background: rgba(88,166,255,0.08); }
+    .tab-card img {
+      width: 16px;
+      height: 16px;
+      object-fit: contain;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .tab-card .tab-info { flex: 1; min-width: 0; }
+    .tab-card .tab-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #e6edf3;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tab-card .tab-host { font-size: 10px; color: #8b949e; }
+
+    /* Target work tab select in active view */
+    select {
+      width: 100%;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      color: #e6edf3;
+      padding: 7px 10px;
+      font-size: 12px;
+      margin-bottom: 6px;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: #58a6ff; }
+    .target-tab-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      color: #3fb950;
+      margin-bottom: 4px;
+    }
+    .target-tab-row .tab-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #3fb950;
+      flex-shrink: 0;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="brand">
-      <span>⚡</span> FocusEcho
+      <span>&#x26A1;</span> FocusEcho
     </div>
     <span class="status-badge status-idle" id="badge-status">IDLE</span>
   </div>
 
-  <!-- Idle State View -->
+  <!-- Idle State: Step 1 — Intention -->
   <div id="view-idle">
     <div class="card">
+      <span class="step-label">Step 1 of 2 &#x2014; Your Goal</span>
       <label class="label">What are you working on?</label>
       <input type="text" id="input-intention" placeholder="e.g. Design Architecture or Write Report" />
+      <button class="btn btn-primary" id="btn-next">
+        Next &#x2014; Pick Work Tab &#x2192;
+      </button>
+    </div>
+  </div>
+
+  <!-- Idle State: Step 2 — Tab Picker -->
+  <div id="view-tab-pick" style="display: none;">
+    <div class="card">
+      <button class="back-btn" id="btn-back">&#x2190; Back</button>
+      <span class="step-label">Step 2 of 2 &#x2014; &#x1F3AF; Target Work Tab</span>
+      <div id="tab-picker-list">
+        <!-- Rendered dynamically by popup.js -->
+      </div>
       <button class="btn btn-primary" id="btn-start">
-        ▶ Start Focus Session
+        &#x25B6; Start Focus Session
       </button>
     </div>
   </div>
@@ -173,8 +282,21 @@
         <span>Current state</span>
         <span class="stats-val" id="val-state">MONITORING</span>
       </div>
+
+      <!-- Live target-tab selector -->
+      <div style="margin-top: 12px; padding-top: 8px; border-top: 1px solid #21262d;">
+        <label class="label" style="margin-bottom: 4px;">&#x1F3AF; Target Work Tab</label>
+        <select id="productive-tab-select">
+          <option value="">Auto (Last Active Work Tab)</option>
+        </select>
+        <div class="target-tab-row" id="target-tab-label" style="display:none;">
+          <span class="tab-dot"></span>
+          <span id="target-tab-name">&#x2014;</span>
+        </div>
+      </div>
+
       <button class="btn btn-danger" id="btn-stop" style="margin-top: 12px;">
-        ■ End Session
+        &#x25A0; End Session
       </button>
     </div>
     <div class="card">
@@ -187,10 +309,10 @@
   </div>
 
   <div class="footer">
-    <div class="cloud-pill" title="Events write to Supabase & Backend">
-      <span>☁️</span> Cloud Synced
+    <div class="cloud-pill" title="Events write to Supabase &amp; Backend">
+      <span>&#x2601;&#xFE0F;</span> Cloud Synced
     </div>
-    <a href="#" id="opt-link">Options & Debug ⚙️</a>
+    <a href="#" id="opt-link">Options &amp; Debug &#x2699;&#xFE0F;</a>
   </div>
 
   <script src="popup.js"></script>

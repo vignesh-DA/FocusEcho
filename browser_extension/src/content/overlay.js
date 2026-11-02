@@ -267,6 +267,72 @@
   }
 
   // ---------------------------------------------------------------------------
+  // "Back in Flow" Recovery Toast — shown on the productive work tab
+  // ---------------------------------------------------------------------------
+  function showRecoveryToast(remainingMinutes) {
+    // Remove any existing recovery toast
+    const existing = document.getElementById('__fe_recovery_toast__');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = '__fe_recovery_toast__';
+
+    const timeText = (remainingMinutes != null && remainingMinutes > 0)
+      ? ` &#x2022; ~${remainingMinutes}m left`
+      : '';
+
+    toast.innerHTML = `
+      <div style="
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 2147483647;
+        pointer-events: none;
+        background: linear-gradient(135deg, #0d1f12 0%, #0a1a0a 100%);
+        border: 1.5px solid #2ea043;
+        border-radius: 999px;
+        padding: 10px 18px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 13px;
+        font-weight: 600;
+        color: #3fb950;
+        box-shadow: 0 4px 20px rgba(46, 160, 67, 0.35), 0 2px 8px rgba(0,0,0,0.5);
+        opacity: 0;
+        transform: translateX(20px);
+        transition: opacity 0.25s ease, transform 0.25s ease;
+        white-space: nowrap;
+        max-width: 320px;
+      " id="__fe_recovery_pill__">
+        <span style="font-size:15px;">&#x26A1;</span>
+        <span>Back in flow &#x2014; Keep going!${timeText}</span>
+      </div>`;
+
+    document.documentElement.appendChild(toast);
+
+    // Animate in
+    requestAnimationFrame(() => {
+      const pill = document.getElementById('__fe_recovery_pill__');
+      if (pill) {
+        pill.style.opacity = '1';
+        pill.style.transform = 'translateX(0)';
+      }
+    });
+
+    // Animate out and remove after 2.5 s
+    setTimeout(() => {
+      const pill = document.getElementById('__fe_recovery_pill__');
+      if (pill) {
+        pill.style.opacity = '0';
+        pill.style.transform = 'translateX(20px)';
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, 2500);
+  }
+
+  // ---------------------------------------------------------------------------
   // Message Listener from Background Service Worker
   // ---------------------------------------------------------------------------
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -289,6 +355,12 @@
     if (message.type === 'fe:hide_overlay') {
       hideOverlay();
       sendResponse?.({ ok: true, hidden: true });
+      return true;
+    }
+
+    if (message.type === 'SHOW_RECOVERY_TOAST') {
+      showRecoveryToast(message.remainingMinutes ?? null);
+      sendResponse?.({ ok: true });
       return true;
     }
   });

@@ -141,6 +141,12 @@ export const SK = /** @type {const} */ ({
   CONFIG:               'fe_config',
   EVENT_QUEUE:          'fe_event_queue',
   DASHBOARD_TAB_ID:     'fe_dashboard_tab_id',
+
+  // Productive Tab Waterfall (local storage — persists across popup open/close)
+  /** Explicitly chosen productive tab from the popup when starting a session. */
+  PINNED_TAB_ID:            'pinned_tab_id',
+  /** Automatically tracked last active non-distracting tab. */
+  LAST_PRODUCTIVE_TAB_ID:   'last_productive_tab_id',
 });
 
 // ---------------------------------------------------------------------------

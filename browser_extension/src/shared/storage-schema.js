@@ -126,3 +126,28 @@ export function defaultConfig() {
  * Purge policy: remove only after (a) successful sync to backend, or
  * (b) queued_at older than QUEUE_TTL_MS (7 days). NOT purged on session end.
  */
+
+// ---------------------------------------------------------------------------
+// chrome.storage.local  (key: SK.PINNED_TAB_ID)
+// ---------------------------------------------------------------------------
+/**
+ * Explicitly chosen productive tab from the popup's "Target Work Tab" dropdown.
+ * Stored as a plain integer (Chrome tab ID). Cleared when:
+ *   - The session ends (CLEAR_SESSION action)
+ *   - The pinned tab is closed (chrome.tabs.onRemoved)
+ *   - The user picks "Auto" in the dropdown (null → key is removed)
+ *
+ * @typedef {number|null} PinnedTabId
+ */
+
+// ---------------------------------------------------------------------------
+// chrome.storage.local  (key: SK.LAST_PRODUCTIVE_TAB_ID)
+// ---------------------------------------------------------------------------
+/**
+ * Automatically tracked last active non-distracting tab.
+ * Updated on every chrome.tabs.onActivated / onUpdated where the active tab
+ * URL is http(s) and is NOT classified as a distracting site.
+ * Cleared when that tab is closed (chrome.tabs.onRemoved).
+ *
+ * @typedef {number|null} LastProductiveTabId
+ */

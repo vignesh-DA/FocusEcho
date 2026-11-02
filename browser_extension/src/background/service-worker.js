@@ -544,16 +544,86 @@ async function _executeAction(name, param, { session, distraction, event, now })
       break;
 
     case 'NAVIGATE_BACK_TO_FOCUS': {
-      // A deliberate Return to Focus action always brings the app's active
-      // session screen forward, even when strict auto-redirect is disabled.
-      const storedConfig = (await chrome.storage.local.get([
+      // 3-Tier Productive Tab Waterfall:
+      //   Priority 1 — SK.PINNED_TAB_ID    (user explicitly chose this tab in popup)
+      //   Priority 2 — SK.LAST_PRODUCTIVE_TAB_ID  (auto-tracked last non-distracting tab)
+      //   Priority 3 — FocusEcho dashboard (existing fallback)
+
+      const storedConfig = await chrome.storage.local.get([
         SK.CONFIG,
         SK.DASHBOARD_TAB_ID,
-      ]));
+        SK.PINNED_TAB_ID,
+        SK.LAST_PRODUCTIVE_TAB_ID,
+      ]);
       const config = storedConfig?.[SK.CONFIG] ?? {};
+      const distractionList = session?.distraction_list ?? [];
       const origins = (config.dashboard_origins ?? [])
         .map(value => { try { return new URL(value).origin; } catch (_) { return null; } })
         .filter(Boolean);
+
+      // Helper: verify a tab exists, is not distracting, and is not the FocusEcho dashboard.
+      // Returns the chrome.Tab object if valid, null otherwise.
+      async function resolveWorkTab(tabId) {
+        if (tabId == null) return null;
+        try {
+          const t = await chrome.tabs.get(tabId);
+          if (!t?.url || !isWebUrl(t.url)) return null;
+          if (isDistracting(normalizeHost(t.url), distractionList)) return null;
+          if (origins.some(o => t.url.startsWith(o))) return null;
+          return t;
+        } catch (_) {
+          return null;
+        }
+      }
+
+      // Helper: switch to a work tab (NO url update — preserve unsaved work/scroll).
+      // After switching, send recovery toast to the now-active tab.
+      async function switchToWorkTab(workTab) {
+        await chrome.tabs.update(workTab.id, { active: true });
+        await chrome.windows.update(workTab.windowId, { focused: true });
+        // Send non-blocking "Back in Flow" recovery toast to the target tab.
+        const remainingMinutes = session?.started_at
+          ? Math.max(0, Math.round((60 * 25 - (Date.now() - session.started_at) / 1000) / 60))
+          : null;
+        try {
+          await chrome.tabs.sendMessage(workTab.id, {
+            type: 'SHOW_RECOVERY_TOAST',
+            remainingMinutes,
+          });
+        } catch (_) {
+          // Content script may not be ready on the productive tab — that's fine,
+          // the switch itself is the important part.
+        }
+      }
+
+      // --- Priority 1: Explicitly pinned tab ---
+      const pinnedTabId = storedConfig?.[SK.PINNED_TAB_ID] ?? null;
+      if (pinnedTabId != null) {
+        const workTab = await resolveWorkTab(pinnedTabId);
+        if (workTab) {
+          await switchToWorkTab(workTab);
+          LOG.act(`switched to PINNED productive tab ${workTab.id} (${workTab.url})`);
+          break;
+        }
+        // Pinned tab closed or became distracting — clear stale key.
+        await chrome.storage.local.remove(SK.PINNED_TAB_ID);
+        LOG.warn(`pinned tab ${pinnedTabId} no longer valid — falling through to last-productive`);
+      }
+
+      // --- Priority 2: Auto-tracked last productive tab ---
+      const lastProductiveTabId = storedConfig?.[SK.LAST_PRODUCTIVE_TAB_ID] ?? null;
+      if (lastProductiveTabId != null) {
+        const workTab = await resolveWorkTab(lastProductiveTabId);
+        if (workTab) {
+          await switchToWorkTab(workTab);
+          LOG.act(`switched to LAST_PRODUCTIVE tab ${workTab.id} (${workTab.url})`);
+          break;
+        }
+        await chrome.storage.local.remove(SK.LAST_PRODUCTIVE_TAB_ID);
+        LOG.warn(`last_productive tab ${lastProductiveTabId} no longer valid — falling through to dashboard`);
+      }
+
+      // --- Priority 3: FocusEcho dashboard fallback ---
       const routeUrl = origin => `${origin}/#/focus-session`;
       const dashboardTabId = storedConfig?.[SK.DASHBOARD_TAB_ID];
 
@@ -721,6 +791,9 @@ async function _executeAction(name, param, { session, distraction, event, now })
         notifyDashboard({ type: 'fe:session_stopped', session }).catch(() => {});
       }
       await chrome.storage.session.remove([SK.SESSION, SK.CURRENT_DISTRACTION]);
+      // Clear productive tab pointers when session ends — they are session-scoped even though
+      // stored in local storage (so they survive SW restarts mid-session).
+      await chrome.storage.local.remove([SK.PINNED_TAB_ID, SK.LAST_PRODUCTIVE_TAB_ID]);
       LOG.act('session state cleared from storage');
       break;
     }
@@ -812,6 +885,12 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
       type: EV.TAB_ACTIVATED,
       payload: { tabId, host: info.host, isDistracting: distracting, windowId },
     });
+
+    // Auto-track the last productive (non-distracting) tab for the waterfall.
+    if (!distracting && info.kind === 'web') {
+      await chrome.storage.local.set({ [SK.LAST_PRODUCTIVE_TAB_ID]: tabId });
+      LOG.d(`last_productive_tab_id → ${tabId} (${info.host})`);
+    }
   } catch (e) {
     LOG.err('onActivated:', e.message);
   }
@@ -819,6 +898,23 @@ chrome.tabs.onActivated.addListener(async ({ tabId, windowId }) => {
 
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   await removeTab(tabId);
+
+  // Clear productive tab pointers if the closed tab was tracked.
+  try {
+    const stored = await chrome.storage.local.get([
+      SK.PINNED_TAB_ID,
+      SK.LAST_PRODUCTIVE_TAB_ID,
+    ]);
+    const toRemove = [];
+    if (stored[SK.PINNED_TAB_ID] === tabId)          toRemove.push(SK.PINNED_TAB_ID);
+    if (stored[SK.LAST_PRODUCTIVE_TAB_ID] === tabId) toRemove.push(SK.LAST_PRODUCTIVE_TAB_ID);
+    if (toRemove.length > 0) {
+      await chrome.storage.local.remove(toRemove);
+      LOG.d(`tab ${tabId} closed — cleared keys: [${toRemove.join(', ')}]`);
+    }
+  } catch (e) {
+    LOG.warn('onRemoved productive-tab cleanup failed:', e.message);
+  }
 });
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
