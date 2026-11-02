@@ -544,63 +544,59 @@ async function _executeAction(name, param, { session, distraction, event, now })
       break;
 
     case 'NAVIGATE_BACK_TO_FOCUS': {
-      // Opt-in Strict Setting: Forced tab redirect is only performed if strict_focus_mode is enabled.
-      // Default is FALSE to avoid involuntary tab hijacking unless explicitly enabled by the user.
-      const storedConfig = (await chrome.storage.local.get(SK.CONFIG))?.[SK.CONFIG];
-      const isStrict = Boolean(storedConfig?.strict_focus_mode ?? session?.strict_focus_mode ?? false);
-      if (!isStrict) {
-        LOG.act('NAVIGATE_BACK_TO_FOCUS skipped: strict_focus_mode is disabled (opt-in)');
-        break;
-      }
+      // A deliberate Return to Focus action always brings the app's active
+      // session screen forward, even when strict auto-redirect is disabled.
+      const storedConfig = (await chrome.storage.local.get([
+        SK.CONFIG,
+        SK.DASHBOARD_TAB_ID,
+      ]));
+      const config = storedConfig?.[SK.CONFIG] ?? {};
+      const origins = (config.dashboard_origins ?? [])
+        .map(value => { try { return new URL(value).origin; } catch (_) { return null; } })
+        .filter(Boolean);
+      const routeUrl = origin => `${origin}/#/focus-session`;
+      const dashboardTabId = storedConfig?.[SK.DASHBOARD_TAB_ID];
 
-      const targetTabId = session?.last_productive_tab_id;
-      const distractionList = session?.distraction_list ?? [];
-
-      // Helper: try to activate a known tab id; returns true on success.
-      async function tryActivate(tabId) {
+      if (dashboardTabId != null) {
         try {
-          await chrome.tabs.update(tabId, { active: true });
-          // Also bring its window to the foreground.
-          const tab = await chrome.tabs.get(tabId);
-          if (tab?.windowId) await chrome.windows.update(tab.windowId, { focused: true });
-          return true;
-        } catch (_) {
-          return false;
-        }
+          const dashboardTab = await chrome.tabs.get(dashboardTabId);
+          const currentOrigin = dashboardTab.url ? new URL(dashboardTab.url).origin : null;
+          if (currentOrigin && origins.includes(currentOrigin)) {
+            await chrome.tabs.update(dashboardTabId, {
+              url: routeUrl(currentOrigin), active: true,
+            });
+            await chrome.windows.update(dashboardTab.windowId, { focused: true });
+            LOG.act(`returned to active FocusEcho session in tab ${dashboardTabId}`);
+            break;
+          }
+        } catch (_) { /* stale dashboard tab; use configured-origin fallback */ }
       }
 
-      // 1. Try the stored productive tab first.
-      if (targetTabId && await tryActivate(targetTabId)) {
-        LOG.act(`switched to lastProductiveTab ${targetTabId}`);
-        break;
-      }
-
-      // 2. Scan all tabs for a non-distracting one to switch to.
+      // Reuse any open dashboard tab before opening a new one.
       try {
         const allTabs = await chrome.tabs.query({});
-        const currentTab = (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
-        const productive = allTabs.find(t => {
-          if (!t.url || !t.id) return false;
-          if (t.id === currentTab?.id) return false; // skip current blocked tab
-          try {
-            const host = new URL(t.url).hostname.replace(/^www\./, '');
-            return !isDistracting(host, distractionList);
-          } catch (_) {
-            return false;
-          }
+        const dashboardTab = allTabs.find(tab => {
+          try { return tab.url && origins.includes(new URL(tab.url).origin); }
+          catch (_) { return false; }
         });
-
-        if (productive && await tryActivate(productive.id)) {
-          LOG.act(`switched to non-distracting tab ${productive.id} (${productive.url})`);
+        if (dashboardTab?.id != null) {
+          const origin = new URL(dashboardTab.url).origin;
+          await chrome.tabs.update(dashboardTab.id, {
+            url: routeUrl(origin), active: true,
+          });
+          await chrome.windows.update(dashboardTab.windowId, { focused: true });
+          LOG.act(`returned to FocusEcho session in tab ${dashboardTab.id}`);
           break;
         }
       } catch (e) {
-        LOG.warn('tab scan failed:', e.message);
+        LOG.warn('dashboard tab scan failed:', e.message);
       }
-
-      // 3. Last resort: open a new tab (all existing tabs are distracting or closed).
-      await chrome.tabs.create({});
-      LOG.act('all tabs distracting or no tabs — opened new tab');
+      if (origins.length > 0) {
+        await chrome.tabs.create({ url: routeUrl(origins[0]), active: true });
+        LOG.act('opened FocusEcho active session from Return to Focus action');
+      } else {
+        LOG.warn('Return to Focus could not open dashboard: no dashboard origin configured');
+      }
       break;
     }
 
