@@ -16,25 +16,10 @@ import os
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-
-class _HTTPBearer401(HTTPBearer):
-    async def __call__(self, request: Request) -> HTTPAuthorizationCredentials | None:
-        try:
-            return await super().__call__(request)
-        except HTTPException as exc:
-            if exc.status_code == status.HTTP_403_FORBIDDEN:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=exc.detail,
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-            raise
-
-
-_bearer = _HTTPBearer401(auto_error=True)
+_bearer = HTTPBearer(auto_error=False)
 
 # The Supabase JWT secret is the project's JWT secret, available in
 # Supabase dashboard → Settings → API → JWT Settings → JWT Secret.
@@ -42,24 +27,49 @@ _bearer = _HTTPBearer401(auto_error=True)
 _JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET", "")
 _SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 
+_jwks_client: jwt.PyJWKClient | None = None
+
+
+def _get_jwks_client() -> jwt.PyJWKClient | None:
+    global _jwks_client
+    if _jwks_client is None and _SUPABASE_URL:
+        jwks_url = f"{_SUPABASE_URL.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        _jwks_client = jwt.PyJWKClient(jwks_url, cache_jwk_set=True, lifespan=3600)
+    return _jwks_client
+
 
 def _verify_supabase_token(token: str) -> str:
     """
     Verify a Supabase-issued JWT and return the subject (user UUID).
 
+    Supports both ES256 (via Supabase JWKS) and HS256 (via SUPABASE_JWT_SECRET).
     Raises HTTP 401 on any verification failure.
     """
-    if not _JWT_SECRET:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="SUPABASE_JWT_SECRET is not configured on the server.",
-        )
     try:
+        header = jwt.get_unverified_header(token)
+        alg = header.get("alg", "HS256")
+        if alg == "ES256":
+            jwks = _get_jwks_client()
+            if not jwks:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="SUPABASE_URL is not configured on the server for ES256 verification.",
+                )
+            key = jwks.get_signing_key_from_jwt(token).key
+        else:
+            if not _JWT_SECRET:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="SUPABASE_JWT_SECRET is not configured on the server.",
+                )
+            key = _JWT_SECRET
+
         payload = jwt.decode(
             token,
-            _JWT_SECRET,
-            algorithms=["HS256"],
+            key,
+            algorithms=["HS256", "ES256"],
             audience="authenticated",
+            leeway=120,
         )
         user_id: str | None = payload.get("sub")
         if not user_id:
@@ -69,13 +79,15 @@ def _verify_supabase_token(token: str) -> str:
                 headers={"WWW-Authenticate": "Bearer"},
             )
         return user_id
+    except HTTPException:
+        raise
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired. Re-authenticate and retry.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidTokenError as exc:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {exc}",

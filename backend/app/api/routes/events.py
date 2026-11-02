@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from postgrest.exceptions import APIError as PostgrestAPIError
 from supabase import Client, create_client
 
 from ..auth import require_auth
@@ -31,6 +32,11 @@ def upsert_batch(
 
     client = _client()
     rows = [event.model_dump(mode="json") for event in payload.events]
+    for row in rows:
+        if row.get("was_notification_triggered") is None:
+            row["was_notification_triggered"] = False
+        if row.get("returned_to_origin") is None:
+            row["returned_to_origin"] = False
 
     session_ids = list({row["session_id"] for row in rows})
     owned_session_rows = (
@@ -69,7 +75,26 @@ def upsert_batch(
         if {str(row["id"]) for row in existing_owned_sessions} != set(existing_session_ids):
             raise HTTPException(status_code=403, detail="One or more events are not owned by this user.")
 
-    client.table("distraction_events").upsert(rows).execute()
+    try:
+        client.table("distraction_events").upsert(rows).execute()
+    except PostgrestAPIError as error:
+        # PostgREST constraint errors should be a client response, not an
+        # unhandled 500. Do not leak SQL, table details, or raw server text.
+        code = str(getattr(error, "code", "") or "")
+        if code == "23503":  # foreign-key violation
+            raise HTTPException(
+                status_code=400,
+                detail="Event references a session that does not exist.",
+            ) from None
+        if code == "23505":  # duplicate event key
+            raise HTTPException(
+                status_code=409,
+                detail="An event with this id already exists.",
+            ) from None
+        raise HTTPException(
+            status_code=400,
+            detail="Event batch violates the database schema.",
+        ) from None
     return {"inserted": len(rows)}
 
 
@@ -80,14 +105,14 @@ def get_session_events(
 ) -> list[dict[str, Any]]:
     client = _client()
     # Verify this session belongs to the authenticated user.
-    session = (
+    session_res = (
         client.table("focus_sessions")
         .select("user_id")
         .eq("id", session_id)
         .maybe_single()
         .execute()
-        .data
     )
+    session = session_res.data if session_res and hasattr(session_res, "data") else None
     if not session:
         raise HTTPException(status_code=404, detail="Session not found.")
     if session["user_id"] != authed_user:
@@ -108,26 +133,26 @@ def recover_event(
     authed_user: Annotated[str, Depends(require_auth)],
 ) -> dict[str, Any]:
     client = _client()
-    row = (
+    row_res = (
         client.table("distraction_events")
         .select("*")
         .eq("id", event_id)
         .maybe_single()
         .execute()
-        .data
     )
+    row = row_res.data if row_res and hasattr(row_res, "data") else None
     if not row:
         raise HTTPException(status_code=404, detail="Event not found")
 
     # Verify ownership via the parent session.
-    session = (
+    session_res = (
         client.table("focus_sessions")
         .select("user_id")
         .eq("id", row["session_id"])
         .maybe_single()
         .execute()
-        .data
     )
+    session = session_res.data if session_res and hasattr(session_res, "data") else None
     if not session or session["user_id"] != authed_user:
         raise HTTPException(status_code=403, detail="Access denied.")
 

@@ -61,6 +61,30 @@ class _Client:
         return _Query([])
 
 
+class _BatchQuery(_Query):
+    def __init__(self, responses, writes):
+        super().__init__()
+        self.responses = responses
+        self.writes = writes
+
+    def upsert(self, rows):
+        self.writes.append(rows)
+        return self
+
+    def execute(self):
+        data = self.responses.pop(0) if self.responses else []
+        return type("Result", (), {"data": data})()
+
+
+class _BatchClient:
+    def __init__(self, session_rows, existing_events=None):
+        self.responses = [session_rows, existing_events or []]
+        self.writes = []
+
+    def table(self, _name):
+        return _BatchQuery(self.responses, self.writes)
+
+
 def _session_payload(user_id=_USER_A):
     return {
         "id": "session-1",
@@ -97,7 +121,12 @@ class SessionEventRouteTests(unittest.TestCase):
             "server": ("test", 80), "root_path": "",
         }
         with self.assertRaises(HTTPException) as raised:
-            auth._bearer(Request(scope)).send(None)
+            creds = None
+            try:
+                auth._bearer(Request(scope)).send(None)
+            except StopIteration as stop:
+                creds = stop.value
+            auth.require_auth(creds)
         self.assertEqual(raised.exception.status_code, 401)
 
     def test_sessions_and_events_endpoints_use_the_auth_dependency(self):
@@ -142,6 +171,32 @@ class SessionEventRouteTests(unittest.TestCase):
                     "session-1", _USER_A, FocusSessionUpdate(total_distractions=1)
                 )
         self.assertEqual(raised.exception.status_code, 403)
+
+    def test_event_batch_for_owned_session_is_upserted(self):
+        db = _BatchClient(session_rows=[{"id": "session-1"}])
+        payload = DistractionEventBatch.model_validate(
+            {"user_id": _USER_A, "events": [_event_payload()]}
+        )
+
+        with patch("app.api.routes.events._client", return_value=db):
+            result = events_routes.upsert_batch(payload, _USER_A)
+
+        self.assertEqual(result, {"inserted": 1})
+        self.assertEqual(len(db.writes), 1)
+        self.assertEqual(db.writes[0][0]["session_id"], "session-1")
+
+    def test_event_batch_for_unowned_session_is_rejected_before_upsert(self):
+        db = _BatchClient(session_rows=[])
+        payload = DistractionEventBatch.model_validate(
+            {"user_id": _USER_B, "events": [_event_payload()]}
+        )
+
+        with patch("app.api.routes.events._client", return_value=db):
+            with self.assertRaises(HTTPException) as raised:
+                events_routes.upsert_batch(payload, _USER_B)
+
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(db.writes, [])
 
     def test_501_item_event_batch_is_rejected_by_payload_schema(self):
         events = [_event_payload() for _ in range(501)]

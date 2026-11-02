@@ -17,8 +17,8 @@ class DistractionEventCreate(BaseModel):
     app_category: Optional[str] = None
     time_away_seconds: Optional[int] = None
     risk_score_numeric: Optional[float] = None
-    was_notification_triggered: Optional[bool] = None
-    returned_to_origin: Optional[bool] = None
+    was_notification_triggered: bool = False
+    returned_to_origin: bool = False
     switch_stack_depth: Optional[int] = None
     time_of_day_hour: Optional[int] = None
     day_of_week: Optional[int] = None

@@ -143,6 +143,7 @@ jobs:
               encoding="utf-8",
           )
           raise SystemExit(0 if gate else 1)
+PY
 
       - name: Upload test reports and raw output
         if: always()
