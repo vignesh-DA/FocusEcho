@@ -16,10 +16,25 @@ import os
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-_bearer = HTTPBearer(auto_error=True)
+
+class _HTTPBearer401(HTTPBearer):
+    async def __call__(self, request: Request) -> HTTPAuthorizationCredentials | None:
+        try:
+            return await super().__call__(request)
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_403_FORBIDDEN:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=exc.detail,
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            raise
+
+
+_bearer = _HTTPBearer401(auto_error=True)
 
 # The Supabase JWT secret is the project's JWT secret, available in
 # Supabase dashboard → Settings → API → JWT Settings → JWT Secret.
@@ -51,22 +66,31 @@ def _verify_supabase_token(token: str) -> str:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token payload missing subject (user id).",
+                headers={"WWW-Authenticate": "Bearer"},
             )
         return user_id
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired. Re-authenticate and retry.",
+            headers={"WWW-Authenticate": "Bearer"},
         )
     except jwt.InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {exc}",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
 
 def require_auth(
-    credentials: Annotated[HTTPAuthorizationCredentials, Depends(_bearer)],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
 ) -> str:
     """FastAPI dependency — verifies Bearer JWT, returns verified user UUID."""
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return _verify_supabase_token(credentials.credentials)
