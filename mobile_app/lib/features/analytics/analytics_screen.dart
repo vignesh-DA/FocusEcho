@@ -6,11 +6,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme/app_theme.dart';
 import '../../services/backend_analytics_service.dart';
+import '../focus_session/focus_session_viewmodel.dart';
 import 'analytics_viewmodel.dart';
 
-class AnalyticsScreen extends ConsumerWidget {
+// AnalyticsScreen is a ConsumerStatefulWidget so it can use ref.listen
+// to detect when a focus session completes and immediately reload analytics
+// without requiring the user to pull-to-refresh.
+class AnalyticsScreen extends ConsumerStatefulWidget {
   const AnalyticsScreen({super.key});
 
+  @override
+  ConsumerState<AnalyticsScreen> createState() => _AnalyticsScreenState();
+}
+
+class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   static const _weekdayNames = [
     'Mon',
     'Tue',
@@ -57,10 +66,21 @@ class AnalyticsScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final state = ref.watch(analyticsProvider);
     final vm = ref.read(analyticsProvider.notifier);
     final dayLabels = slidingDayLabels;
+
+    // Reload analytics whenever a focus session transitions from active → done.
+    // This covers both manual stop and timer expiry so charts update immediately
+    // after the user dismisses the session summary and taps Analytics.
+    ref.listen(focusSessionProvider, (previous, next) {
+      final wasActive = previous?.isActive ?? false;
+      if (wasActive && !next.isActive) {
+        ref.read(analyticsProvider.notifier).loadAnalytics();
+      }
+    });
+
     final appEntries = state.appDistribution.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final topApps = appEntries.take(5).toList();

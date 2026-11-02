@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -147,9 +146,13 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   Future<List<FocusSession>> _loadUnifiedSessions() async {
     final cloudSessions = <FocusSession>[];
     try {
-      final cutoff =
-          DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
-      // Bug 3: order by start_time descending
+      // Use UTC so the cutoff matches Supabase's timestamptz storage,
+      // preventing sessions recorded in +5:30 or any other offset from
+      // being silently dropped by an off-by-hours comparison.
+      final cutoff = DateTime.now()
+          .toUtc()
+          .subtract(const Duration(days: 7))
+          .toIso8601String();
       final rows = await Supabase.instance.client
           .from('focus_sessions')
           .select()
@@ -164,17 +167,13 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
           'Cloud session query failed (continuing with local cache): $e');
     }
 
+    // Always query local cache — it is the definitive source on Android
+    // and a write-through cache on web.
     final localSessions = <FocusSession>[];
-    if (!kIsWeb) {
-      try {
-        localSessions.addAll(await _sessionDao.getSessionHistory(60));
-      } catch (e) {
-        FELog.w('Analytics', 'Local session cache query failed: $e');
-      }
-    } else {
-      try {
-        localSessions.addAll(await _sessionDao.getSessionHistory(60));
-      } catch (_) {}
+    try {
+      localSessions.addAll(await _sessionDao.getSessionHistory(60));
+    } catch (e) {
+      FELog.w('Analytics', 'Local session cache query failed: $e');
     }
 
     // Merge into Map keyed by id with conflict resolution
@@ -191,7 +190,6 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
     }
 
     final merged = sessionMap.values.toList();
-    // Bug 3: explicitly sort unified list by startTime descending
     merged.sort((a, b) => b.startTime.compareTo(a.startTime));
     return merged;
   }
@@ -199,9 +197,9 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   /// Unified fetch & merge of distraction events from Supabase and local cache.
   Future<List<DistractionEvent>> _loadUnifiedEvents() async {
     final cloudEvents = <DistractionEvent>[];
-    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+    // UTC cutoff to match Supabase timestamptz
+    final cutoff = DateTime.now().toUtc().subtract(const Duration(days: 7));
     try {
-      // Bug 4: query directly with gte and order (eliminates inFilter URI length risk)
       final rows = await Supabase.instance.client
           .from('distraction_events')
           .select()
@@ -217,19 +215,13 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
       FELog.w('Analytics', 'Cloud event query failed: $e');
     }
 
+    // Always query local cache
     final localEvents = <DistractionEvent>[];
-    if (!kIsWeb) {
-      try {
-        localEvents.addAll(
-            await _eventDao.getRecentEvents(200, eventType: 'distraction'));
-      } catch (e) {
-        FELog.w('Analytics', 'Local event cache query failed: $e');
-      }
-    } else {
-      try {
-        localEvents.addAll(
-            await _eventDao.getRecentEvents(200, eventType: 'distraction'));
-      } catch (_) {}
+    try {
+      localEvents.addAll(
+          await _eventDao.getRecentEvents(200, eventType: 'distraction'));
+    } catch (e) {
+      FELog.w('Analytics', 'Local event cache query failed: $e');
     }
 
     final eventMap = <String, DistractionEvent>{};
@@ -430,8 +422,12 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   }
 }
 
+// autoDispose: the provider is torn down when AnalyticsScreen leaves the
+// widget tree, so navigating back to the tab always triggers a fresh
+// loadAnalytics() call — ensuring data reflects sessions completed while
+// the user was on another screen.
 final analyticsProvider =
-    StateNotifierProvider<AnalyticsViewModel, AnalyticsState>(
+    StateNotifierProvider.autoDispose<AnalyticsViewModel, AnalyticsState>(
   (ref) => AnalyticsViewModel(
     AppDependencies.sessionDao,
     AppDependencies.eventDao,
