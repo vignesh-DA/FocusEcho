@@ -42,5 +42,20 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <!-- Custom URL scheme so iOS can route the Google OAuth redirect back
+         into the app. Must match the redirectTo URI set in
+         LoginViewModel._nativeRedirectUrl ('com.focusecho.ai://login-callback')
+         and the Android intent-filter in AndroidManifest.xml. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.focusecho.ai</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

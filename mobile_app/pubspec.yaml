@@ -36,6 +36,7 @@ dependencies:
   shimmer: 3.0.0
   uuid: 4.4.0
   web: 1.1.1
+  app_links: 3.5.1
 
 dev_dependencies:
   flutter_test:

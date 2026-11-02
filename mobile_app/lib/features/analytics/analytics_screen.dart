@@ -11,7 +11,26 @@ import 'analytics_viewmodel.dart';
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
 
-  static const _days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _weekdayNames = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun'
+  ];
+
+  /// Computes dynamic 3-letter weekday labels for [today - 6 days ... today].
+  /// Index 0 is 6 days ago; index 6 is always Today.
+  static List<String> get slidingDayLabels {
+    final now = DateTime.now();
+    final todayMidnight = DateTime(now.year, now.month, now.day);
+    return List.generate(7, (i) {
+      final d = todayMidnight.subtract(Duration(days: 6 - i));
+      return _weekdayNames[d.weekday - 1];
+    });
+  }
 
   static const _pieColors = [
     Color(0xFF6366F1),
@@ -41,6 +60,7 @@ class AnalyticsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(analyticsProvider);
     final vm = ref.read(analyticsProvider.notifier);
+    final dayLabels = slidingDayLabels;
     final appEntries = state.appDistribution.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
     final topApps = appEntries.take(5).toList();
@@ -110,7 +130,7 @@ class AnalyticsScreen extends ConsumerWidget {
                           enabled: true,
                           touchTooltipData: BarTouchTooltipData(
                             getTooltipItem: (group, groupIndex, rod, rodIndex) {
-                              final day = _days[group.x.toInt() % _days.length];
+                              final day = dayLabels[group.x.toInt() % dayLabels.length];
                               return BarTooltipItem(
                                 '$day: ${rod.toY.toInt()}m focus',
                                 AppTextStyles.bodySmall.copyWith(
@@ -168,12 +188,13 @@ class AnalyticsScreen extends ConsumerWidget {
                               showTitles: true,
                               getTitlesWidget: (value, meta) {
                                 final idx = value.toInt();
-                                if (idx < 0 || idx >= _days.length)
+                                if (idx < 0 || idx >= dayLabels.length) {
                                   return const SizedBox();
+                                }
                                 return Padding(
                                   padding: const EdgeInsets.only(top: 4),
                                   child: Text(
-                                    _days[idx],
+                                    dayLabels[idx],
                                     style: AppTextStyles.bodySmall.copyWith(
                                         color: AppColors.textSecondary,
                                         fontSize: 10),
@@ -220,7 +241,7 @@ class AnalyticsScreen extends ConsumerWidget {
                       touchTooltipData: LineTouchTooltipData(
                         getTooltipItems: (touchedSpots) {
                           return touchedSpots.map((spot) {
-                            final day = _days[spot.x.toInt() % _days.length];
+                            final day = dayLabels[spot.x.toInt() % dayLabels.length];
                             return LineTooltipItem(
                               '$day: ${spot.y.toInt()} distraction${spot.y.toInt() == 1 ? '' : 's'}',
                               AppTextStyles.bodySmall.copyWith(
@@ -275,12 +296,13 @@ class AnalyticsScreen extends ConsumerWidget {
                           interval: 1,
                           getTitlesWidget: (value, meta) {
                             final idx = value.toInt();
-                            if (idx < 0 || idx >= _days.length)
+                            if (idx < 0 || idx >= dayLabels.length) {
                               return const SizedBox();
+                            }
                             return Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
-                                _days[idx],
+                                dayLabels[idx],
                                 style: AppTextStyles.bodySmall.copyWith(
                                     color: AppColors.textSecondary,
                                     fontSize: 10),
@@ -295,9 +317,12 @@ class AnalyticsScreen extends ConsumerWidget {
                           reservedSize: 28,
                           interval: dailyDistractionsInterval,
                           getTitlesWidget: (value, meta) {
-                            if (value != value.roundToDouble())
+                            if (value != value.roundToDouble()) {
                               return const SizedBox();
-                            if (value == meta.max) return const SizedBox();
+                            }
+                            if (value == meta.max) {
+                              return const SizedBox();
+                            }
                             return Text(
                               value.toInt().toString(),
                               style: AppTextStyles.bodySmall.copyWith(
@@ -867,8 +892,9 @@ class _RiskTrendSection extends StatelessWidget {
                       reservedSize: 24,
                       interval: 1,
                       getTitlesWidget: (value, meta) {
-                        if (value != value.roundToDouble() || value == meta.max)
+                        if (value != value.roundToDouble() || value == meta.max) {
                           return const SizedBox();
+                        }
                         return Text(
                           value.toInt().toString(),
                           style: AppTextStyles.bodySmall.copyWith(

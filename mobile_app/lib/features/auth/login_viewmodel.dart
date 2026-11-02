@@ -130,6 +130,12 @@ class LoginViewModel extends StateNotifier<LoginState> {
     }
   }
 
+  // The custom URL scheme registered in AndroidManifest.xml and Info.plist.
+  // Supabase will redirect the browser back to this URI after the user
+  // approves Google access; app_links picks it up and passes it to
+  // Supabase.getSessionFromUrl() so the session is established natively.
+  static const _nativeRedirectUrl = 'com.focusecho.ai://login-callback';
+
   Future<bool> signInWithGoogle() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     FELog.i('Auth', 'Starting Google OAuth sign-in');
@@ -144,9 +150,14 @@ class LoginViewModel extends StateNotifier<LoginState> {
       }
       await client.auth.signInWithOAuth(
         OAuthProvider.google,
-        redirectTo: kIsWeb ? Uri.base.origin : null,
+        // Web: Supabase redirects back to the same origin (no custom scheme).
+        // Native (Android / iOS): the OS intercepts the custom scheme URI and
+        // hands the URL to app_links → getSessionFromUrl() in main.dart.
+        redirectTo: kIsWeb ? Uri.base.origin : _nativeRedirectUrl,
       );
-      // OAuth opens a redirect — auth state listener in main.dart handles the result
+      // On native the browser opens and the redirect is handled asynchronously
+      // by the app_links listener in main.dart. We clear loading here so the
+      // button is re-enabled if the user cancels the browser.
       state = state.copyWith(isLoading: false);
       return true;
     } on AuthException catch (e, st) {

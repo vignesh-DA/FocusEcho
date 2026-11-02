@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -118,35 +119,179 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
   /// MOB-3g: loads local SQLite data first (fast), then fetches remote backend
   /// data in parallel. The remote call is best-effort — failure is logged and
   /// the screen stays fully functional with local data.
+  /// Conflict Resolution: If an id exists in both Cloud and Local,
+  /// prefer the version that has endTime != null or the greater duration / latest timestamp.
+  FocusSession _resolveSessionConflict(FocusSession a, FocusSession b) {
+    if (a.endTime != null && b.endTime == null) return a;
+    if (b.endTime != null && a.endTime == null) return b;
+    final durA = (a.endTime ?? a.startTime).difference(a.startTime);
+    final durB = (b.endTime ?? b.startTime).difference(b.startTime);
+    if (durA > durB) return a;
+    if (durB > durA) return b;
+    if (a.focusScore > b.focusScore) return a;
+    if (b.focusScore > a.focusScore) return b;
+    return a;
+  }
+
+  /// Conflict Resolution: prefer the version that is recovered or has greater recoveryTimeSeconds.
+  DistractionEvent _resolveEventConflict(
+      DistractionEvent a, DistractionEvent b) {
+    if (a.isRecovered && !b.isRecovered) return a;
+    if (b.isRecovered && !a.isRecovered) return b;
+    if ((a.recoveryTimeSeconds ?? 0) > (b.recoveryTimeSeconds ?? 0)) return a;
+    if ((b.recoveryTimeSeconds ?? 0) > (a.recoveryTimeSeconds ?? 0)) return b;
+    return a;
+  }
+
+  /// Unified fetch & merge of sessions from Supabase and local cache.
+  Future<List<FocusSession>> _loadUnifiedSessions() async {
+    final cloudSessions = <FocusSession>[];
+    try {
+      final cutoff =
+          DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
+      // Bug 3: order by start_time descending
+      final rows = await Supabase.instance.client
+          .from('focus_sessions')
+          .select()
+          .gte('start_time', cutoff)
+          .order('start_time', ascending: false);
+      cloudSessions.addAll((rows as List).map((row) =>
+          FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map))));
+      FELog.d('Analytics',
+          'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
+    } catch (e) {
+      FELog.w('Analytics',
+          'Cloud session query failed (continuing with local cache): $e');
+    }
+
+    final localSessions = <FocusSession>[];
+    if (!kIsWeb) {
+      try {
+        localSessions.addAll(await _sessionDao.getSessionHistory(60));
+      } catch (e) {
+        FELog.w('Analytics', 'Local session cache query failed: $e');
+      }
+    } else {
+      try {
+        localSessions.addAll(await _sessionDao.getSessionHistory(60));
+      } catch (_) {}
+    }
+
+    // Merge into Map keyed by id with conflict resolution
+    final sessionMap = <String, FocusSession>{};
+    for (final s in cloudSessions) {
+      sessionMap[s.id] = s;
+    }
+    for (final s in localSessions) {
+      if (sessionMap.containsKey(s.id)) {
+        sessionMap[s.id] = _resolveSessionConflict(sessionMap[s.id]!, s);
+      } else {
+        sessionMap[s.id] = s;
+      }
+    }
+
+    final merged = sessionMap.values.toList();
+    // Bug 3: explicitly sort unified list by startTime descending
+    merged.sort((a, b) => b.startTime.compareTo(a.startTime));
+    return merged;
+  }
+
+  /// Unified fetch & merge of distraction events from Supabase and local cache.
+  Future<List<DistractionEvent>> _loadUnifiedEvents() async {
+    final cloudEvents = <DistractionEvent>[];
+    final cutoff = DateTime.now().subtract(const Duration(days: 7));
+    try {
+      // Bug 4: query directly with gte and order (eliminates inFilter URI length risk)
+      final rows = await Supabase.instance.client
+          .from('distraction_events')
+          .select()
+          .gte('triggered_at', cutoff.toIso8601String())
+          .order('triggered_at', ascending: false);
+      cloudEvents.addAll((rows as List)
+          .map((row) => DistractionEvent.fromSqliteMap(
+              Map<String, dynamic>.from(row as Map)))
+          .where((e) => e.eventType == 'distraction'));
+      FELog.d('Analytics',
+          'Cloud query: fetched ${cloudEvents.length} distraction events');
+    } catch (e) {
+      FELog.w('Analytics', 'Cloud event query failed: $e');
+    }
+
+    final localEvents = <DistractionEvent>[];
+    if (!kIsWeb) {
+      try {
+        localEvents.addAll(
+            await _eventDao.getRecentEvents(200, eventType: 'distraction'));
+      } catch (e) {
+        FELog.w('Analytics', 'Local event cache query failed: $e');
+      }
+    } else {
+      try {
+        localEvents.addAll(
+            await _eventDao.getRecentEvents(200, eventType: 'distraction'));
+      } catch (_) {}
+    }
+
+    final eventMap = <String, DistractionEvent>{};
+    for (final e in cloudEvents) {
+      eventMap[e.id] = e;
+    }
+    for (final e in localEvents) {
+      if (eventMap.containsKey(e.id)) {
+        eventMap[e.id] = _resolveEventConflict(eventMap[e.id]!, e);
+      } else {
+        eventMap[e.id] = e;
+      }
+    }
+
+    final merged = eventMap.values
+        .where((e) => e.eventType == 'distraction')
+        .toList();
+    merged.sort((a, b) => b.triggeredAt.compareTo(a.triggeredAt));
+    return merged;
+  }
+
+  /// MOB-3g: loads unified local + cloud data, then fetches remote backend
+  /// data in parallel. The remote call is best-effort — failure is logged and
+  /// the screen stays fully functional with local data.
   Future<void> loadAnalytics() async {
     state = state.copyWith(isLoading: true, errorMessage: null);
     FELog.i('Analytics', 'Starting loadAnalytics computation');
     try {
-      // ── Local SQLite / Cloud fetch ─────────────────────────────────────
-      final sessions = await _loadSessionsFromCloud();
+      // ── Bug 1: Unified Cloud + Local merge ──────────────────────────────
+      final sessions = await _loadUnifiedSessions();
+      final recentEvents = await _loadUnifiedEvents();
+
+      // ── Bug 2: Calendar-Midnight Normalization ──────────────────────────
       final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
       final weeklyFocus = List<double>.filled(7, 0);
       final dailyDistractions = List<int>.filled(7, 0);
       final appCount = <String, int>{};
 
       for (final s in sessions) {
-        final dayIndex = 6 - now.difference(s.startTime).inDays;
+        final itemMidnight =
+            DateTime(s.startTime.year, s.startTime.month, s.startTime.day);
+        final daysAgo = todayMidnight.difference(itemMidnight).inDays;
+        final dayIndex = 6 - daysAgo;
         if (dayIndex >= 0 && dayIndex < 7) {
           weeklyFocus[dayIndex] +=
               (s.endTime ?? now).difference(s.startTime).inMinutes.toDouble();
         }
       }
 
-      // Feature 3 — Recovery Rate & Most Distracting Apps from actual distraction events:
-      final recentEvents = await _loadEventsFromCloud(sessions);
       for (final e in recentEvents) {
-        final dayIndex = 6 - now.difference(e.triggeredAt).inDays;
+        final itemMidnight = DateTime(
+            e.triggeredAt.year, e.triggeredAt.month, e.triggeredAt.day);
+        final daysAgo = todayMidnight.difference(itemMidnight).inDays;
+        final dayIndex = 6 - daysAgo;
         if (dayIndex >= 0 && dayIndex < 7) {
           dailyDistractions[dayIndex] += 1;
         }
         final label = e.appLabel.isNotEmpty ? e.appLabel : e.packageName;
         appCount[label] = (appCount[label] ?? 0) + 1;
       }
+
       final thisWeek =
           _recoveryStatsForWindow(recentEvents, now, const Duration(days: 7));
       final lastWeek = _recoveryStatsForWindow(
@@ -163,11 +308,17 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
             'recoveryRate=${thisWeek.rate.toStringAsFixed(1)}%, topApps=${appCount.keys.length}',
       );
 
+      // ── Bug 3: Take 10 most recent completed sessions, then reverse for left-to-right chronological order
+      final completed = sessions
+          .where((s) => s.endTime != null || s.status == SessionStatus.completed)
+          .toList();
+      final scoreSessions = completed.isNotEmpty ? completed : sessions;
+
       state = state.copyWith(
         weeklyFocusMinutes: weeklyFocus,
         dailyDistractions: dailyDistractions,
         appDistribution: appCount,
-        sessionScores: sessions
+        sessionScores: scoreSessions
             .take(10)
             .map((s) => s.focusScore)
             .toList()
@@ -188,68 +339,6 @@ class AnalyticsViewModel extends StateNotifier<AnalyticsState> {
         errorMessage: 'Could not load analytics. Pull to retry.',
       );
     }
-  }
-
-  Future<List<FocusSession>> _loadSessionsFromCloud() async {
-    try {
-      final cutoff =
-          DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
-      final rows = await Supabase.instance.client
-          .from('focus_sessions')
-          .select()
-          .gte('start_time', cutoff)
-          .order('start_time');
-      final cloudSessions = (rows as List)
-          .map((row) =>
-              FocusSession.fromSqliteMap(Map<String, dynamic>.from(row as Map)))
-          .toList();
-      FELog.d('Analytics',
-          'Cloud query: fetched ${cloudSessions.length} sessions (since $cutoff)');
-      if (cloudSessions.isNotEmpty) return cloudSessions;
-    } catch (e) {
-      FELog.w('Analytics',
-          'Cloud session query failed, falling back to local cache: $e');
-    }
-    return _sessionDao.getSessionHistory(60);
-  }
-
-  Future<List<DistractionEvent>> _loadEventsFromCloud(
-      List<FocusSession> sessions) async {
-    final events = <DistractionEvent>[];
-    if (sessions.isNotEmpty) {
-      try {
-        final sessionIds = sessions.map((s) => s.id).toList();
-        final rows = await Supabase.instance.client
-            .from('distraction_events')
-            .select()
-            .inFilter('session_id', sessionIds)
-            .order('triggered_at');
-        final cloudEvents = (rows as List)
-            .map((row) => DistractionEvent.fromSqliteMap(
-                Map<String, dynamic>.from(row as Map)))
-            .where((e) => e.eventType == 'distraction')
-            .toList();
-        FELog.d('Analytics',
-            'Cloud query: fetched ${cloudEvents.length} events across ${sessionIds.length} sessions');
-        if (cloudEvents.isNotEmpty) return cloudEvents;
-      } catch (e) {
-        FELog.w('Analytics',
-            'Cloud event query failed, falling back to local cache: $e');
-      }
-    }
-    for (final session in sessions) {
-      events.addAll(await _eventDao.getEventsForSession(session.id));
-    }
-    final recentLocal =
-        await _eventDao.getRecentEvents(100, eventType: 'distraction');
-    final seenIds = events.map((e) => e.id).toSet();
-    for (final e in recentLocal) {
-      if (!seenIds.contains(e.id)) {
-        events.add(e);
-      }
-    }
-    FELog.d('Analytics', 'Resolved total events: ${events.length}');
-    return events.where((e) => e.eventType == 'distraction').toList();
   }
 
   /// Fetches backend summary + risk-trend and merges into state.

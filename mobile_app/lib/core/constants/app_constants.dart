@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class AppRoutes {
   static const splash = '/splash';
   static const login = '/login';
@@ -79,11 +81,20 @@ class AppConfig {
   static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
   /// FastAPI backend base URL.
-  /// Default: Android emulator localhost. Override for physical device / CI.
-  static const backendBaseUrl = String.fromEnvironment(
-    'BACKEND_URL',
-    defaultValue: 'http://10.0.2.2:8000',
-  );
+  /// Precedence:
+  /// 1. BACKEND_URL from environment (if non-empty)
+  /// 2. http://localhost:8000 when kIsWeb is true
+  /// 3. http://10.0.2.2:8000 when running on native Android emulator
+  /// 4. http://localhost:8000 fallback (iOS/Desktop)
+  static String get backendBaseUrl {
+    const fromEnv = String.fromEnvironment('BACKEND_URL');
+    if (fromEnv.isNotEmpty) return fromEnv;
+    if (kIsWeb) return 'http://localhost:8000';
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:8000';
+    }
+    return 'http://localhost:8000';
+  }
 }
 
 class AppStrings {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:app_links/app_links.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'features/focus_session/focus_session_viewmodel.dart';
@@ -131,6 +132,18 @@ Future<void> main() async {
     BrowserMonitor.instance.syncCredentialsIfAvailable();
   }
 
+  // On native platforms, intercept the OAuth redirect URI that the OS delivers
+  // after the user approves Google access in the system browser. The URI
+  // (com.focusecho.ai://login-callback#access_token=...) is handed to
+  // Supabase.getSessionFromUrl(), which stores the session tokens and fires
+  // onAuthStateChange(signedIn). The existing listener below then saves the
+  // user ID, syncs pending events, and calls AppRouter.refresh() — routing
+  // the user to the next screen automatically (same flow as the browser
+  // extension's OAuth redirect completion path).
+  if (!kIsWeb && supabaseReady) {
+    _initDeepLinkListener();
+  }
+
   // Keep the local cache identity aligned with Supabase after OTP upgrades,
   // anonymous re-issuance, refreshes, and sign-outs.
   if (supabaseReady) {
@@ -206,4 +219,60 @@ Future<void> _migrateLocalUserToAuthId(
   if (sessionIds.isEmpty) return;
   await sessionDao.reassignUserId(fromUserId, authUserId);
   await eventDao.markEventsUnsyncedForSessions(sessionIds);
+}
+
+// ---------------------------------------------------------------------------
+// Native OAuth deep-link listener (Android + iOS)
+// ---------------------------------------------------------------------------
+/// Listens for the custom-scheme URI that the OS delivers after the browser
+/// completes Google OAuth and redirects to com.focusecho.ai://login-callback.
+///
+/// Flow (mirrors the browser extension OAuth redirect):
+///   1. LoginViewModel.signInWithGoogle() opens the system browser pointing
+///      at Supabase's /authorize endpoint with redirectTo set to the custom
+///      scheme URI.
+///   2. After user approves, Google redirects the browser to the custom URI
+///      with #access_token=...&refresh_token=... in the fragment.
+///   3. Android (intent-filter in AndroidManifest.xml) / iOS (CFBundleURLSchemes
+///      in Info.plist) intercepts the URI and resumes the app.
+///   4. app_links delivers the URI to this listener.
+///   5. We call Supabase.getSessionFromUrl() which parses the tokens, stores
+///      the session, and fires onAuthStateChange(AuthChangeEvent.signedIn).
+///   6. The existing listener in main() picks that up: saves user ID to prefs,
+///      syncs pending events, and calls AppRouter.refresh() so GoRouter
+///      re-evaluates the redirect guard and routes the user past the login
+///      screen — exactly like the browser extension does after OAuth callback.
+void _initDeepLinkListener() {
+  final appLinks = AppLinks();
+
+  // Handle URI if the app was launched cold by the deep link.
+  appLinks.getInitialAppLink().then((uri) async {
+    if (uri != null) {
+      debugPrint('[OAuth] Cold-start deep link: $uri');
+      await _handleOAuthRedirect(uri);
+    }
+  }).catchError((e) => debugPrint('[OAuth] getInitialAppLink error: $e'));
+
+  // Handle URI while the app is already running (warm/hot start).
+  appLinks.uriLinkStream.listen(
+    (uri) async {
+      debugPrint('[OAuth] Warm deep link: $uri');
+      await _handleOAuthRedirect(uri);
+    },
+    onError: (e) => debugPrint('[OAuth] uriLinkStream error: $e'),
+  );
+}
+
+Future<void> _handleOAuthRedirect(Uri uri) async {
+  // Only act on our own scheme — ignore unrelated deep links.
+  if (uri.scheme != 'com.focusecho.ai') return;
+  debugPrint('[OAuth] Handling Supabase redirect: $uri');
+  try {
+    // Supabase v2: getSessionFromUrl parses the fragment and stores tokens.
+    await Supabase.instance.client.auth.getSessionFromUrl(uri);
+    // onAuthStateChange fires signedIn → AppRouter.refresh() is called from
+    // the listener already registered in main() — no extra navigation needed.
+  } catch (e) {
+    debugPrint('[OAuth] getSessionFromUrl error: $e');
+  }
 }

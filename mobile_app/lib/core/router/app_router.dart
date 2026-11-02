@@ -39,10 +39,10 @@ class AppRouter {
         var isLoggedIn = false;
         try {
           final user = Supabase.instance.client.auth.currentUser;
-          // Web sign-in must be explicit. The anonymous bootstrap identity is
-          // retained so OTP can upgrade it without losing locally owned data,
+          // Sign-in must be explicit on both web and mobile. The anonymous bootstrap
+          // identity is retained so auth can upgrade it without losing locally owned data,
           // but it must not skip the login step in the product journey.
-          isLoggedIn = user != null && (!kIsWeb || !user.isAnonymous);
+          isLoggedIn = user != null && !user.isAnonymous;
         } catch (_) {
           // Supabase is unavailable; the offline app can still render.
         }
@@ -60,6 +60,12 @@ class AppRouter {
             !hasSkipped &&
             path != AppRoutes.login) {
           return AppRoutes.login;
+        }
+        // When logged in or skipped, redirect away from login screen to dashboard or wizard
+        if (path == AppRoutes.login && (isLoggedIn || hasSkipped)) {
+          return permissionsReady
+              ? AppRoutes.dashboard
+              : AppRoutes.permissionWizard;
         }
         if (consentGiven &&
             !permissionsReady &&

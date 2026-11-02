@@ -49,7 +49,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     var isLoggedIn = false;
     try {
       final user = Supabase.instance.client.auth.currentUser;
-      isLoggedIn = user != null && (!kIsWeb || !user.isAnonymous);
+      isLoggedIn = user != null && !user.isAnonymous;
     } catch (_) {
       // Local sessions remain available if Supabase is not configured.
     }

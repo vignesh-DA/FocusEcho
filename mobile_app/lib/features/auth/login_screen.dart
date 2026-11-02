@@ -210,7 +210,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                     onSubmit: () => _submit(vm, state),
                     onGoogle: () async {
                       final ok = await vm.signInWithGoogle();
-                      if (ok && mounted) _proceed();
+                      if (kIsWeb && ok && mounted) _proceed();
                     },
                     onForgotPassword: () => _showForgotPassword(vm),
                     onToggleMode: () => _toggleMode(vm),
