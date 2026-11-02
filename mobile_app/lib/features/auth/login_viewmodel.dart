@@ -104,6 +104,7 @@ class LoginViewModel extends StateNotifier<LoginState> {
       final response = await client.auth.signUp(
         email: email,
         password: password,
+        emailRedirectTo: kIsWeb ? Uri.base.origin : _nativeRedirectUrl,
       );
       final userId = response.user?.id;
       FELog.i('Auth', 'Signed up successfully. User ID: $userId');
@@ -190,7 +191,10 @@ class LoginViewModel extends StateNotifier<LoginState> {
         );
         return false;
       }
-      await client.auth.resetPasswordForEmail(email);
+      await client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: kIsWeb ? Uri.base.origin : _nativeRedirectUrl,
+      );
       FELog.i('Auth', 'Password reset email sent to $email');
       state = state.copyWith(isLoading: false);
       return true;
