@@ -44,17 +44,19 @@ class LoginViewModel extends StateNotifier<LoginState> {
         );
         return false;
       }
-      final currentUser = client.auth.currentUser;
-      if (currentUser?.isAnonymous == true) {
-        FELog.d('Auth',
-            'Upgrading anonymous user ${currentUser?.id} with email $email');
-        await client.auth.updateUser(UserAttributes(email: email));
-      } else {
-        await client.auth.signInWithOtp(
-          email: email,
-          shouldCreateUser: true,
-        );
+      // If an anonymous guest is signed in, sign out locally first so Supabase
+      // sends a standard login/signup OTP instead of attempting an email-change
+      // on an account with no previous email.
+      if (client.auth.currentUser?.isAnonymous == true) {
+        try {
+          await client.auth.signOut(scope: SignOutScope.local);
+        } catch (_) {}
       }
+
+      await client.auth.signInWithOtp(
+        email: email,
+        shouldCreateUser: true,
+      );
       FELog.i('Auth', 'OTP sent successfully to $email');
       state = state.copyWith(isLoading: false);
       return true;
