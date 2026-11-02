@@ -185,8 +185,15 @@ class DashboardScreen extends ConsumerWidget {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.transparent,
                         shadowColor: Colors.transparent,
+                        foregroundColor: Colors.white,
                       ),
-                      child: const Text('Start Focus Session →'),
+                      child: const Text(
+                        'Start Focus Session →',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
                 ),

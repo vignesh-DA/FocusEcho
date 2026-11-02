@@ -151,6 +151,7 @@ Future<void> main() async {
         if (kIsWeb) {
           BrowserMonitor.instance.syncCredentialsIfAvailable();
         }
+        AppRouter.refresh();
         debugPrint(
             '[Auth] Identity set: ${user.email ?? 'anonymous'} (${user.id})');
       } else if (event == AuthChangeEvent.signedOut) {

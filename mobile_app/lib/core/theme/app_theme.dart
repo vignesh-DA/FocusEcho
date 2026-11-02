@@ -75,11 +75,22 @@ class AppDecorations {
   }
 
   static BoxDecoration accentButton(Color color) {
+    final startColor =
+        color == AppColors.accentBlue ? const Color(0xFF0284C7) : color;
+    final endColor =
+        color == AppColors.accentBlue ? const Color(0xFF0369A1) : color;
     return BoxDecoration(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: BorderRadius.circular(10),
       gradient: LinearGradient(
-        colors: [color.withValues(alpha: 0.85), color],
+        colors: [startColor, endColor],
       ),
+      boxShadow: [
+        BoxShadow(
+          color: startColor.withValues(alpha: 0.35),
+          blurRadius: 10,
+          offset: const Offset(0, 4),
+        ),
+      ],
     );
   }
 }
@@ -105,6 +116,12 @@ class AppTheme {
         surface: AppColors.surface,
       ),
       cardColor: AppColors.card,
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          foregroundColor: Colors.white,
+          textStyle: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+      ),
       textTheme: TextTheme(
         displayLarge: AppTextStyles.displayLarge,
         displayMedium: AppTextStyles.displayMedium,

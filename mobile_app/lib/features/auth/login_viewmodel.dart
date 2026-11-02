@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,14 +8,25 @@ import '../../../core/providers/app_dependencies.dart';
 import '../../../core/utils/fe_logger.dart';
 
 class LoginState {
-  const LoginState({this.isLoading = false, this.errorMessage});
+  const LoginState({
+    this.isLoading = false,
+    this.errorMessage,
+    this.isSignUp = false,
+  });
 
   final bool isLoading;
   final String? errorMessage;
+  final bool isSignUp;
 
-  LoginState copyWith({bool? isLoading, String? errorMessage}) => LoginState(
+  LoginState copyWith({
+    bool? isLoading,
+    String? errorMessage,
+    bool? isSignUp,
+  }) =>
+      LoginState(
         isLoading: isLoading ?? this.isLoading,
         errorMessage: errorMessage,
+        isSignUp: isSignUp ?? this.isSignUp,
       );
 }
 
@@ -32,9 +44,13 @@ class LoginViewModel extends StateNotifier<LoginState> {
     }
   }
 
-  Future<bool> sendOtp(String email) async {
+  void toggleMode() {
+    state = state.copyWith(isSignUp: !state.isSignUp, errorMessage: null);
+  }
+
+  Future<bool> signIn(String email, String password) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
-    FELog.i('Auth', 'Sending OTP to $email');
+    FELog.i('Auth', 'Signing in: $email');
     try {
       final client = _availableClient;
       if (client == null) {
@@ -44,29 +60,27 @@ class LoginViewModel extends StateNotifier<LoginState> {
         );
         return false;
       }
-      // If an anonymous guest is signed in, sign out locally first so Supabase
-      // sends a standard login/signup OTP instead of attempting an email-change
-      // on an account with no previous email.
-      if (client.auth.currentUser?.isAnonymous == true) {
-        try {
-          await client.auth.signOut(scope: SignOutScope.local);
-        } catch (_) {}
-      }
-
-      await client.auth.signInWithOtp(
+      final response = await client.auth.signInWithPassword(
         email: email,
-        shouldCreateUser: true,
+        password: password,
       );
-      FELog.i('Auth', 'OTP sent successfully to $email');
+      final userId = response.user?.id;
+      FELog.i('Auth', 'Signed in successfully. User ID: $userId');
+      if (userId != null) {
+        await _prefs.setString(AppKeys.userId, userId);
+      }
       state = state.copyWith(isLoading: false);
       return true;
     } on AuthException catch (e, st) {
-      FELog.w('Auth', 'AuthException during sendOtp: ${e.message}');
+      FELog.w('Auth', 'AuthException during signIn: ${e.message}');
       FELog.e('Auth', 'AuthException details', e, st);
-      state = state.copyWith(isLoading: false, errorMessage: e.message);
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _friendlyError(e.message),
+      );
       return false;
     } catch (e, st) {
-      FELog.e('Auth', 'Unexpected error during sendOtp', e, st);
+      FELog.e('Auth', 'Unexpected error during signIn', e, st);
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Network error. Try again.',
@@ -75,9 +89,50 @@ class LoginViewModel extends StateNotifier<LoginState> {
     }
   }
 
-  Future<bool> verifyOtp(String email, String token) async {
+  Future<bool> signUp(String email, String password) async {
     state = state.copyWith(isLoading: true, errorMessage: null);
-    FELog.i('Auth', 'Verifying OTP for $email (token length: ${token.length})');
+    FELog.i('Auth', 'Signing up: $email');
+    try {
+      final client = _availableClient;
+      if (client == null) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Sign-up is unavailable while offline.',
+        );
+        return false;
+      }
+      final response = await client.auth.signUp(
+        email: email,
+        password: password,
+      );
+      final userId = response.user?.id;
+      FELog.i('Auth', 'Signed up successfully. User ID: $userId');
+      if (userId != null) {
+        await _prefs.setString(AppKeys.userId, userId);
+      }
+      state = state.copyWith(isLoading: false);
+      return true;
+    } on AuthException catch (e, st) {
+      FELog.w('Auth', 'AuthException during signUp: ${e.message}');
+      FELog.e('Auth', 'AuthException details', e, st);
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _friendlyError(e.message),
+      );
+      return false;
+    } catch (e, st) {
+      FELog.e('Auth', 'Unexpected error during signUp', e, st);
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Network error. Try again.',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> signInWithGoogle() async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    FELog.i('Auth', 'Starting Google OAuth sign-in');
     try {
       final client = _availableClient;
       if (client == null) {
@@ -87,25 +142,57 @@ class LoginViewModel extends StateNotifier<LoginState> {
         );
         return false;
       }
-      final resp = await client.auth.verifyOTP(
-        email: email,
-        token: token,
-        type: OtpType.email,
+      await client.auth.signInWithOAuth(
+        OAuthProvider.google,
+        redirectTo: kIsWeb ? Uri.base.origin : null,
       );
-      final userId = resp.user?.id ?? client.auth.currentUser?.id;
-      FELog.i('Auth', 'OTP verified successfully! User ID: $userId');
-      if (userId != null) {
-        await _prefs.setString(AppKeys.userId, userId);
-      }
+      // OAuth opens a redirect — auth state listener in main.dart handles the result
       state = state.copyWith(isLoading: false);
       return true;
     } on AuthException catch (e, st) {
-      FELog.w('Auth', 'AuthException during verifyOtp: ${e.message}');
+      FELog.w('Auth', 'AuthException during Google sign-in: ${e.message}');
       FELog.e('Auth', 'AuthException details', e, st);
-      state = state.copyWith(isLoading: false, errorMessage: e.message);
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _friendlyError(e.message),
+      );
       return false;
     } catch (e, st) {
-      FELog.e('Auth', 'Unexpected error during verifyOtp', e, st);
+      FELog.e('Auth', 'Unexpected error during Google sign-in', e, st);
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Network error. Try again.',
+      );
+      return false;
+    }
+  }
+
+  Future<bool> resetPassword(String email) async {
+    state = state.copyWith(isLoading: true, errorMessage: null);
+    FELog.i('Auth', 'Sending password reset to $email');
+    try {
+      final client = _availableClient;
+      if (client == null) {
+        state = state.copyWith(
+          isLoading: false,
+          errorMessage: 'Unavailable while offline.',
+        );
+        return false;
+      }
+      await client.auth.resetPasswordForEmail(email);
+      FELog.i('Auth', 'Password reset email sent to $email');
+      state = state.copyWith(isLoading: false);
+      return true;
+    } on AuthException catch (e, st) {
+      FELog.w('Auth', 'AuthException during resetPassword: ${e.message}');
+      FELog.e('Auth', 'AuthException details', e, st);
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: _friendlyError(e.message),
+      );
+      return false;
+    } catch (e, st) {
+      FELog.e('Auth', 'Unexpected error during resetPassword', e, st);
       state = state.copyWith(
         isLoading: false,
         errorMessage: 'Network error. Try again.',
@@ -117,6 +204,25 @@ class LoginViewModel extends StateNotifier<LoginState> {
   Future<void> skipLogin() {
     FELog.i('Auth', 'User skipped login, continuing as guest');
     return _prefs.setBool(AppKeys.hasSkippedLogin, true);
+  }
+
+  String _friendlyError(String raw) {
+    final msg = raw.toLowerCase();
+    if (msg.contains('invalid login credentials') ||
+        msg.contains('invalid credentials')) {
+      return 'Incorrect email or password.';
+    }
+    if (msg.contains('user already registered') ||
+        msg.contains('already been registered')) {
+      return 'An account with this email already exists. Sign in instead.';
+    }
+    if (msg.contains('password should be at least')) {
+      return 'Password must be at least 6 characters.';
+    }
+    if (msg.contains('unable to validate email')) {
+      return 'Please enter a valid email address.';
+    }
+    return raw;
   }
 }
 
