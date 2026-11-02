@@ -186,6 +186,19 @@
    */
   function showL3Blocker(intention) {
     hideOverlay();
+
+    // Immediately mute all playing video/audio on the page so Reels/YouTube
+    // audio does not bleed through or keep playing behind the shield.
+    try {
+      document.querySelectorAll('video, audio').forEach(el => {
+        if (!el.paused) {
+          el.pause();
+          el.dataset.__feMuted = '1';
+        }
+        el.muted = true;
+      });
+    } catch (_) {}
+
     const shadow = getShadow();
     ensureStyles(shadow);
 
@@ -269,7 +282,7 @@
   // ---------------------------------------------------------------------------
   // "Back in Flow" Recovery Toast — shown on the productive work tab
   // ---------------------------------------------------------------------------
-  function showRecoveryToast(remainingMinutes) {
+  function showRecoveryToast(remainingMinutes, isDashboardFallback) {
     // Remove any existing recovery toast
     const existing = document.getElementById('__fe_recovery_toast__');
     if (existing) existing.remove();
@@ -277,9 +290,26 @@
     const toast = document.createElement('div');
     toast.id = '__fe_recovery_toast__';
 
-    const timeText = (remainingMinutes != null && remainingMinutes > 0)
-      ? ` &#x2022; ~${remainingMinutes}m left`
-      : '';
+    let toastText, toastColor;
+    if (isDashboardFallback) {
+      // User was redirected to the Focus Dashboard (no real work tab open)
+      toastText = '&#x26A1; Returned to Focus Dashboard &mdash; Open a work tab to lock it in!';
+      toastColor = '#60a5fa'; // blue
+    } else {
+      const timeText = (remainingMinutes != null && remainingMinutes > 0)
+        ? ` &#x2022; ~${remainingMinutes}m left`
+        : '';
+      toastText = `&#x26A1; Back in flow &mdash; Keep going!${timeText}`;
+      toastColor = '#3fb950'; // emerald green
+    }
+
+    const borderColor = isDashboardFallback ? '#3b82f6' : '#2ea043';
+    const bgGradient = isDashboardFallback
+      ? 'linear-gradient(135deg, #0d1a2f 0%, #0a1220 100%)'
+      : 'linear-gradient(135deg, #0d1f12 0%, #0a1a0a 100%)';
+    const shadowColor = isDashboardFallback
+      ? 'rgba(59, 130, 246, 0.35)'
+      : 'rgba(46, 160, 67, 0.35)';
 
     toast.innerHTML = `
       <div style="
@@ -288,8 +318,8 @@
         right: 20px;
         z-index: 2147483647;
         pointer-events: none;
-        background: linear-gradient(135deg, #0d1f12 0%, #0a1a0a 100%);
-        border: 1.5px solid #2ea043;
+        background: ${bgGradient};
+        border: 1.5px solid ${borderColor};
         border-radius: 999px;
         padding: 10px 18px;
         display: flex;
@@ -298,19 +328,21 @@
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         font-size: 13px;
         font-weight: 600;
-        color: #3fb950;
-        box-shadow: 0 4px 20px rgba(46, 160, 67, 0.35), 0 2px 8px rgba(0,0,0,0.5);
+        color: ${toastColor};
+        box-shadow: 0 4px 20px ${shadowColor}, 0 2px 8px rgba(0,0,0,0.5);
         opacity: 0;
         transform: translateX(20px);
         transition: opacity 0.25s ease, transform 0.25s ease;
         white-space: nowrap;
-        max-width: 320px;
+        max-width: 380px;
       " id="__fe_recovery_pill__">
-        <span style="font-size:15px;">&#x26A1;</span>
-        <span>Back in flow &#x2014; Keep going!${timeText}</span>
+        <span id="__fe_recovery_text__">${toastText}</span>
       </div>`;
 
     document.documentElement.appendChild(toast);
+    // Set HTML content safely after inserting
+    const textEl = document.getElementById('__fe_recovery_text__');
+    if (textEl) textEl.innerHTML = toastText;
 
     // Animate in
     requestAnimationFrame(() => {
@@ -321,7 +353,8 @@
       }
     });
 
-    // Animate out and remove after 2.5 s
+    // Animate out and remove after 2.5 s (3 s for dashboard fallback)
+    const displayMs = isDashboardFallback ? 3000 : 2500;
     setTimeout(() => {
       const pill = document.getElementById('__fe_recovery_pill__');
       if (pill) {
@@ -329,7 +362,7 @@
         pill.style.transform = 'translateX(20px)';
         setTimeout(() => toast.remove(), 300);
       }
-    }, 2500);
+    }, displayMs);
   }
 
   // ---------------------------------------------------------------------------
@@ -359,7 +392,7 @@
     }
 
     if (message.type === 'SHOW_RECOVERY_TOAST') {
-      showRecoveryToast(message.remainingMinutes ?? null);
+      showRecoveryToast(message.remainingMinutes ?? null, message.dashboardFallback === true);
       sendResponse?.({ ok: true });
       return true;
     }

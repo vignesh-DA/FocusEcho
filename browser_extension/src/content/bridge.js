@@ -15,7 +15,7 @@ function registerDashboard() {
   // First get current session state from service worker
   chrome.runtime.sendMessage({ type: 'fe:debug_get_state' }, (stateResponse) => {
     if (chrome.runtime.lastError) return;
-    const activeSession = stateResponse?.session?.active ? stateResponse.session : null;
+    const session = stateResponse?.session?.active ? stateResponse.session : null;
 
     chrome.runtime.sendMessage({ type: 'fe:register_dashboard' }, (response) => {
       if (chrome.runtime.lastError) return;
@@ -26,18 +26,37 @@ function registerDashboard() {
           type: 'connection',
           connected: true,
           version: '2.0.0',
-          activeSession: activeSession,  // null if no session running
+          activeSession: session,  // null if no session running
+          // Top-level fields for Flutter web compat
+          distraction_count: session?.distraction_count ?? 0,
+          intention: session?.intention ?? null,
+          session_id: session?.session_id ?? null,
         }, '*');
       }
     });
   });
 }
 
+// Heartbeat: re-send connection ping every 3s so the Flutter web app
+// does not flip back to "Install extension" banner while the tab is active.
+let _heartbeatInterval = null;
+function startHeartbeat() {
+  if (_heartbeatInterval) return;
+  _heartbeatInterval = setInterval(registerDashboard, 3000);
+}
+function stopHeartbeat() {
+  if (_heartbeatInterval) { clearInterval(_heartbeatInterval); _heartbeatInterval = null; }
+}
+
 registerDashboard();
+startHeartbeat();
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') registerDashboard();
+  if (document.visibilityState === 'visible') { registerDashboard(); startHeartbeat(); }
+  else stopHeartbeat();
 });
-window.addEventListener('focus', registerDashboard);
+window.addEventListener('focus', () => { registerDashboard(); startHeartbeat(); });
+window.addEventListener('blur', stopHeartbeat);
+
 
 // Listen for messages from the Web Dashboard (window.postMessage)
 window.addEventListener('message', async (event) => {
@@ -145,6 +164,9 @@ chrome.runtime.onMessage.addListener((message) => {
     window.postMessage({
       source: 'focusecho-extension',
       type: 'activity',
+      // Top-level for Flutter compat: distraction_count is the authoritative
+      // counter shown in the dashboard header.
+      distraction_count: message.distraction_count ?? undefined,
       event: {
         kind:             message.kind || 'away',
         session_id:       message.session_id || '',

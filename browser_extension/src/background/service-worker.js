@@ -381,6 +381,8 @@ async function _executeAction(name, param, { session, distraction, event, now })
         state:                STATE.MONITORING,
         resume_to_state:      null,
         last_productive_tab_id: null,
+        /** @type {Object.<string,number>} hostname -> highest escalation level reached this session */
+        escalated_domains:    {},
       };
       await saveSession(newSession);
       await clearDistraction();
@@ -397,6 +399,70 @@ async function _executeAction(name, param, { session, distraction, event, now })
       const host = event.payload?.host ?? '';
       const config = await loadConfig();
       const siteConf = config.distraction_list.find(s => normalizeHost(s.hostname) === host);
+
+      // Check if this host has already been escalated to L3 this session.
+      // If so, skip the 3s grace and immediately re-show the L3 Full Shield Blocker.
+      const prevLevel = session?.escalated_domains?.[host] ?? 0;
+      if (prevLevel >= 3) {
+        LOG.act(`INSTANT RE-BLOCK: ${host} previously hit L3 — bypassing grace`);
+        // Set up distraction record with grace already confirmed.
+        const reBlockD = {
+          host,
+          category:        siteConf?.category ?? 'unknown',
+          grace_entered_at: now,
+          started_at:      now,
+          grace_confirmed: true,
+          post_expiry_at:  null,
+          active_ms:       0,
+          paused_at:       null,
+          level:           3,
+        };
+        await saveDistraction(reBlockD);
+        // Increment count and set session state directly (bypass SM grace flow).
+        session.distraction_count += 1;
+        session.state = STATE.L3_FORCED;
+        await saveSession(session);
+        LOG.act(`distractionCount → ${session.distraction_count} (instant L3 re-block)`);
+        // Show L3 overlay on the active tab immediately.
+        await sendToActiveDistractionTab({
+          type: MSG.SHOW_OVERLAY,
+          level: 3,
+          intention: session.intention || 'Focus Session',
+        });
+        await notifyDashboard({
+          type: MSG.SHOW_OVERLAY,
+          level: 3,
+          intention: session.intention || 'Focus Session',
+        });
+        // Emit, queue, and sync the distraction event.
+        const reBlockEv = mkDistractionEvent({
+          domain:           host,
+          category:         siteConf?.category ?? 'unknown',
+          escalation_level: 3,
+          session_id:       session.session_id,
+          distraction_count: session.distraction_count,
+          distraction_started_at: now,
+        });
+        reBlockD.event_id = reBlockEv.id;
+        await saveDistraction(reBlockD);
+        await enqueueEvent(reBlockEv);
+        await showDistractionNotification(session, reBlockD, 3);
+        syncEventQueue(session).catch(e => LOG.err('cloud sync error (re-block):', e.message));
+        notifyDashboard({
+          type: 'fe:dashboard_activity',
+          kind: 'away',
+          session_id: session.session_id,
+          event_id: reBlockEv.id,
+          host,
+          timestamp: reBlockEv.distraction_started_at,
+          escalation_level: 3,
+          intention: session.intention,
+          category: siteConf?.category ?? 'unknown',
+        });
+        break;
+      }
+
+      // Normal grace entry
       const d = {
         host,
         category:        siteConf?.category ?? 'unknown',
@@ -471,6 +537,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
         escalation_level: level,
         intention: session.intention,
         category: distraction.category,
+        distraction_count: session.distraction_count,
       });
       break;
     }
@@ -511,6 +578,7 @@ async function _executeAction(name, param, { session, distraction, event, now })
         time_away_seconds: Math.round(timeOnSiteMs / 1000),
         escalation_level: distraction.level || 1,
         intention: session.intention,
+        distraction_count: session.distraction_count,
       });
       break;
     }
@@ -522,11 +590,22 @@ async function _executeAction(name, param, { session, distraction, event, now })
     case 'CLEAR_DISTRACTION':
       clearGraceTimer();
       await clearDistractionNotification();
-      await clearDistraction();
-      if (session) {
+      // Persist the peak escalation level for this domain before clearing,
+      // so re-entry triggers instant re-block at the same or higher level.
+      if (session && distraction?.host && distraction.level > 0) {
+        if (!session.escalated_domains) session.escalated_domains = {};
+        const prev = session.escalated_domains[distraction.host] ?? 0;
+        if (distraction.level > prev) {
+          session.escalated_domains[distraction.host] = distraction.level;
+          LOG.act(`escalated_domains[${distraction.host}] = ${distraction.level}`);
+        }
+        session.resume_to_state = null;
+        await saveSession(session);
+      } else if (session) {
         session.resume_to_state = null;
         await saveSession(session);
       }
+      await clearDistraction();
       break;
 
     case 'UPDATE_LAST_PRODUCTIVE_TAB': {
@@ -623,9 +702,29 @@ async function _executeAction(name, param, { session, distraction, event, now })
         LOG.warn(`last_productive tab ${lastProductiveTabId} no longer valid — falling through to dashboard`);
       }
 
-      // --- Priority 3: FocusEcho dashboard fallback ---
+      // --- Priority 3: FocusEcho dashboard fallback (no work-tab toast) ---
       const routeUrl = origin => `${origin}/#/focus-session`;
       const dashboardTabId = storedConfig?.[SK.DASHBOARD_TAB_ID];
+
+      // Helper: navigate to the dashboard and send a contextual toast
+      async function switchToDashboardTab(tabId, tab) {
+        const sendDashboardToast = async (tid) => {
+          try {
+            await chrome.tabs.sendMessage(tid, {
+              type: 'SHOW_RECOVERY_TOAST',
+              remainingMinutes: null,
+              dashboardFallback: true,
+            });
+          } catch (_) {}
+        };
+        if (tab) {
+          await chrome.tabs.update(tab.id, { url: routeUrl(new URL(tab.url).origin), active: true });
+          await chrome.windows.update(tab.windowId, { focused: true });
+          await sendDashboardToast(tab.id);
+        } else if (tabId != null) {
+          await sendDashboardToast(tabId);
+        }
+      }
 
       if (dashboardTabId != null) {
         try {
@@ -636,6 +735,13 @@ async function _executeAction(name, param, { session, distraction, event, now })
               url: routeUrl(currentOrigin), active: true,
             });
             await chrome.windows.update(dashboardTab.windowId, { focused: true });
+            try {
+              await chrome.tabs.sendMessage(dashboardTabId, {
+                type: 'SHOW_RECOVERY_TOAST',
+                remainingMinutes: null,
+                dashboardFallback: true,
+              });
+            } catch (_) {}
             LOG.act(`returned to active FocusEcho session in tab ${dashboardTabId}`);
             break;
           }
@@ -655,6 +761,13 @@ async function _executeAction(name, param, { session, distraction, event, now })
             url: routeUrl(origin), active: true,
           });
           await chrome.windows.update(dashboardTab.windowId, { focused: true });
+          try {
+            await chrome.tabs.sendMessage(dashboardTab.id, {
+              type: 'SHOW_RECOVERY_TOAST',
+              remainingMinutes: null,
+              dashboardFallback: true,
+            });
+          } catch (_) {}
           LOG.act(`returned to FocusEcho session in tab ${dashboardTab.id}`);
           break;
         }
