@@ -75,11 +75,11 @@ def parse_extension():
         total_passed += int(m_sm.group(2))
         total_failed += int(m_sm.group(3))
 
-    # 2. Database Sync: Results: 36 passed, 0 failed
-    m_db = re.search(r"Results:\s+(\d+)\s+passed,\s+(\d+)\s+failed", text)
-    if m_db:
-        total_passed += int(m_db.group(1))
-        total_failed += int(m_db.group(2))
+    # 2. Database Sync & Extended tests: Results: X passed, Y failed
+    m_results = re.findall(r"Results:\s+(\d+)\s+passed,\s+(\d+)\s+failed", text)
+    for m in m_results:
+        total_passed += int(m[0])
+        total_failed += int(m[1])
 
     # 3. Desktop notifications: Desktop notification checks: 4 passed, 0 failed
     m_notif = re.search(r"Desktop notification checks:\s+(\d+)\s+passed,\s+(\d+)\s+failed", text)
