@@ -14,6 +14,7 @@ import 'core/constants/app_constants.dart';
 import 'core/providers/app_dependencies.dart';
 import 'core/router/app_router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/utils/fe_logger.dart';
 import 'local_db/database_helper.dart';
 import 'local_db/distraction_event_dao.dart';
 import 'local_db/focus_session_dao.dart';
@@ -28,12 +29,21 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
   var supabaseReady = false;
-  try {
-    await Supabase.initialize(
-        url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
-    supabaseReady = true;
-  } catch (e) {
-    debugPrint('Supabase Init Failed: $e. Using offline mode.');
+  if (AppConfig.supabaseUrl.isNotEmpty && AppConfig.supabaseAnonKey.isNotEmpty) {
+    try {
+      await Supabase.initialize(
+          url: AppConfig.supabaseUrl, anonKey: AppConfig.supabaseAnonKey);
+      supabaseReady = true;
+    } catch (e, st) {
+      FELog.e('Supabase', 'Supabase Init Failed: $e. Using offline mode.', e, st);
+    }
+  } else {
+    FELog.e(
+      'Config',
+      'FATAL CONFIGURATION ERROR: SUPABASE_URL or SUPABASE_ANON_KEY is missing! '
+      'The app was built without environment variables or dart_defines.json. '
+      'Auth and sync operations will be unavailable.',
+    );
   }
 
   if (kIsWeb) {

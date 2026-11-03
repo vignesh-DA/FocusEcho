@@ -44,6 +44,35 @@ class LoginViewModel extends StateNotifier<LoginState> {
     }
   }
 
+  String _unavailableMessage(String action) {
+    if (AppConfig.supabaseUrl.isEmpty || AppConfig.supabaseAnonKey.isEmpty) {
+      return 'Configuration error: Supabase credentials missing from build.';
+    }
+    return '$action is unavailable while offline.';
+  }
+
+  String _resolveErrorMessage(Object error, StackTrace stackTrace, String action) {
+    FELog.e('Auth', 'Unexpected error during $action', error, stackTrace);
+    final errorStr = error.toString();
+    if (error is ArgumentError ||
+        errorStr.contains('No host specified') ||
+        errorStr.contains('Invalid argument') ||
+        AppConfig.supabaseUrl.isEmpty) {
+      return 'Configuration error: Invalid or missing Supabase URL.';
+    }
+    if (errorStr.contains('SocketException') ||
+        errorStr.contains('ClientException') ||
+        errorStr.contains('Failed host lookup') ||
+        errorStr.contains('Network is unreachable') ||
+        errorStr.contains('Connection refused')) {
+      return 'Network error. Check your connection.';
+    }
+    if (errorStr.contains('TimeoutException') || errorStr.contains('timed out')) {
+      return 'Connection timed out. Please try again.';
+    }
+    return 'An unexpected error occurred. Please try again.';
+  }
+
   void toggleMode() {
     state = state.copyWith(isSignUp: !state.isSignUp, errorMessage: null);
   }
@@ -56,7 +85,7 @@ class LoginViewModel extends StateNotifier<LoginState> {
       if (client == null) {
         state = state.copyWith(
           isLoading: false,
-          errorMessage: 'Sign-in is unavailable while offline.',
+          errorMessage: _unavailableMessage('Sign-in'),
         );
         return false;
       }
@@ -80,10 +109,9 @@ class LoginViewModel extends StateNotifier<LoginState> {
       );
       return false;
     } catch (e, st) {
-      FELog.e('Auth', 'Unexpected error during signIn', e, st);
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Network error. Try again.',
+        errorMessage: _resolveErrorMessage(e, st, 'signIn'),
       );
       return false;
     }
@@ -97,7 +125,7 @@ class LoginViewModel extends StateNotifier<LoginState> {
       if (client == null) {
         state = state.copyWith(
           isLoading: false,
-          errorMessage: 'Sign-up is unavailable while offline.',
+          errorMessage: _unavailableMessage('Sign-up'),
         );
         return false;
       }
@@ -122,10 +150,9 @@ class LoginViewModel extends StateNotifier<LoginState> {
       );
       return false;
     } catch (e, st) {
-      FELog.e('Auth', 'Unexpected error during signUp', e, st);
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Network error. Try again.',
+        errorMessage: _resolveErrorMessage(e, st, 'signUp'),
       );
       return false;
     }
@@ -145,7 +172,7 @@ class LoginViewModel extends StateNotifier<LoginState> {
       if (client == null) {
         state = state.copyWith(
           isLoading: false,
-          errorMessage: 'Sign-in is unavailable while offline.',
+          errorMessage: _unavailableMessage('Sign-in'),
         );
         return false;
       }
@@ -170,10 +197,9 @@ class LoginViewModel extends StateNotifier<LoginState> {
       );
       return false;
     } catch (e, st) {
-      FELog.e('Auth', 'Unexpected error during Google sign-in', e, st);
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Network error. Try again.',
+        errorMessage: _resolveErrorMessage(e, st, 'Google sign-in'),
       );
       return false;
     }
@@ -187,7 +213,7 @@ class LoginViewModel extends StateNotifier<LoginState> {
       if (client == null) {
         state = state.copyWith(
           isLoading: false,
-          errorMessage: 'Unavailable while offline.',
+          errorMessage: _unavailableMessage('Password reset'),
         );
         return false;
       }
@@ -207,10 +233,9 @@ class LoginViewModel extends StateNotifier<LoginState> {
       );
       return false;
     } catch (e, st) {
-      FELog.e('Auth', 'Unexpected error during resetPassword', e, st);
       state = state.copyWith(
         isLoading: false,
-        errorMessage: 'Network error. Try again.',
+        errorMessage: _resolveErrorMessage(e, st, 'resetPassword'),
       );
       return false;
     }

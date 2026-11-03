@@ -17,32 +17,42 @@ if [ ! -f "android/app/key.properties" ]; then
     exit 1
 fi
 
-# Check for required env vars
-if [ -z "$SUPABASE_URL" ]; then
-    echo "⚠️  SUPABASE_URL not set. Using default from app_constants.dart"
-fi
-if [ -z "$SUPABASE_ANON_KEY" ]; then
-    echo "⚠️  SUPABASE_ANON_KEY not set. Using default from app_constants.dart"
+# Determine configuration defines
+DEFINE_ARGS=()
+if [ -n "$SUPABASE_URL" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+    echo "ℹ️  Using environment variables from shell for Supabase configuration."
+    DEFINE_ARGS+=(--dart-define="SUPABASE_URL=$SUPABASE_URL")
+    DEFINE_ARGS+=(--dart-define="SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY")
+    if [ -n "$BACKEND_URL" ]; then
+        DEFINE_ARGS+=(--dart-define="BACKEND_URL=$BACKEND_URL")
+    fi
+elif [ -f "dart_defines.json" ]; then
+    echo "ℹ️  Using dart_defines.json found in mobile_app directory."
+    DEFINE_ARGS+=(--dart-define-from-file="dart_defines.json")
+elif [ -f "../dart_defines.json" ]; then
+    echo "ℹ️  Using dart_defines.json found in project root."
+    DEFINE_ARGS+=(--dart-define-from-file="../dart_defines.json")
+else
+    echo "❌ ERROR: No Supabase configuration found!"
+    echo "   Provide credentials either by setting environment variables:"
+    echo "     export SUPABASE_URL=\"...\""
+    echo "     export SUPABASE_ANON_KEY=\"...\""
+    echo "   OR by creating dart_defines.json in mobile_app/ or the repository root."
+    exit 1
 fi
 
 echo "📦 Getting dependencies..."
 flutter pub get
 
 echo "🔨 Building release APK..."
-flutter build apk --release \
-    ${SUPABASE_URL:+--dart-define=SUPABASE_URL=$SUPABASE_URL} \
-    ${SUPABASE_ANON_KEY:+--dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY} \
-    ${BACKEND_URL:+--dart-define=BACKEND_URL=$BACKEND_URL}
+flutter build apk --release "${DEFINE_ARGS[@]}"
 
 echo ""
 echo "✅ Release APK built successfully!"
 echo "📍 Location: build/app/outputs/flutter-apk/app-release.apk"
 echo ""
 echo "📦 Building release App Bundle (for Play Store)..."
-flutter build appbundle --release \
-    ${SUPABASE_URL:+--dart-define=SUPABASE_URL=$SUPABASE_URL} \
-    ${SUPABASE_ANON_KEY:+--dart-define=SUPABASE_ANON_KEY=$SUPABASE_ANON_KEY} \
-    ${BACKEND_URL:+--dart-define=BACKEND_URL=$BACKEND_URL}
+flutter build appbundle --release "${DEFINE_ARGS[@]}"
 
 echo ""
 echo "✅ App Bundle built successfully!"
