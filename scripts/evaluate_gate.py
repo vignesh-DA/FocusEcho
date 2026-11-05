@@ -9,9 +9,22 @@ from pathlib import Path
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
+def read_file_text(path: Path) -> str:
+    """Read file with automatic BOM/encoding handling."""
+    if not path.exists():
+        return ""
+    raw = path.read_bytes()
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return raw.decode("utf-16", errors="replace")
+    elif raw.startswith(b"\xef\xbb\xbf"):
+        return raw.decode("utf-8-sig", errors="replace")
+    return raw.decode("utf-8", errors="replace")
+
+
 def clean_ansi(text: str) -> str:
     """Strip ANSI escape sequences from logs."""
     return re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", text)
+
 
 def parse_backend():
     xml_path = Path("test-results/backend-junit.xml")
@@ -33,7 +46,7 @@ def parse_backend():
         except Exception:
             pass
     if log_path.exists():
-        text = clean_ansi(log_path.read_text(encoding="utf-8", errors="replace"))
+        text = clean_ansi(read_file_text(log_path))
         m = re.search(r"(\d+)\s+passed", text)
         passed = int(m.group(1)) if m else 0
         mf = re.search(r"(\d+)\s+failed", text)
@@ -71,10 +84,28 @@ def parse_selenium():
         return None
 
 def parse_summary(path: str, name: str, pattern: str):
+    json_map = {
+        "Load Smoke": Path("test-results/load-results.json"),
+        "Vulnerability Checks": Path("test-results/vulnerability-results.json"),
+    }
+    cand = json_map.get(name)
+    if cand and cand.exists():
+        try:
+            data = json.loads(read_file_text(cand))
+            return {
+                "name": name,
+                "total": data.get("total", len(data.get("test_cases", []))),
+                "passed": data.get("passed", 0),
+                "failed": data.get("failed", 0),
+                "skipped": data.get("skipped", 0),
+            }
+        except Exception:
+            pass
+
     log_path = Path(path)
     if not log_path.exists():
         return None
-    text = clean_ansi(log_path.read_text(encoding="utf-8", errors="replace"))
+    text = clean_ansi(read_file_text(log_path))
     matches = re.findall(pattern, text, flags=re.IGNORECASE)
     if not matches:
         return None
@@ -82,10 +113,47 @@ def parse_summary(path: str, name: str, pattern: str):
     return {"name": name, "total": passed + failed, "passed": passed, "failed": failed, "skipped": 0}
 
 def parse_flutter_test():
+    json_path = Path("test-results/flutter-test.json")
+    if json_path.exists():
+        try:
+            passed = 0
+            failed = 0
+            skipped = 0
+            real_tests = set()
+            events = []
+            for line in read_file_text(json_path).splitlines():
+                if not line.strip():
+                    continue
+                ev = json.loads(line)
+                events.append(ev)
+                if ev.get("type") == "testStart":
+                    t = ev.get("test", {})
+                    name = t.get("name", "")
+                    if name and not name.startswith("loading ") and not t.get("hidden", False):
+                        real_tests.add(t["id"])
+            for ev in events:
+                if ev.get("type") == "testDone" and ev.get("testID") in real_tests:
+                    if ev.get("skipped"):
+                        skipped += 1
+                    elif ev.get("result") == "success":
+                        passed += 1
+                    else:
+                        failed += 1
+            if real_tests:
+                return {
+                    "name": "Flutter Tests (Mobile/Web)",
+                    "total": len(real_tests),
+                    "passed": passed,
+                    "failed": failed,
+                    "skipped": skipped,
+                }
+        except Exception:
+            pass
+
     log_path = Path("test-results/flutter-test.log")
     if not log_path.exists():
         return None
-    text = clean_ansi(log_path.read_text(encoding="utf-8", errors="replace"))
+    text = clean_ansi(read_file_text(log_path))
     # Matches summaries such as "+41: All tests passed!", "+38 -3: Some tests failed",
     # and Flutter's skipped-test marker ("~N").
     m = re.findall(
@@ -107,10 +175,24 @@ def parse_flutter_test():
     return None
 
 def parse_extension():
+    json_path = Path("test-results/extension-results.json")
+    if json_path.exists():
+        try:
+            data = json.loads(read_file_text(json_path))
+            return {
+                "name": "Browser Extension Tests",
+                "total": data.get("total", len(data.get("test_cases", []))),
+                "passed": data.get("passed", 0),
+                "failed": data.get("failed", 0),
+                "skipped": data.get("skipped", 0),
+            }
+        except Exception:
+            pass
+
     log_path = Path("test-results/extension.log")
     if not log_path.exists():
         return None
-    text = clean_ansi(log_path.read_text(encoding="utf-8", errors="replace"))
+    text = clean_ansi(read_file_text(log_path))
     total_passed = 0
     total_failed = 0
 
@@ -152,7 +234,7 @@ def parse_flutter_analyze():
     log_path = Path("test-results/flutter-analyze.log")
     if not log_path.exists():
         return None
-    text = clean_ansi(log_path.read_text(encoding="utf-8", errors="replace"))
+    text = clean_ansi(read_file_text(log_path))
     if "No issues found!" in text:
         return {"issues": 0, "infos": 0, "warnings_errors": 0, "status": "clean"}
     m = re.search(r"(\d+)\s+issues?\s+found", text)
@@ -279,6 +361,26 @@ def main():
     Path("test-results/ci-gate.txt").write_text(
         f"total_tests={total_test_cases}\npassed_tests={total_passed}\nfailed_tests={total_failed}\npass_rate={pass_rate:.0f}%\nresult={status_str}\n",
         encoding="utf-8",
+    )
+    gate_json_data = {
+        "gate_passed": gate,
+        "status": status_str,
+        "total_test_cases": total_test_cases,
+        "total_passed": total_passed,
+        "total_failed": total_failed,
+        "total_skipped": total_skipped,
+        "suites": {
+            s["name"]: {
+                "total": s["total"],
+                "passed": s["passed"],
+                "failed": s["failed"],
+                "skipped": s.get("skipped", 0),
+            }
+            for s in suites
+        },
+    }
+    Path("test-results/ci-gate.json").write_text(
+        json.dumps(gate_json_data, indent=2), encoding="utf-8"
     )
     raise SystemExit(0 if gate else 1)
 

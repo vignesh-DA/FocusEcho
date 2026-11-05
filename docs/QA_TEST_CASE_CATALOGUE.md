@@ -142,17 +142,34 @@ Local executable suites were run on 2026-11-05. Results below distinguish automa
 | Suite | Result | Evidence and scope |
 | --- | --- | --- |
 | Backend API/unit | 85 passed, 0 failed | `python -m pytest app/tests -q` from `backend/`; 2 deprecation warnings. |
-| Flutter unit/widget | 91 passed, 0 failed | `flutter test --no-pub`; no physical device or Flutter web browser E2E was exercised. |
-| Browser extension | 227 established checks plus the standalone parking-lot check passed | `npm run test:all`; state machine 177, DB sync 36, desktop notifications 4, replay scenarios 9, manifest integrity check 1, parking-lot popup check 1; the redundant 67-check extended-coverage suite was removed. |
-| Selenium legacy web acceptance | 10 passed, 0 failed, 0 skipped | Edge headless against local `http://127.0.0.1:8081/`; all ten `DEMO-WEB-*` cases passed. This targets the legacy static app, not Flutter web. |
-| QA catalogue controls | 14 passed, 0 failed | `python -m pytest automation/test_quality_controls.py -q`; includes runner/case integrity, load/security helper, and CI-gate parser checks. |
+| Flutter unit/widget | 47 passed, 0 failed | `flutter test --no-pub`; 47 curated tests (44 obsolete constant assertions were removed in commit 89459a9); no physical device or Flutter web browser E2E was exercised. |
+| Browser extension | 228 passed, 0 failed | `npm run test:all`; state machine 177, DB sync 36, desktop notifications 4, replay scenarios 9, manifest integrity check 1, parking-lot popup check 1. |
+| Selenium legacy web acceptance | 10 passed, 0 failed, 0 skipped | Edge/Chrome headless against local `http://127.0.0.1:8081/`; all ten `DEMO-WEB-*` cases passed. Targets the legacy static web shell. |
+| QA catalogue controls | 21 passed, 0 failed | `python -m pytest automation/test_quality_controls.py automation/tests/test_full_suite_report.py -q`; includes runner/case integrity, load/security helper, CI-gate parser checks, and full-suite report generator validations. |
 | Local load smoke | 8 passed, 0 failed | `python automation/load/runner.py`; TestClient with mocked persistence. P95 measurements are diagnostic local smoke evidence, not production capacity evidence. |
 | Local vulnerability checks | 10 passed, 0 failed | `python automation/vulnerability/runner.py`; TestClient/mock probes and local source scan. Not an external penetration test. |
-| **Automated total** | **446 passed, 0 failed** | Counts the extension parking-lot check separately: 85 + 91 + 228 + 10 + 14 + 8 + 10. |
+| **Automated total** | **409 passed, 0 failed** | Exact count of all executed tests: 85 + 47 + 228 + 10 + 21 + 8 + 10 = 409. |
 
-The earlier 402 total used a stale Flutter count of 47. The checked-in Flutter suite currently reports 91 cases, so the accurate aggregate is 446. Counts combine unit cases, browser cases, and runner controls; they are not 446 independent production end-to-end journeys.
+### Test Workbooks and GitHub Actions Artifacts
 
-CI also creates `Test Results/Excel/Full_Test_Suite_Report.xlsx`, with one row per named check and a suite summary sheet. The Selenium-specific workbook remains available separately. Both are included in the `focusecho-test-results` Actions artifact.
+CI runs every suite and generates both dedicated and combined Excel workbooks:
+
+1. **Combined Full-Suite Workbook**:
+   - Primary File: `Test Results/Excel/Full_Test_Suite_Report.xlsx`
+   - Convenience Aliases: `test-results/Full_Test_Suite_Report.xlsx` and `Test Results/Excel/Combined_Test_Report.xlsx`
+   - Contents: One row per executed test case/check across all 7 suites (409 rows total) with `Test ID`, `Suite`, `Test Name`, `Status`, and `Details`, plus a **Suite Summary** sheet with per-suite pass/fail/skip/blocked totals and CI gate validation status.
+2. **Selenium-Only Acceptance Workbook**:
+   - File: `Test Results/Excel/Automation_Test_Report.xlsx` and `Test Results/Excel/Selenium_Acceptance_Report.xlsx`
+   - Contents: The 10 curated Selenium browser acceptance cases only.
+
+#### How to Download the Artifact from GitHub Actions:
+1. Open the **FocusEcho** GitHub repository.
+2. Navigate to the **Actions** tab and click on the latest **FocusEcho CI** workflow run.
+3. Scroll down to the **Artifacts** section at the bottom of the summary page.
+4. Click on **`focusecho-test-results`** to download the zip bundle.
+5. Extract the zip file:
+   - For all test cases across every suite, open **`Test Results/Excel/Full_Test_Suite_Report.xlsx`** (or **`test-results/Full_Test_Suite_Report.xlsx`**).
+   - For Selenium-only web acceptance cases, open **`Test Results/Excel/Automation_Test_Report.xlsx`**.
 
 ### Not executed / blocked
 

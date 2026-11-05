@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import sys
+import json
 
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -406,9 +407,29 @@ def run_all_load_tests() -> list[LoadTestMetric]:
 
     app.dependency_overrides.clear()
 
-    print("=" * 70)
+    output_dir = PROJECT_ROOT / "test-results"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    json_path = output_dir / "load-results.json"
     passed_count = sum(1 for r in results if r.status == "Pass")
     failed_count = len(results) - passed_count
+    data = {
+        "suite": "Load Smoke",
+        "total": len(results),
+        "passed": passed_count,
+        "failed": failed_count,
+        "test_cases": [
+            {
+                "test_id": r.test_id,
+                "name": r.name,
+                "status": "Passed" if r.status == "Pass" else "Failed",
+                "details": f"Target: {r.target_endpoint}, Concurrency: {r.concurrency}, RPS: {r.requests_per_sec}, P95: {r.p95_ms}ms, Errors: {r.error_count}",
+            }
+            for r in results
+        ],
+    }
+    json_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+    print("=" * 70)
     print(f"LOAD SUITE SUMMARY: {passed_count}/{len(results)} passed; {failed_count} failed")
     print("=" * 70)
     if failed_count:

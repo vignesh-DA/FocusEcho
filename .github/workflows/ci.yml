@@ -47,7 +47,7 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          python -m pytest automation/test_quality_controls.py -q --junitxml=test-results/qa-quality-junit.xml 2>&1 | tee test-results/qa-quality.log
+          python -m pytest automation/test_quality_controls.py automation/tests/test_full_suite_report.py -q --junitxml=test-results/qa-quality-junit.xml 2>&1 | tee test-results/qa-quality.log
 
       - name: Run Selenium acceptance tests on local static web app
         id: selenium
@@ -131,7 +131,7 @@ jobs:
         working-directory: mobile_app
         run: |
           set -o pipefail
-          flutter test --no-pub --reporter expanded 2>&1 | tee ../test-results/flutter-test.log
+          flutter test --no-pub --reporter expanded --file-reporter json:../test-results/flutter-test.json 2>&1 | tee ../test-results/flutter-test.log
 
       - uses: actions/setup-node@v4
         id: node_setup
@@ -176,7 +176,6 @@ jobs:
 
       - name: Build combined full-suite Excel report
         if: always()
-        continue-on-error: true
         run: python -m automation.reports.full_suite_excel_report
 
       - name: Upload test reports and raw output

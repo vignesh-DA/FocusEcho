@@ -172,6 +172,10 @@ class ExcelReporter:
 
         target_file = EXCEL_DIR / "Automation_Test_Report.xlsx"
         wb.save(target_file)
+        try:
+            wb.save(EXCEL_DIR / "Selenium_Acceptance_Report.xlsx")
+        except Exception:
+            pass
 
     @classmethod
     def generate_passed_report(cls, results: List[TestCaseResult]) -> None:

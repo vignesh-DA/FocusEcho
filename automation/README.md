@@ -63,8 +63,22 @@ The load runner reports throughput and latency with local smoke budgets (P95 1,0
 Run the QA catalogue and CI-gate controls with:
 
 ```powershell
-python -m pytest automation/test_quality_controls.py -q
+python -m pytest automation/test_quality_controls.py automation/tests/test_full_suite_report.py -q
 ```
+
+## Combined Full-Suite Excel Report
+
+To generate the combined master Excel workbook covering all suites (Selenium, Backend, Flutter, Browser Extension, QA Controls, Load Smoke, Vulnerability):
+
+```powershell
+python -m automation.reports.full_suite_excel_report
+```
+
+Output files:
+- Combined Full-Suite: `Test Results/Excel/Full_Test_Suite_Report.xlsx` (also at `test-results/Full_Test_Suite_Report.xlsx`)
+- Selenium Acceptance Only: `Test Results/Excel/Automation_Test_Report.xlsx` / `Selenium_Acceptance_Report.xlsx`
+
+Both are automatically uploaded to GitHub Actions under artifact `focusecho-test-results`.
 
 ## Quality gate and evidence
 
