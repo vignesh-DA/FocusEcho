@@ -24,17 +24,22 @@ for directory in [EXCEL_DIR, HTML_DIR, SCREENSHOT_DIR, LOG_DIR, JSON_DIR, SUMMAR
     directory.mkdir(parents=True, exist_ok=True)
 
 class Config:
-    """Central configuration class."""
-    
-    # Deployment Base URL (MANDATORY: Never localhost)
-    # Default to GitHub Pages URL, overridden by BASE_URL environment variable
-    DEFAULT_BASE_URL = "https://vignesh-DA.github.io/FocusEcho/"
+    """Test target and browser configuration."""
+
+    TEST_ENV = os.environ.get("TEST_ENV", "local").strip().lower()
+    if TEST_ENV not in {"local", "production"}:
+        raise ValueError("TEST_ENV must be either 'local' or 'production'.")
+    DEFAULT_BASE_URL = (
+        "http://127.0.0.1:8081/"
+        if TEST_ENV == "local"
+        else "https://vignesh-DA.github.io/FocusEcho/"
+    )
     BASE_URL = os.environ.get("BASE_URL", DEFAULT_BASE_URL).strip()
     if not BASE_URL.endswith("/") and not BASE_URL.endswith(".html"):
         BASE_URL += "/"
 
     # Browser Configuration
-    BROWSER = os.environ.get("BROWSER", "chrome").lower()
+    BROWSER = os.environ.get("BROWSER", "chrome").strip().lower()
     HEADLESS = os.environ.get("HEADLESS", "true").lower() in ("true", "1", "yes")
     WINDOW_WIDTH = int(os.environ.get("WINDOW_WIDTH", "1920"))
     WINDOW_HEIGHT = int(os.environ.get("WINDOW_HEIGHT", "1080"))
@@ -47,8 +52,8 @@ class Config:
     RETRY_COUNT = int(os.environ.get("RETRY_COUNT", "2"))
 
     # Pass / Fail Quality Gate Thresholds
-    PASS_PERCENTAGE_THRESHOLD = float(os.environ.get("PASS_PERCENTAGE_THRESHOLD", "95.0"))
-    MAX_CRITICAL_FAIL_PERCENTAGE = float(os.environ.get("MAX_CRITICAL_FAIL_PERCENTAGE", "5.0"))
+    PASS_PERCENTAGE_THRESHOLD = float(os.environ.get("PASS_PERCENTAGE_THRESHOLD", "100.0"))
+    MAX_CRITICAL_FAIL_PERCENTAGE = float(os.environ.get("MAX_CRITICAL_FAIL_PERCENTAGE", "0.0"))
 
     # Artifact Retention (Days)
     ARTIFACT_RETENTION_DAYS = 30
@@ -69,11 +74,14 @@ class Config:
 
     @classmethod
     def validate_url(cls) -> None:
-        """Enforce requirement: Never run against localhost or 127.0.0.1 in live test execution."""
-        forbidden = ["localhost", "127.0.0.1", "0.0.0.0", "::1"]
-        for host in forbidden:
-            if host in cls.BASE_URL.lower():
-                raise ValueError(
-                    f"MANDATORY REQUIREMENT VIOLATION: Selenium must run against the LIVE "
-                    f"GitHub Pages deployment. Found forbidden host in BASE_URL='{cls.BASE_URL}'"
-                )
+        """Prevent accidental production traffic from local runs and vice versa."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(cls.BASE_URL)
+        local_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "::1"}
+        is_local_host = (parsed.hostname or "").lower() in local_hosts
+        if cls.TEST_ENV == "local":
+            if parsed.scheme not in {"http", "https"} or not is_local_host:
+                raise ValueError("Local test mode must target localhost or a loopback address.")
+        elif parsed.scheme != "https" or is_local_host:
+            raise ValueError("Production test mode requires a public HTTPS URL.")

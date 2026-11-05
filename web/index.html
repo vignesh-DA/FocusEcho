@@ -561,6 +561,7 @@
 
         <!-- Form: Email OTP -->
         <form id="form-auth-login" class="auth-form">
+          <p class="status-msg" id="auth-signin-unavailable">Email verification is not configured in this legacy demo. Continue as a guest.</p>
           <div class="form-group">
             <label for="auth-email-input">Work / Personal Email *</label>
             <input type="email" id="auth-email-input" placeholder="developer@focusecho.ai" required>
@@ -568,7 +569,7 @@
           </div>
 
           <div class="form-group">
-            <label for="auth-otp-input">6-Digit Security OTP (Default: 123456) *</label>
+            <label for="auth-otp-input">6-Digit Security OTP *</label>
             <input type="password" id="auth-otp-input" placeholder="••••••" maxlength="6" required>
             <span class="form-error" id="auth-otp-error"></span>
           </div>

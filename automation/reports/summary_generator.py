@@ -61,7 +61,7 @@ class SummaryGenerator:
         else:
             failed_tests_md = "- None"
 
-        summary_md = f"""# Live GitHub Pages E2E Execution Summary
+        summary_md = f"""# FocusEcho Browser Acceptance Summary
 
 **Execution Date:**
 {now_str}

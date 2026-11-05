@@ -18,7 +18,7 @@ class TestCaseResult:
     test_steps: List[str]
     expected_result: str
     actual_result: str = ""
-    status: str = "Passed"  # Passed, Failed, Skipped, Blocked
+    status: str = "Not Run"  # Not Run, Passed, Failed, Skipped, Blocked
     execution_time: float = 0.0
     error_message: Optional[str] = None
     stack_trace: Optional[str] = None

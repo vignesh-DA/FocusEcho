@@ -6,7 +6,7 @@ console log capturing, and high performance flags.
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options as ChromeOptions
-from selenium.webdriver.chrome.service import Service as ChromeService
+from selenium.webdriver.edge.options import Options as EdgeOptions
 from automation.config.config import Config
 from automation.utils.logger import logger
 
@@ -14,36 +14,39 @@ class DriverFactory:
     """Factory to create configured WebDriver instances."""
 
     @staticmethod
-    def create_driver(headless: bool = None) -> webdriver.Chrome:
-        """Instantiate a Chrome WebDriver with production flags."""
+    def create_driver(headless: bool = None) -> webdriver.Remote:
+        """Create a configured Chrome or Edge WebDriver."""
         use_headless = Config.HEADLESS if headless is None else headless
-        
-        options = ChromeOptions()
+
+        if Config.BROWSER == "chrome":
+            options = ChromeOptions()
+            browser_factory = webdriver.Chrome
+        elif Config.BROWSER == "edge":
+            options = EdgeOptions()
+            browser_factory = webdriver.Edge
+        else:
+            raise ValueError("BROWSER must be either 'chrome' or 'edge'.")
         if use_headless:
-            options.add_argument("--headless=new")
-        
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
+            options.add_argument("--headless=new" if Config.BROWSER == "chrome" else "--headless")
         options.add_argument(f"--window-size={Config.WINDOW_WIDTH},{Config.WINDOW_HEIGHT}")
-        options.add_argument("--disable-extensions")
         options.add_argument("--disable-notifications")
         options.add_argument("--disable-popup-blocking")
-        options.add_argument("--remote-allow-origins=*")
-        options.add_argument("--user-agent=FocusEcho-E2E-Automated-Testing-Agent/2.4")
+        options.add_argument("--user-agent=FocusEcho-QA-Automation/1.0")
 
-        # Enable browser console logging
-        options.set_capability("goog:loggingPrefs", {"browser": "ALL"})
-
-        logger.info(f"Initializing Chrome Driver (headless={use_headless}, size={Config.WINDOW_WIDTH}x{Config.WINDOW_HEIGHT})")
-        driver = webdriver.Chrome(options=options)
-        
+        logger.info(
+            "Initializing %s WebDriver (headless=%s, size=%sx%s)",
+            Config.BROWSER,
+            use_headless,
+            Config.WINDOW_WIDTH,
+            Config.WINDOW_HEIGHT,
+        )
+        driver = browser_factory(options=options)
         driver.set_page_load_timeout(Config.PAGE_LOAD_TIMEOUT)
         driver.set_script_timeout(Config.SCRIPT_TIMEOUT)
         return driver
 
     @staticmethod
-    def get_browser_logs(driver: webdriver.Chrome) -> list:
+    def get_browser_logs(driver: webdriver.Remote) -> list:
         """Fetch captured browser console logs."""
         try:
             return driver.get_log("browser")

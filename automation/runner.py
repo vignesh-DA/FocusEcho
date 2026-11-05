@@ -1,6 +1,6 @@
 """
-Enterprise Test Execution Orchestrator for FocusEcho Selenium Framework
-Executes 400+ E2E test cases, tracks metrics, captures evidence,
+Test Execution Orchestrator for FocusEcho Selenium Framework
+Executes the curated browser acceptance cases, tracks metrics, captures evidence,
 generates Excel, HTML, JSON, and Step Summary artifacts, and enforces quality gates.
 """
 
@@ -14,7 +14,7 @@ try:
         sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
-from datetime import datetime
+from datetime import datetime, timezone
 from automation.config.config import Config, JSON_DIR, RESULTS_ROOT
 from automation.drivers.driver_factory import DriverFactory
 from automation.utils.logger import logger
@@ -59,10 +59,12 @@ def run_all_e2e_tests() -> int:
             # Post-process failures for screenshots and console logs
             for r in suite_results:
                 if r.status == "Failed":
-                    screenshot_path = ScreenshotUtil.capture_screenshot(driver, r.test_id)
-                    if screenshot_path:
-                        r.screenshot_path = str(screenshot_path)
-                    r.console_logs = DriverFactory.get_browser_logs(driver)
+                    if not r.screenshot_path:
+                        screenshot_path = ScreenshotUtil.capture_screenshot(driver, r.test_id)
+                        if screenshot_path:
+                            r.screenshot_path = str(screenshot_path)
+                    if not r.console_logs:
+                        r.console_logs = DriverFactory.get_browser_logs(driver)
 
             all_results.extend(suite_results)
 
@@ -102,7 +104,7 @@ def run_all_e2e_tests() -> int:
     results_dict = {
         "metadata": {
             "base_url": Config.BASE_URL,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "duration_seconds": round(total_duration, 2),
             "total": total_tests,
             "passed": passed_tests,
@@ -125,8 +127,8 @@ def run_all_e2e_tests() -> int:
     # 4. Generate GitHub Summary
     summary_md = SummaryGenerator.generate_summary(
         results=all_results,
-        build_status="PASS",
-        deploy_status="PASS",
+        build_status="NOT RUN (Selenium acceptance only)",
+        deploy_status="NOT RUN",
         execution_duration=total_duration
     )
 
@@ -140,17 +142,17 @@ def run_all_e2e_tests() -> int:
         except Exception as exc:
             logger.warning(f"Could not write to GITHUB_STEP_SUMMARY: {exc}")
 
-    # QUALITY GATE PASS/FAIL LOGIC:
-    # Fail only if:
-    # - Deployment fails (handled in Stage 7)
-    # - More than 5% critical test cases fail
-    # - Pass percentage < 95%
+    # QUALITY GATE PASS/FAIL LOGIC: require every executed case to pass.
     if critical_fail_pct > Config.MAX_CRITICAL_FAIL_PERCENTAGE:
         logger.error(f"QUALITY GATE FAILED: Critical test failures ({critical_fail_pct:.1f}%) exceeded {Config.MAX_CRITICAL_FAIL_PERCENTAGE}% limit.")
         return 1
 
     if pass_pct < Config.PASS_PERCENTAGE_THRESHOLD:
         logger.error(f"QUALITY GATE FAILED: Pass percentage ({pass_pct:.1f}%) is below {Config.PASS_PERCENTAGE_THRESHOLD}% threshold.")
+        return 1
+
+    if skipped_tests:
+        logger.error(f"QUALITY GATE FAILED: {skipped_tests} test case(s) were skipped or blocked.")
         return 1
 
     logger.info("QUALITY GATE PASSED: All deployment and E2E criteria met successfully.")

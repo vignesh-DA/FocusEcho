@@ -34,6 +34,59 @@ jobs:
           set -o pipefail
           python -m pip install -r backend/requirements.txt pytest==8.3.5 2>&1 | tee test-results/backend-install.log
 
+      - name: Install QA automation dependencies
+        id: qa_deps
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pip install -r automation/requirements.txt pytest==8.3.5 2>&1 | tee test-results/qa-install.log
+
+      - name: Validate QA test catalogue and runner
+        id: qa_quality
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pytest automation/test_quality_controls.py -q --junitxml=test-results/qa-quality-junit.xml 2>&1 | tee test-results/qa-quality.log
+
+      - name: Run Selenium acceptance tests on local static web app
+        id: selenium
+        if: always()
+        continue-on-error: true
+        env:
+          TEST_ENV: local
+          BASE_URL: http://127.0.0.1:8081/
+          BROWSER: chrome
+          HEADLESS: 'true'
+          PASS_PERCENTAGE_THRESHOLD: ${{ env.PASS_THRESHOLD_PERCENT }}
+          MAX_CRITICAL_FAIL_PERCENTAGE: '0'
+        run: |
+          set -o pipefail
+          python -m http.server 8081 --directory web > test-results/web-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:8081/ > /dev/null; then break; fi
+            sleep 0.5
+          done
+          python -m automation.runner 2>&1 | tee test-results/selenium.log
+
+      - name: Run local load smoke suite
+        id: load
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -u automation/load/runner.py 2>&1 | tee test-results/load.log
+
+      - name: Run local vulnerability suite
+        id: vulnerability
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -u automation/vulnerability/runner.py 2>&1 | tee test-results/vulnerability.log
+
       - name: Run backend tests
         id: backend
         if: always()
@@ -115,6 +168,10 @@ jobs:
           FLUTTER_ANALYZE_RESULT: ${{ steps.flutter_analyze.outcome }}
           FLUTTER_TEST_RESULT: ${{ steps.flutter_test.outcome }}
           EXTENSION_RESULT: ${{ steps.extension.outcome }}
+          QA_QUALITY_RESULT: ${{ steps.qa_quality.outcome }}
+          SELENIUM_RESULT: ${{ steps.selenium.outcome }}
+          LOAD_RESULT: ${{ steps.load.outcome }}
+          VULNERABILITY_RESULT: ${{ steps.vulnerability.outcome }}
         run: python scripts/evaluate_gate.py
 
       - name: Upload test reports and raw output
@@ -122,7 +179,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: focusecho-test-results
-          path: test-results/
+          path: |
+            test-results/
+            Test Results/
           if-no-files-found: warn
 
   debug-apk:

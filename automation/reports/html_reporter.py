@@ -8,7 +8,7 @@ Generates high-fidelity glassmorphic HTML reports:
 from typing import List
 from datetime import datetime
 from automation.models.test_result import TestCaseResult
-from automation.config.config import HTML_DIR
+from automation.config.config import Config, HTML_DIR
 from automation.utils.logger import logger
 
 class HTMLReporter:
@@ -172,7 +172,7 @@ class HTMLReporter:
             <div style="margin-bottom: 12px;">
                 <div style="display:flex; justify-content:space-between; font-size:0.85rem; margin-bottom:4px;">
                     <span>{mod} ({pas}/{tot})</span>
-                    <span style="font-weight:700; color:{'#10b981' if rate >= 95 else '#ef4444'}">{rate:.1f}%</span>
+                    <span style="font-weight:700; color:{'#10b981' if rate >= Config.PASS_PERCENTAGE_THRESHOLD else '#ef4444'}">{rate:.1f}%</span>
                 </div>
                 <div style="background:rgba(255,255,255,0.08); height:8px; border-radius:4px; overflow:hidden;">
                     <div style="width:{rate}%; height:100%; background:linear-gradient(90deg, #00f2fe, #9d4edd);"></div>
@@ -195,7 +195,7 @@ class HTMLReporter:
 </head>
 <body>
     <h1>📊 FocusEcho E2E Quality Dashboard</h1>
-    <p style="color:#94a3b8;">Deployment: <code>{base_url}</code> | Target Pass Threshold: 95.0%</p>
+    <p style="color:#94a3b8;">Target: <code>{base_url}</code> | Required Pass Threshold: {Config.PASS_PERCENTAGE_THRESHOLD:.1f}%</p>
 
     <div class="grid">
         <div class="card">

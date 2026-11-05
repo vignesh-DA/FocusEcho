@@ -385,29 +385,19 @@
       DOM.authOtpError.textContent = 'Please enter a 6-digit OTP code.';
       return false;
     }
-    DOM.authOtpError.textContent = '';
-
-    // Successful Auth
-    State.user.isAuthenticated = true;
-    State.user.isGuest = false;
-    State.user.email = email;
-    State.user.name = email.split('@')[0];
-    State.user.role = 'Pro';
-    State.user.token = 'jwt_test_' + btoa(email);
-
-    updateUserUI();
-    closeAuthModal();
-    showGlobalAlert(`Welcome back, ${State.user.name}! Cloud sync connected.`, 'info');
-    return true;
+    // This legacy static app has no trusted OTP provider. Never create an
+    // authenticated identity or token based only on client-side input.
+    DOM.authOtpError.textContent = 'Sign-in is unavailable here because no verification service is configured.';
+    return false;
   }
 
   function continueAsGuest() {
-    State.user.isAuthenticated = true;
+    State.user.isAuthenticated = false;
     State.user.isGuest = true;
     State.user.name = 'Guest User';
     State.user.email = 'guest@focusecho.ai';
     State.user.role = 'Free Tier';
-    State.user.token = 'guest_token';
+    State.user.token = null;
 
     updateUserUI();
     closeAuthModal();
