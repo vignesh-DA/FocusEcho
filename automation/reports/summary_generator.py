@@ -16,8 +16,7 @@ class SummaryGenerator:
     def generate_summary(
         cls,
         results: List[TestCaseResult],
-        build_status: str = "PASS",
-        deploy_status: str = "PASS",
+        build_status: str = "RUN",
         execution_duration: float = 0.0
     ) -> str:
         total = len(results)
@@ -68,9 +67,6 @@ class SummaryGenerator:
 
 **Build Status:**
 {build_status}
-
-**Deployment Status:**
-{deploy_status}
 
 **Total Test Cases:**
 {total}

@@ -847,13 +847,82 @@ def build(
     target_path = output_dir / "Full_Test_Suite_Report.xlsx"
     wb.save(target_path)
 
-    # Save identical copies for convenient artifact extraction
+    # Also generate full-suite Failed_Test_Cases.xlsx and Passed_Test_Cases.xlsx
     try:
-        shutil.copy2(target_path, output_dir / "Combined_Test_Report.xlsx")
+        wb_fail = Workbook()
+        ws_fail = wb_fail.active
+        ws_fail.title = "Failed Cases"
+        ws_fail.append(["Test ID", "Suite", "Test Case Name", "Status", "Failure Details / Evidence"])
+        for cell in ws_fail[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws_fail.row_dimensions[1].height = 26
+        failed_cases = [c for c in cases if c.status == "Failed"]
+        if failed_cases:
+            for c in failed_cases:
+                ws_fail.append([c.test_id, c.suite, c.name, c.status, c.details])
+                r_idx = ws_fail.max_row
+                for col_idx in range(1, 6):
+                    cell = ws_fail.cell(row=r_idx, column=col_idx)
+                    cell.border = thin_border
+                    cell.alignment = Alignment(vertical="top", wrap_text=(col_idx in (3, 5)))
+                ws_fail.cell(row=r_idx, column=4).fill = status_fills["Failed"]
+                ws_fail.cell(row=r_idx, column=4).font = status_fonts["Failed"]
+                ws_fail.cell(row=r_idx, column=4).alignment = Alignment(horizontal="center", vertical="top")
+        else:
+            ws_fail.append(["NONE", "All Suites", "All test cases passed successfully", "Passed", "Zero test failures across all suites."])
+            ws_fail.cell(row=2, column=4).fill = status_fills["Passed"]
+            ws_fail.cell(row=2, column=4).font = status_fonts["Passed"]
+        for col_idx, width in column_widths.items():
+            ws_fail.column_dimensions[get_column_letter(col_idx)].width = width
+        ws_fail.freeze_panes = "A2"
+        fail_path = output_dir / "Failed_Test_Cases.xlsx"
+        wb_fail.save(fail_path)
+
+        wb_pass = Workbook()
+        ws_pass = wb_pass.active
+        ws_pass.title = "Passed Cases"
+        ws_pass.append(["Test ID", "Suite", "Test Case Name", "Status", "Details"])
+        for cell in ws_pass[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+        ws_pass.row_dimensions[1].height = 26
+        for c in [c for c in cases if c.status == "Passed"]:
+            ws_pass.append([c.test_id, c.suite, c.name, c.status, c.details])
+            r_idx = ws_pass.max_row
+            for col_idx in range(1, 6):
+                cell = ws_pass.cell(row=r_idx, column=col_idx)
+                cell.border = thin_border
+                cell.alignment = Alignment(vertical="top", wrap_text=(col_idx in (3, 5)))
+            ws_pass.cell(row=r_idx, column=4).fill = status_fills["Passed"]
+            ws_pass.cell(row=r_idx, column=4).font = status_fonts["Passed"]
+            ws_pass.cell(row=r_idx, column=4).alignment = Alignment(horizontal="center", vertical="top")
+        for col_idx, width in column_widths.items():
+            ws_pass.column_dimensions[get_column_letter(col_idx)].width = width
+        ws_pass.freeze_panes = "A2"
+        pass_path = output_dir / "Passed_Test_Cases.xlsx"
+        wb_pass.save(pass_path)
+
         results_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(target_path, results_dir / "Full_Test_Suite_Report.xlsx")
-    except Exception:
-        pass
+        for dest_dir in {output_dir, results_dir, ROOT / "Test Results" / "Reports", ROOT / "Test Results" / "Excel"}:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            for fname, src in [
+                ("Full_Test_Suite_Report.xlsx", target_path),
+                ("Combined_Test_Report.xlsx", target_path),
+                ("Automation_Test_Report.xlsx", target_path),
+                ("Failed_Test_Cases.xlsx", fail_path),
+                ("Passed_Test_Cases.xlsx", pass_path),
+            ]:
+                try:
+                    dest_file = dest_dir / fname
+                    if dest_file.resolve() != src.resolve():
+                        shutil.copy2(src, dest_file)
+                except Exception:
+                    pass
+    except Exception as exc:
+        print(f"[WARN] Error creating auxiliary workbook copies: {exc}")
 
     print(
         f"[SUCCESS] Successfully built {target_path} with {tot_all} named test cases "

@@ -48,6 +48,12 @@ def _verify_supabase_token(token: str) -> str:
     try:
         header = jwt.get_unverified_header(token)
         alg = header.get("alg", "HS256")
+        if alg not in ("HS256", "ES256"):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token algorithm: {alg}. Only HS256 and ES256 are permitted.",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         if alg == "ES256":
             jwks = _get_jwks_client()
             if not jwks:

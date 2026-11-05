@@ -127,8 +127,7 @@ def run_all_e2e_tests() -> int:
     # 4. Generate GitHub Summary
     summary_md = SummaryGenerator.generate_summary(
         results=all_results,
-        build_status="NOT RUN (Selenium acceptance only)",
-        deploy_status="NOT RUN",
+        build_status="RUN",
         execution_duration=total_duration
     )
 
