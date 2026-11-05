@@ -1,5 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:focus_echo_ai/core/constants/app_constants.dart';
 import 'package:focus_echo_ai/services/focus_preferences_conflict.dart';
 
 void main() {
