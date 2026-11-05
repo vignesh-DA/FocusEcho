@@ -142,15 +142,17 @@ Local executable suites were run on 2026-11-05. Results below distinguish automa
 | Suite | Result | Evidence and scope |
 | --- | --- | --- |
 | Backend API/unit | 85 passed, 0 failed | `python -m pytest app/tests -q` from `backend/`; 2 deprecation warnings. |
-| Flutter unit/widget | 47 passed, 0 failed | `flutter test --no-pub`; no physical device or Flutter web browser E2E was exercised. |
+| Flutter unit/widget | 91 passed, 0 failed | `flutter test --no-pub`; no physical device or Flutter web browser E2E was exercised. |
 | Browser extension | 227 established checks plus the standalone parking-lot check passed | `npm run test:all`; state machine 177, DB sync 36, desktop notifications 4, replay scenarios 9, manifest integrity check 1, parking-lot popup check 1; the redundant 67-check extended-coverage suite was removed. |
 | Selenium legacy web acceptance | 10 passed, 0 failed, 0 skipped | Edge headless against local `http://127.0.0.1:8081/`; all ten `DEMO-WEB-*` cases passed. This targets the legacy static app, not Flutter web. |
 | QA catalogue controls | 14 passed, 0 failed | `python -m pytest automation/test_quality_controls.py -q`; includes runner/case integrity, load/security helper, and CI-gate parser checks. |
 | Local load smoke | 8 passed, 0 failed | `python automation/load/runner.py`; TestClient with mocked persistence. P95 measurements are diagnostic local smoke evidence, not production capacity evidence. |
 | Local vulnerability checks | 10 passed, 0 failed | `python automation/vulnerability/runner.py`; TestClient/mock probes and local source scan. Not an external penetration test. |
-| **Automated total** | **402 passed, 0 failed** | Counts the extension parking-lot check separately: 85 + 47 + 228 + 10 + 14 + 8 + 10. |
+| **Automated total** | **446 passed, 0 failed** | Counts the extension parking-lot check separately: 85 + 91 + 228 + 10 + 14 + 8 + 10. |
 
-The previous report's 487 total excluded the newly added QA/load/vulnerability checks and counted the extension parking-lot check differently. The current CI evaluator counts that popup check as a separate extension case, so this catalogue reports 402, not 487. Counts combine unit cases, browser cases, and runner controls; they are not 402 independent production end-to-end journeys.
+The earlier 402 total used a stale Flutter count of 47. The checked-in Flutter suite currently reports 91 cases, so the accurate aggregate is 446. Counts combine unit cases, browser cases, and runner controls; they are not 446 independent production end-to-end journeys.
+
+CI also creates `Test Results/Excel/Full_Test_Suite_Report.xlsx`, with one row per named check and a suite summary sheet. The Selenium-specific workbook remains available separately. Both are included in the `focusecho-test-results` Actions artifact.
 
 ### Not executed / blocked
 
