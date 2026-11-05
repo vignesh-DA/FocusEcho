@@ -845,7 +845,12 @@ def build(
 
     output_dir.mkdir(parents=True, exist_ok=True)
     target_path = output_dir / "Full_Test_Suite_Report.xlsx"
-    wb.save(target_path)
+    try:
+        wb.save(target_path)
+    except PermissionError:
+        print(f"[WARN] {target_path} is locked (open in Excel). Saving to Full_Test_Suite_Report_Latest.xlsx")
+        target_path = output_dir / "Full_Test_Suite_Report_Latest.xlsx"
+        wb.save(target_path)
 
     # Also generate full-suite Failed_Test_Cases.xlsx and Passed_Test_Cases.xlsx
     try:
@@ -906,7 +911,10 @@ def build(
         wb_pass.save(pass_path)
 
         results_dir.mkdir(parents=True, exist_ok=True)
-        for dest_dir in {output_dir, results_dir, ROOT / "Test Results" / "Reports", ROOT / "Test Results" / "Excel"}:
+        dest_dirs = {output_dir, results_dir}
+        if output_dir == EXCEL_DIR:
+            dest_dirs.update({ROOT / "Test Results" / "Reports", ROOT / "Test Results" / "Excel"})
+        for dest_dir in dest_dirs:
             dest_dir.mkdir(parents=True, exist_ok=True)
             for fname, src in [
                 ("Full_Test_Suite_Report.xlsx", target_path),
